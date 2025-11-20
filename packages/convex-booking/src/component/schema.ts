@@ -7,7 +7,7 @@ export default defineSchema({
     title: v.string(), // "Studio Session"
     length: v.number(), // Duration in minutes (e.g., 30)
     description: v.optional(v.string()), // "Book a 30-minute studio session"
-  }).index("by_id", ["id"]),
+  }).index("by_external_id", ["id"]),
 
   daily_availability: defineTable({
     resourceId: v.string(), // Using string for now as resources might be external IDs

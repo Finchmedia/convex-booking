@@ -45,5 +45,17 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      getAvailableSlots: FunctionReference<
+        "query",
+        "internal",
+        {
+          dateFrom: string;
+          dateTo: string;
+          eventLength: number;
+          resourceId: string;
+        },
+        any,
+        Name
+      >;
     };
   };

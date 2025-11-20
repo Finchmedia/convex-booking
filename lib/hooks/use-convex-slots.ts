@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "convex/react";
-import { components } from "@/convex/_generated/api";
+import { api } from "@/convex/_generated/api";
 
 export interface TimeSlot {
   time: string;
@@ -28,9 +28,9 @@ export const useConvexSlots = (
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
 
-  // Query Convex for available slots
+  // Query Convex for available slots via main app wrapper
   const convexSlots = useQuery(
-    components.booking.public.getAvailableSlots as any,
+    api.booking.getAvailableSlots,
     enabled && dateRange
       ? {
           resourceId,

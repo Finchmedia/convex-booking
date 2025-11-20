@@ -8,13 +8,17 @@
  * @module
  */
 
+import type * as booking from "../booking.js";
+
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
 } from "convex/server";
 
-declare const fullApi: ApiFromModules<{}>;
+declare const fullApi: ApiFromModules<{
+  booking: typeof booking;
+}>;
 
 /**
  * A utility for referencing Convex functions in your app's public API.
@@ -61,6 +65,17 @@ export declare const components: {
         "query",
         "internal",
         { end: number; resourceId: string; start: number },
+        any
+      >;
+      getAvailableSlots: FunctionReference<
+        "query",
+        "internal",
+        {
+          dateFrom: string;
+          dateTo: string;
+          eventLength: number;
+          resourceId: string;
+        },
         any
       >;
     };
