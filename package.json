@@ -1,0 +1,36 @@
+{
+  "name": "convexbooking",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:all": "npm-run-all --parallel dev:frontend dev:backend",
+    "dev:frontend": "next dev",
+    "dev:backend": "convex dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --ignore-pattern \"convex/_generated/**\""
+  },
+  "dependencies": {
+    "convex": "^1.29.1",
+    "next": "16.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@convex-dev/eslint-plugin": "^1.0.0",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.1",
+    "npm-run-all2": "^5.0.0",
+    "prettier": "^3.5.3",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "react-is": "^19.0.0-rc-66855b96-20241106"
+  }
+}
