@@ -1,6 +1,12 @@
 export const SLOT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 export const SLOTS_PER_DAY = 24 * 4; // 96
 
+// Business hours (in slot indices, 0-95)
+// 9:00 AM = slot 36 (9 * 4)
+// 5:00 PM = slot 68 (17 * 4)
+export const BUSINESS_HOURS_START = 36; // 9:00 AM
+export const BUSINESS_HOURS_END = 68; // 5:00 PM
+
 export function timestampToSlot(timestamp: number): {
     date: string;
     slot: number;
@@ -52,4 +58,49 @@ export function getRequiredSlots(
     }
 
     return slots;
+}
+
+/**
+ * Converts a slot index to a time string in ISO format
+ * @param date - ISO date string (e.g., "2025-06-17")
+ * @param slotIndex - Slot index (0-95)
+ * @returns ISO timestamp string (e.g., "2025-06-17T14:00:00.000Z")
+ */
+export function slotToTimestamp(date: string, slotIndex: number): string {
+    const hours = Math.floor(slotIndex / 4);
+    const minutes = (slotIndex % 4) * 15;
+    return `${date}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00.000Z`;
+}
+
+/**
+ * Generates all possible time slots for a given day within business hours
+ * @param date - ISO date string (e.g., "2025-06-17")
+ * @param eventLengthMinutes - Event duration in minutes
+ * @returns Array of { start: ISO timestamp, slot indices }
+ */
+export function generateDaySlots(
+    date: string,
+    eventLengthMinutes: number
+): Array<{ start: string; slots: number[] }> {
+    const slotsNeeded = Math.ceil(eventLengthMinutes / 15);
+    const possibleSlots: Array<{ start: string; slots: number[] }> = [];
+
+    // Generate slots from business hours start to end, ensuring we don't go past business hours
+    for (let slotIndex = BUSINESS_HOURS_START; slotIndex + slotsNeeded <= BUSINESS_HOURS_END; slotIndex++) {
+        const slots = Array.from({ length: slotsNeeded }, (_, i) => slotIndex + i);
+        const startTime = slotToTimestamp(date, slotIndex);
+        possibleSlots.push({ start: startTime, slots });
+    }
+
+    return possibleSlots;
+}
+
+/**
+ * Checks if a set of slots are available (not in busySlots array)
+ */
+export function areSlotsAvailable(
+    requiredSlots: number[],
+    busySlots: number[]
+): boolean {
+    return !requiredSlots.some(slot => busySlots.includes(slot));
 }

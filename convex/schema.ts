@@ -1,12 +1,7 @@
-import { defineSchema, defineTable } from "convex/server";
-import { v } from "convex/values";
+import { defineSchema } from "convex/server";
 
-// The schema is entirely optional.
-// You can delete this file (schema.ts) and the
-// app will continue to work.
-// The schema provides more precise TypeScript types.
+// The main app schema
+// The booking component has its own isolated schema
 export default defineSchema({
-  numbers: defineTable({
-    value: v.number(),
-  }),
+  // Empty for now - the booking component manages its own tables
 });
