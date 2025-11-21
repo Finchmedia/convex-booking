@@ -84,6 +84,12 @@ export declare const components: {
         { date: string; eventLength: number; resourceId: string },
         any
       >;
+      getEventType: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId: string },
+        any
+      >;
       getMonthAvailability: FunctionReference<
         "query",
         "internal",

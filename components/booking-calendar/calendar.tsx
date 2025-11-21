@@ -1,38 +1,72 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { CalendarGrid } from "./calendar-grid";
 import { TimeSlotsPanel } from "./time-slots-panel";
+import { EventMetaPanel } from "./event-meta-panel";
 import { useConvexSlots } from "@/lib/hooks/use-convex-slots";
 import { useIntersectionObserver } from "@/lib/hooks/use-intersection-observer";
 
 interface CalendarProps {
   resourceId: string;
-  eventLength: number;
+  eventTypeId: string; // Event type ID (contains duration, timezone, etc.)
   onSlotSelect: (slot: string) => void;
   title?: string;
   description?: string;
   showHeader?: boolean;
+  organizerName?: string; // Organizer name to display
+  organizerAvatar?: string; // Organizer avatar URL
 }
 
 export const Calendar: React.FC<CalendarProps> = ({
   resourceId,
-  eventLength,
+  eventTypeId,
   onSlotSelect,
   title,
   description,
   showHeader,
+  organizerName,
+  organizerAvatar,
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h");
+
+  // Fetch event type configuration
+  const eventType = useQuery(api.booking.getEventType, { eventTypeId });
+
+  // Event type timezone (overrides browser timezone when locked)
+  const eventTimezone = eventType?.timezone || "Europe/Berlin";
+  const isTimezoneLocked = eventType?.lockTimeZoneToggle || false;
+
+  // Duration management (support for multiple duration options)
+  const [selectedDuration, setSelectedDuration] = useState<number>(
+    eventType?.lengthInMinutes || 30
+  );
+
+  // Update selected duration when event type loads
+  useEffect(() => {
+    if (eventType?.lengthInMinutes) {
+      setSelectedDuration(eventType.lengthInMinutes);
+    }
+  }, [eventType?.lengthInMinutes]);
+
+  const eventLength = selectedDuration;
+
+  // Use event type timezone if locked, otherwise allow user selection
   const [userTimezone, setUserTimezone] = useState<string>("");
 
-  // Initialize user timezone
+  // Initialize timezone (use event type timezone if locked)
   useEffect(() => {
-    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setUserTimezone(browserTimezone);
-  }, []);
+    if (isTimezoneLocked) {
+      setUserTimezone(eventTimezone);
+    } else {
+      const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setUserTimezone(browserTimezone);
+    }
+  }, [isTimezoneLocked, eventTimezone]);
 
   // Intersection observer to detect when calendar becomes visible
   const [calendarRef, isIntersecting, hasIntersected] = useIntersectionObserver(
@@ -106,8 +140,20 @@ export const Calendar: React.FC<CalendarProps> = ({
         </div>
       )}
 
-      {/* Calendar and Time Slots */}
+      {/* 3-Column Layout: Event Meta | Calendar | Time Slots */}
       <div className="flex flex-col lg:flex-row">
+        {/* Event Meta Panel */}
+        <EventMetaPanel
+          eventType={eventType}
+          selectedDuration={selectedDuration}
+          onDurationChange={setSelectedDuration}
+          userTimezone={userTimezone}
+          onTimezoneChange={setUserTimezone}
+          timezoneLocked={isTimezoneLocked}
+          organizerName={organizerName}
+          organizerAvatar={organizerAvatar}
+        />
+
         {/* Calendar Grid */}
         <CalendarGrid
           currentDate={currentDate}
@@ -118,15 +164,13 @@ export const Calendar: React.FC<CalendarProps> = ({
           onNextMonth={goToNextMonth}
         />
 
-        {/* Time Slots Panel */}
+        {/* Time Slots Panel (timezone removed) */}
         <TimeSlotsPanel
           selectedDate={selectedDate}
           availableSlots={availableSlots}
           loading={loading}
           timeFormat={timeFormat}
           onTimeFormatChange={setTimeFormat}
-          userTimezone={userTimezone}
-          onTimezoneChange={setUserTimezone}
           onSlotSelect={onSlotSelect}
         />
       </div>

@@ -33,7 +33,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   );
 
   return (
-    <div className="flex-1 p-6">
+    <div className="flex-1 p-4">
       {/* Month Navigation */}
       <CalendarNavigation
         currentDate={currentDate}
@@ -42,18 +42,18 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       />
 
       {/* Day Headers */}
-      <div className="mb-3 grid grid-cols-7 gap-1">
+      <div className="mb-1 grid grid-cols-7 gap-2">
         {DAYS.map((day) => (
           <div
             key={day}
-            className="p-2 text-center text-xs font-medium text-neutral-400">
+            className="flex h-14 w-14 items-center justify-center text-sm font-medium text-neutral-400">
             {day}
           </div>
         ))}
       </div>
 
       {/* Calendar Grid */}
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-2">
         {calendarDays.map((day) => (
           <CalendarDayButton
             key={day.date.toISOString()}

@@ -16,7 +16,7 @@ export const CalendarNavigation: React.FC<CalendarNavigationProps> = ({
   onNextMonth,
 }) => {
   return (
-    <div className="mb-6 flex items-center justify-between">
+    <div className="mb-1 flex items-center justify-between">
       <h2 className="text-xl font-semibold text-neutral-100">
         {MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}
       </h2>

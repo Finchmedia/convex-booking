@@ -64,6 +64,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      getEventType: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId: string },
+        any,
+        Name
+      >;
       getMonthAvailability: FunctionReference<
         "query",
         "internal",

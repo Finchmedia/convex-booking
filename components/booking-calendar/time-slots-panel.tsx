@@ -2,7 +2,6 @@
 
 import React from "react";
 import type { CalcomSlot } from "@/types/booking";
-import { TimezoneSelector } from "./timezone-selector";
 import { TimeSlotButton } from "./time-slot-button";
 
 interface TimeSlotsPanelProps {
@@ -11,8 +10,6 @@ interface TimeSlotsPanelProps {
   loading: boolean;
   timeFormat: "12h" | "24h";
   onTimeFormatChange: (format: "12h" | "24h") => void;
-  userTimezone: string;
-  onTimezoneChange: (timezone: string) => void;
   onSlotSelect: (slotTime: string) => void;
 }
 
@@ -22,10 +19,10 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
   loading,
   timeFormat,
   onTimeFormatChange,
-  userTimezone,
-  onTimezoneChange,
   onSlotSelect,
 }) => {
+  // Get user's timezone for displaying slot times
+  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   // Format selected date for clear display
   const formatSelectedDate = (date: Date | null) => {
     if (!date) return "Select a date";
@@ -59,15 +56,7 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
 
   return (
     <div className="w-full border-t border-neutral-800 lg:w-72 lg:border-t-0 lg:border-l">
-      <div className="p-6">
-        {/* Timezone Selector */}
-        {userTimezone && (
-          <TimezoneSelector
-            selectedTimezone={userTimezone}
-            onTimezoneChange={onTimezoneChange}
-          />
-        )}
-
+      <div className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-neutral-100">
             {formatSelectedDate(selectedDate)}

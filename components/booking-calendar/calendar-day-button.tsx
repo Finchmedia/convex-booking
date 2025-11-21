@@ -16,7 +16,7 @@ export const CalendarDayButton: React.FC<CalendarDayButtonProps> = ({
     <button
       onClick={() => !day.disabled && onDateSelect(day.date)}
       disabled={day.disabled}
-      className={`relative aspect-square rounded-lg p-2 text-sm font-medium transition-all ${
+      className={`relative flex h-14 w-14 items-center justify-center rounded-lg text-base font-medium transition-all ${
         day.isSelected
           ? "bg-white text-neutral-900"
           : day.isToday
@@ -29,7 +29,7 @@ export const CalendarDayButton: React.FC<CalendarDayButtonProps> = ({
       } ${!day.isCurrentMonth ? "opacity-40" : ""}`}>
       {day.day}
       {day.hasSlots && day.isCurrentMonth && !day.disabled && (
-        <div className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-blue-400" />
+        <div className="absolute bottom-2 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-blue-400" />
       )}
     </button>
   );

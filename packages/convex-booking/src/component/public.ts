@@ -3,6 +3,24 @@ import { v } from "convex/values";
 import { getRequiredSlots, generateDaySlots, areSlotsAvailable, isDayAvailable } from "./utils";
 import { isAvailable } from "./availability";
 
+export const getEventType = query({
+    args: {
+        eventTypeId: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const eventType = await ctx.db
+            .query("event_types")
+            .withIndex("by_external_id", (q) => q.eq("id", args.eventTypeId))
+            .unique();
+
+        if (!eventType) {
+            throw new Error(`Event type not found: ${args.eventTypeId}`);
+        }
+
+        return eventType;
+    },
+});
+
 export const getAvailability = query({
     args: {
         resourceId: v.string(),

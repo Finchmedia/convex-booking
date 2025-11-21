@@ -8,6 +8,15 @@ import { v } from "convex/values";
  * via the main app's API
  */
 
+export const getEventType = query({
+  args: {
+    eventTypeId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.public.getEventType, args);
+  },
+});
+
 export const getAvailableSlots = query({
   args: {
     resourceId: v.string(),
