@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -7,9 +7,7 @@ export interface TimeSlot {
   attendees: number;
 }
 
-export interface MonthSlots {
-  [date: string]: { start: string; attendees?: number }[];
-}
+export type MonthSlots = Record<string, boolean>;
 
 export interface UseConvexSlotsResult {
   monthSlots: MonthSlots;
@@ -26,11 +24,8 @@ export const useConvexSlots = (
 ): UseConvexSlotsResult => {
   const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(null);
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
-  const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
-
-  // Query Convex for available slots via main app wrapper
-  const convexSlots = useQuery(
-    api.booking.getAvailableSlots,
+  const monthAvailability = useQuery(
+    api.booking.getMonthAvailability,
     enabled && dateRange
       ? {
           resourceId,
@@ -41,19 +36,38 @@ export const useConvexSlots = (
       : "skip"
   );
 
-  // Transform Convex data to monthSlots format
-  const monthSlots: MonthSlots = {};
-  if (convexSlots) {
-    Object.entries(convexSlots).forEach(([date, slots]) => {
-      monthSlots[date] = (slots as any[]).map((slot) => ({
-        start: slot.time,
-        attendees: 0,
-      }));
-    });
-  }
+  const daySlots = useQuery(
+    api.booking.getDaySlots,
+    enabled && selectedDateStr
+      ? {
+          resourceId,
+          date: selectedDateStr,
+          eventLength,
+        }
+      : "skip"
+  );
 
-  // Loading state - true if query is in progress
-  const loading = dateRange !== null && convexSlots === undefined;
+  const monthSlots: MonthSlots = monthAvailability ?? {};
+
+  const availableSlots = useMemo<TimeSlot[]>(() => {
+    if (!daySlots) {
+      return [];
+    }
+
+    const formatted = (daySlots as any[]).map((slot) => ({
+      time: slot.time,
+      attendees: 0,
+    }));
+
+    formatted.sort(
+      (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
+    );
+
+    return formatted;
+  }, [daySlots]);
+
+  const loading =
+    enabled && selectedDateStr !== null && daySlots === undefined;
 
   // Fetch month slots (for calendar dots)
   const fetchMonthSlots = useCallback(
@@ -92,27 +106,6 @@ export const useConvexSlots = (
     },
     [enabled]
   );
-
-  // Update availableSlots when selectedDateStr or convexSlots changes
-  useEffect(() => {
-    if (!selectedDateStr || !convexSlots) {
-      setAvailableSlots([]);
-      return;
-    }
-
-    const slots = convexSlots[selectedDateStr] || [];
-    const formattedSlots = (slots as any[]).map((slot) => ({
-      time: slot.time,
-      attendees: 0,
-    }));
-
-    // Sort by time
-    formattedSlots.sort(
-      (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
-    );
-
-    setAvailableSlots(formattedSlots);
-  }, [selectedDateStr, convexSlots]);
 
   return {
     monthSlots,

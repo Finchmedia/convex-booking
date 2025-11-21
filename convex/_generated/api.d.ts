@@ -78,6 +78,23 @@ export declare const components: {
         },
         any
       >;
+      getDaySlots: FunctionReference<
+        "query",
+        "internal",
+        { date: string; eventLength: number; resourceId: string },
+        any
+      >;
+      getMonthAvailability: FunctionReference<
+        "query",
+        "internal",
+        {
+          dateFrom: string;
+          dateTo: string;
+          eventLength: number;
+          resourceId: string;
+        },
+        any
+      >;
     };
   };
 };

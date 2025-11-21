@@ -23,6 +23,32 @@ export const getAvailableSlots = query({
   },
 });
 
+export const getMonthAvailability = query({
+  args: {
+    resourceId: v.string(),
+    dateFrom: v.string(),
+    dateTo: v.string(),
+    eventLength: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.booking.public.getMonthAvailability,
+      args
+    );
+  },
+});
+
+export const getDaySlots = query({
+  args: {
+    resourceId: v.string(),
+    date: v.string(),
+    eventLength: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.public.getDaySlots, args);
+  },
+});
+
 export const getAvailability = query({
   args: {
     resourceId: v.string(),

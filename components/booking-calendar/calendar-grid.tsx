@@ -7,7 +7,7 @@ import {
   DAYS,
   generateCalendarDays,
 } from "@/lib/booking-calendar/utils/date-utils";
-import type { MonthSlots } from "@/lib/booking-calendar/hooks/use-calendar-slots";
+import type { MonthSlots } from "@/lib/hooks/use-convex-slots";
 
 interface CalendarGridProps {
   currentDate: Date;

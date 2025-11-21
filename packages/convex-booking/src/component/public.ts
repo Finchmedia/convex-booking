@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { getRequiredSlots, generateDaySlots, areSlotsAvailable } from "./utils";
+import { getRequiredSlots, generateDaySlots, areSlotsAvailable, isDayAvailable } from "./utils";
 import { isAvailable } from "./availability";
 
 export const getAvailability = query({
@@ -15,8 +15,92 @@ export const getAvailability = query({
 });
 
 /**
- * Gets available time slots for a date range
- * Returns slots grouped by date
+ * Gets availability status for a date range
+ * Optimized for month view: Returns boolean map, no slot objects
+ */
+export const getMonthAvailability = query({
+    args: {
+        resourceId: v.string(),
+        dateFrom: v.string(), // "2025-06-17"
+        dateTo: v.string(), // "2025-06-20"
+        eventLength: v.number(), // Duration in minutes (e.g., 30)
+    },
+    handler: async (ctx, args) => {
+        const { resourceId, dateFrom, dateTo, eventLength } = args;
+
+        // Parse dates
+        const startDate = new Date(dateFrom);
+        const endDate = new Date(dateTo);
+
+        // Result object: { "2025-06-17": true, "2025-06-18": false }
+        const availabilityByDate: Record<string, boolean> = {};
+
+        // Iterate through each day in the range
+        let currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+            const dateStr = currentDate.toISOString().split("T")[0];
+
+            // Fetch availability data for this day
+            const availabilityDoc = await ctx.db
+                .query("daily_availability")
+                .withIndex("by_resource_date", (q) =>
+                    q.eq("resourceId", resourceId).eq("date", dateStr)
+                )
+                .unique();
+
+            const busySlots = availabilityDoc?.busySlots || [];
+
+            // Check if there is ANY availability (optimized check)
+            const hasAvailability = isDayAvailable(eventLength, busySlots);
+            
+            availabilityByDate[dateStr] = hasAvailability;
+
+            // Move to next day
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        return availabilityByDate;
+    },
+});
+
+/**
+ * Gets detailed slots for a SINGLE day
+ * Used for day view / slot picker
+ */
+export const getDaySlots = query({
+    args: {
+        resourceId: v.string(),
+        date: v.string(), // "2025-06-17"
+        eventLength: v.number(), // Duration in minutes
+    },
+    handler: async (ctx, args) => {
+        const { resourceId, date, eventLength } = args;
+
+        // Generate all possible slots for this day
+        const possibleSlots = generateDaySlots(date, eventLength);
+
+        // Fetch availability data for this day
+        const availabilityDoc = await ctx.db
+            .query("daily_availability")
+            .withIndex("by_resource_date", (q) =>
+                q.eq("resourceId", resourceId).eq("date", date)
+            )
+            .unique();
+
+        const busySlots = availabilityDoc?.busySlots || [];
+
+        // Filter to only available slots
+        const availableSlots = possibleSlots
+            .filter((slot) => areSlotsAvailable(slot.slots, busySlots))
+            .map((slot) => ({ time: slot.start }));
+
+        return availableSlots;
+    },
+});
+
+/**
+ * DEPRECATED: Use getMonthAvailability + getDaySlots instead
+ * Kept for backward compatibility during migration if needed
  */
 export const getAvailableSlots = query({
     args: {

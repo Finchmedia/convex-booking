@@ -104,3 +104,37 @@ export function areSlotsAvailable(
 ): boolean {
     return !requiredSlots.some(slot => busySlots.includes(slot));
 }
+
+/**
+ * Checks if a day has any available slots for a given event length
+ * Optimized to exit early and avoid object generation
+ * @param eventLengthMinutes - Duration in minutes
+ * @param busySlots - Array of busy slot indices
+ * @returns boolean
+ */
+export function isDayAvailable(
+    eventLengthMinutes: number,
+    busySlots: number[]
+): boolean {
+    const slotsNeeded = Math.ceil(eventLengthMinutes / 15);
+    
+    // Iterate through potential start times
+    // We use the same loop logic as generateDaySlots but without object creation
+    for (let slotIndex = BUSINESS_HOURS_START; slotIndex + slotsNeeded <= BUSINESS_HOURS_END; slotIndex++) {
+        // Check if this specific block is free
+        let isBlockFree = true;
+        for (let i = 0; i < slotsNeeded; i++) {
+            if (busySlots.includes(slotIndex + i)) {
+                isBlockFree = false;
+                break;
+            }
+        }
+        
+        // If we found ONE valid block, the day has availability. Return true immediately.
+        if (isBlockFree) {
+            return true;
+        }
+    }
+    
+    return false;
+}
