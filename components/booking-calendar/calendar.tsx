@@ -130,7 +130,7 @@ export const Calendar: React.FC<CalendarProps> = ({
   return (
     <div
       ref={calendarRef}
-      className="bg-neutral-900 overflow-hidden rounded-2xl border border-neutral-800 shadow"
+      className="bg-neutral-900 overflow-hidden rounded-xl border border-neutral-800 shadow"
     >
       {/* Optional Header */}
       {showHeader && (
