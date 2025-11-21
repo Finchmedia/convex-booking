@@ -55,7 +55,7 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
   };
 
   return (
-    <div className="w-full border-t border-neutral-800 lg:w-72 lg:border-t-0 lg:border-l">
+    <div className="w-full border-t border-neutral-800 md:w-60 lg:w-72 md:border-t-0 md:border-l">
       <div className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-neutral-100">

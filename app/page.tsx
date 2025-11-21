@@ -34,7 +34,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
-      <div className="max-w-6xl w-full -mt-[100px]">
+      <div className="max-w-5xl w-full -mt-[100px]">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-neutral-100 mb-4">
             Convex Booking System

@@ -41,7 +41,7 @@ export const EventMetaPanel: React.FC<EventMetaPanelProps> = ({
 }) => {
   if (!eventType) {
     return (
-      <div className="w-full p-4 border-b border-neutral-800 lg:w-72 lg:border-b-0 lg:border-r">
+      <div className="w-full p-4 border-b border-neutral-800 md:w-60 lg:w-72 md:border-b-0 md:border-r">
         <div className="space-y-3">
           <div className="h-4 w-24 bg-neutral-700 animate-pulse rounded" />
           <div className="h-6 w-full bg-neutral-700 animate-pulse rounded" />
@@ -67,7 +67,7 @@ export const EventMetaPanel: React.FC<EventMetaPanelProps> = ({
   )?.address;
 
   return (
-    <div className="w-full p-4 border-b border-neutral-800 lg:w-72 lg:border-b-0 lg:border-r">
+    <div className="w-full p-4 border-b border-neutral-800 md:w-60 lg:w-72 md:border-b-0 md:border-r">
       <div className="space-y-4">
         {/* Avatar and Organizer Name */}
         <div className="flex flex-col gap-1.5">

@@ -141,7 +141,7 @@ export const Calendar: React.FC<CalendarProps> = ({
       )}
 
       {/* 3-Column Layout: Event Meta | Calendar | Time Slots */}
-      <div className="flex flex-col lg:flex-row">
+      <div className="flex flex-col md:flex-row">
         {/* Event Meta Panel */}
         <EventMetaPanel
           eventType={eventType}

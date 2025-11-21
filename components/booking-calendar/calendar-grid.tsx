@@ -33,7 +33,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   );
 
   return (
-    <div className="flex-1 p-4">
+    <div className="flex-1 p-4 lg:max-w-[472px] lg:mx-auto">
       {/* Month Navigation */}
       <CalendarNavigation
         currentDate={currentDate}
