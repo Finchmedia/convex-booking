@@ -27,6 +27,7 @@ interface EventMetaPanelProps {
   timezoneLocked: boolean;
   organizerName?: string; // Optional organizer name
   organizerAvatar?: string; // Optional organizer avatar URL
+  readOnly?: boolean; // NEW: Hide interactive controls
 }
 
 export const EventMetaPanel: React.FC<EventMetaPanelProps> = ({
@@ -38,6 +39,7 @@ export const EventMetaPanel: React.FC<EventMetaPanelProps> = ({
   timezoneLocked,
   organizerName = "Daniel Finke",
   organizerAvatar,
+  readOnly = false,
 }) => {
   if (!eventType) {
     return (
@@ -101,7 +103,7 @@ export const EventMetaPanel: React.FC<EventMetaPanelProps> = ({
         <div className="flex items-start text-xs text-neutral-300">
           <Clock className="mr-2 mt-[2px] h-3.5 w-3.5 flex-shrink-0" />
           <div className="flex-1">
-            {eventType.lengthInMinutesOptions && eventType.lengthInMinutesOptions.length > 1 ? (
+            {!readOnly && eventType.lengthInMinutesOptions && eventType.lengthInMinutesOptions.length > 1 ? (
               <div className="border border-neutral-700 rounded-md p-0.5">
                 <ul className="flex items-center gap-0.5 overflow-x-auto">
                   {eventType.lengthInMinutesOptions.map((duration) => (
@@ -120,7 +122,7 @@ export const EventMetaPanel: React.FC<EventMetaPanelProps> = ({
                 </ul>
               </div>
             ) : (
-              <span className="text-xs">{formatDuration(eventType.lengthInMinutes)}</span>
+              <span className="text-xs">{formatDuration(selectedDuration)}</span>
             )}
           </div>
         </div>

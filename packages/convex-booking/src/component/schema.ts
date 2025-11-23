@@ -29,10 +29,46 @@ export default defineSchema({
   }).index("by_resource_date", ["resourceId", "date"]),
 
   bookings: defineTable({
+    // Core fields (existing)
     resourceId: v.string(),
     actorId: v.string(),
-    start: v.number(), // Timestamp
-    end: v.number(), // Timestamp
+    start: v.number(),
+    end: v.number(),
     status: v.string(), // "confirmed", "cancelled"
-  }).index("by_resource", ["resourceId"]),
+
+    // NEW: Unique identifiers
+    uid: v.string(), // e.g., "bk_abc123xyz" for booking URLs
+
+    // NEW: Event reference
+    eventTypeId: v.string(),
+    timezone: v.string(), // Booker's timezone
+
+    // NEW: Booker details
+    bookerName: v.string(),
+    bookerEmail: v.string(),
+    bookerPhone: v.optional(v.string()),
+    bookerNotes: v.optional(v.string()),
+
+    // NEW: Event snapshot (historical record)
+    eventTitle: v.string(),
+    eventDescription: v.optional(v.string()),
+
+    // NEW: Location
+    location: v.object({
+      type: v.string(), // "address" | "link" | "phone"
+      value: v.optional(v.string()),
+    }),
+
+    // NEW: Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    cancelledAt: v.optional(v.number()),
+
+    // NEW: Relationships
+    rescheduleUid: v.optional(v.string()), // Link to original if rescheduled
+    cancellationReason: v.optional(v.string()),
+  })
+    .index("by_resource", ["resourceId"])
+    .index("by_uid", ["uid"]) // NEW: Query bookings by UID
+    .index("by_email", ["bookerEmail"]), // NEW: Find user's bookings
 });

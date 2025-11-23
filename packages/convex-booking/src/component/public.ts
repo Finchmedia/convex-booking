@@ -116,60 +116,6 @@ export const getDaySlots = query({
     },
 });
 
-/**
- * DEPRECATED: Use getMonthAvailability + getDaySlots instead
- * Kept for backward compatibility during migration if needed
- */
-export const getAvailableSlots = query({
-    args: {
-        resourceId: v.string(),
-        dateFrom: v.string(), // "2025-06-17"
-        dateTo: v.string(), // "2025-06-20"
-        eventLength: v.number(), // Duration in minutes (e.g., 30)
-    },
-    handler: async (ctx, args) => {
-        const { resourceId, dateFrom, dateTo, eventLength } = args;
-
-        // Parse dates
-        const startDate = new Date(dateFrom);
-        const endDate = new Date(dateTo);
-
-        // Result object: { "2025-06-17": [{ time: "2025-06-17T14:00:00.000Z" }] }
-        const slotsByDate: Record<string, Array<{ time: string }>> = {};
-
-        // Iterate through each day in the range
-        let currentDate = new Date(startDate);
-        while (currentDate <= endDate) {
-            const dateStr = currentDate.toISOString().split("T")[0];
-
-            // Generate all possible slots for this day
-            const possibleSlots = generateDaySlots(dateStr, eventLength);
-
-            // Fetch availability data for this day
-            const availabilityDoc = await ctx.db
-                .query("daily_availability")
-                .withIndex("by_resource_date", (q) =>
-                    q.eq("resourceId", resourceId).eq("date", dateStr)
-                )
-                .unique();
-
-            const busySlots = availabilityDoc?.busySlots || [];
-
-            // Filter to only available slots
-            const availableSlots = possibleSlots
-                .filter((slot) => areSlotsAvailable(slot.slots, busySlots))
-                .map((slot) => ({ time: slot.start }));
-
-            slotsByDate[dateStr] = availableSlots;
-
-            // Move to next day
-            currentDate.setDate(currentDate.getDate() + 1);
-        }
-
-        return slotsByDate;
-    },
-});
-
 export const createReservation = mutation({
     args: {
         resourceId: v.string(),
@@ -221,16 +167,137 @@ export const createReservation = mutation({
         }
 
         // 4. Create Booking Record
+        // Using "confirmed" as default status, but with minimal metadata (legacy)
         const bookingId = await ctx.db.insert("bookings", {
             resourceId,
             actorId,
             start,
             end,
             status: "confirmed",
+            // Fill required new fields with placeholders/defaults for backward compat
+            uid: `legacy_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            eventTypeId: "legacy",
+            timezone: "UTC",
+            bookerName: "Legacy Booker",
+            bookerEmail: actorId, // Assume actorId is email for legacy
+            eventTitle: "Legacy Booking",
+            location: { type: "unknown" },
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
         });
 
         return bookingId;
     },
+});
+
+export const createBooking = mutation({
+  args: {
+    // Event details
+    eventTypeId: v.string(),
+    resourceId: v.string(),
+
+    // Time selection
+    start: v.number(),
+    end: v.number(),
+    timezone: v.string(),
+
+    // Booker information
+    booker: v.object({
+      name: v.string(),
+      email: v.string(),
+      phone: v.optional(v.string()),
+      notes: v.optional(v.string()),
+    }),
+
+    // Location
+    location: v.object({
+      type: v.string(),
+      value: v.optional(v.string()),
+    }),
+  },
+
+  handler: async (ctx, args) => {
+    // 1. Fetch event type (for snapshot)
+    const eventType = await ctx.db
+      .query("event_types")
+      .withIndex("by_external_id", (q) => q.eq("id", args.eventTypeId))
+      .first();
+
+    if (!eventType) throw new Error("Event type not found");
+
+    // 2. Check availability (reuse existing logic from createReservation)
+    const startChunk = Math.floor((args.start % 86400000) / 900000);
+    const endChunk = Math.floor((args.end % 86400000) / 900000);
+    const dateStr = new Date(args.start).toISOString().split("T")[0];
+
+    const dayAvailability = await ctx.db
+      .query("daily_availability")
+      .withIndex("by_resource_date", (q) =>
+        q.eq("resourceId", args.resourceId).eq("date", dateStr)
+      )
+      .first();
+
+    // Check if slots are available (not busy)
+    if (dayAvailability) {
+      for (let chunk = startChunk; chunk < endChunk; chunk++) {
+        if (dayAvailability.busySlots.includes(chunk)) {
+          throw new Error("Time slot no longer available");
+        }
+      }
+    }
+
+    // 3. Generate unique booking UID
+    const uid = `bk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // 4. Create booking record
+    const bookingId = await ctx.db.insert("bookings", {
+      uid,
+      resourceId: args.resourceId,
+      actorId: args.booker.email, // Use email as actorId
+      eventTypeId: args.eventTypeId,
+      start: args.start,
+      end: args.end,
+      timezone: args.timezone,
+      status: "confirmed",
+      bookerName: args.booker.name,
+      bookerEmail: args.booker.email,
+      bookerPhone: args.booker.phone,
+      bookerNotes: args.booker.notes,
+      eventTitle: eventType.title,
+      eventDescription: eventType.description,
+      location: args.location,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    // 5. Mark slots as busy in daily_availability
+    const busyChunks = Array.from(
+      { length: endChunk - startChunk },
+      (_, i) => startChunk + i
+    );
+
+    if (dayAvailability) {
+      await ctx.db.patch(dayAvailability._id, {
+        busySlots: [...dayAvailability.busySlots, ...busyChunks].sort((a, b) => a - b),
+      });
+    } else {
+      await ctx.db.insert("daily_availability", {
+        resourceId: args.resourceId,
+        date: dateStr,
+        busySlots: busyChunks,
+      });
+    }
+
+    // 6. Return full booking object
+    return await ctx.db.get(bookingId);
+  },
+});
+
+export const getBooking = query({
+  args: { bookingId: v.id("bookings") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.bookingId);
+  },
 });
 
 export const cancelReservation = mutation({

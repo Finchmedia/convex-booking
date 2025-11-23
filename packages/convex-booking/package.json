@@ -1,17 +1,17 @@
 {
-  "name": "@convex-dev/sharded-counter",
-  "description": "A sharded counter component for Convex.",
-  "repository": "github:get-convex/sharded-counter",
-  "homepage": "https://github.com/get-convex/sharded-counter#readme",
+  "name": "@convex-dev/booking",
+  "description": "A booking component for Convex.",
+  "repository": "github:get-convex/booking",
+  "homepage": "https://github.com/get-convex/booking#readme",
   "bugs": {
     "email": "support@convex.dev",
-    "url": "https://github.com/get-convex/sharded-counter/issues"
+    "url": "https://github.com/get-convex/booking/issues"
   },
-  "version": "0.2.0",
+  "version": "0.1.0",
   "license": "Apache-2.0",
   "keywords": [
     "convex",
-    "count",
+    "booking",
     "component"
   ],
   "type": "module",
@@ -42,6 +42,10 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    },
+    "./client": {
       "types": "./dist/client/index.d.ts",
       "default": "./dist/client/index.js"
     },
