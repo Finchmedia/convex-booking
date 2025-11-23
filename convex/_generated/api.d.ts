@@ -55,6 +55,25 @@ export declare const components: {
         { reservationId: string },
         any
       >;
+      createBooking: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          booker: {
+            email: string;
+            name: string;
+            notes?: string;
+            phone?: string;
+          };
+          end: number;
+          eventTypeId: string;
+          location: { type: string; value?: string };
+          resourceId: string;
+          start: number;
+          timezone: string;
+        },
+        any
+      >;
       createReservation: FunctionReference<
         "mutation",
         "internal",
@@ -67,15 +86,10 @@ export declare const components: {
         { end: number; resourceId: string; start: number },
         any
       >;
-      getAvailableSlots: FunctionReference<
+      getBooking: FunctionReference<
         "query",
         "internal",
-        {
-          dateFrom: string;
-          dateTo: string;
-          eventLength: number;
-          resourceId: string;
-        },
+        { bookingId: string },
         any
       >;
       getDaySlots: FunctionReference<

@@ -1,4 +1,4 @@
-import { query, mutation } from "convex/server";
+import { queryGeneric as query, mutationGeneric as mutation } from "convex/server";
 import { v } from "convex/values";
 import { type ComponentApi } from "../component/_generated/component";
 
@@ -99,19 +99,6 @@ export function makeBookingAPI(component: ComponentApi) {
       },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.public.cancelReservation, args);
-      },
-    }),
-    // Include deprecated function for backward compatibility if needed, 
-    // or omit it to enforce migration. Including for now to match existing API surface.
-    getAvailableSlots: query({
-      args: {
-        resourceId: v.string(),
-        dateFrom: v.string(),
-        dateTo: v.string(),
-        eventLength: v.number(),
-      },
-      handler: async (ctx, args) => {
-        return await ctx.runQuery(component.public.getAvailableSlots, args);
       },
     }),
   };

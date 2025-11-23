@@ -10,5 +10,4 @@ export const {
   createBooking, // New
   getBooking,    // New
   cancelReservation,
-  getAvailableSlots,
 } = makeBookingAPI(components.booking);

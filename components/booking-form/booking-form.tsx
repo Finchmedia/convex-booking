@@ -222,7 +222,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                 type="button"
                 variant="outline"
                 onClick={onBack}
-                className="flex-1 border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
+                className="flex-1 border-neutral-700 bg-transparent text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
               >
                 Back
               </Button>

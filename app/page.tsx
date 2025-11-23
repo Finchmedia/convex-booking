@@ -97,44 +97,57 @@ export default function Home() {
   }), [eventType, selectedDuration]);
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-5xl -mt-[200px]">
-      {bookingStep === "event-meta" && (
-        <Calendar
-          resourceId="studio-a"
-          eventTypeId="studio-30min"
-          onSlotSelect={handleSlotSelect}
-          title="Book a Studio Session"
-          organizerName="Daniel Finke"
-          defaultDuration={selectedDuration}
-          onDurationChange={setSelectedDuration}
-          defaultTimezone={timezone}
-          onTimezoneChange={setTimezone}
-        />
-      )}
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
+      <div className="max-w-5xl w-full">
+        {bookingStep === "event-meta" && (
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-neutral-100 mb-4">
+              Convex Booking System
+            </h1>
+            <p className="text-neutral-400">
+              Beautiful booking calendar powered by Convex
+            </p>
+          </div>
+        )}
 
-      {bookingStep === "booking-form" && selectedSlot && (
-        <div className="bg-neutral-900 rounded-xl border border-neutral-800 overflow-hidden shadow-2xl">
-          <BookingForm
-            eventType={displayedEventType}
-            selectedSlot={selectedSlot}
-            selectedDuration={selectedDuration}
-            timezone={timezone}
-            onSubmit={handleFormSubmit}
-            onBack={handleBack}
-            isSubmitting={isSubmitting}
+        {bookingStep === "event-meta" && (
+          <Calendar
+            resourceId="studio-a"
+            eventTypeId="studio-30min"
+            onSlotSelect={handleSlotSelect}
+            title="Book a Studio Session"
+            organizerName="Daniel Finke"
+            defaultDuration={selectedDuration}
+            onDurationChange={setSelectedDuration}
+            defaultTimezone={timezone}
+            onTimezoneChange={setTimezone}
           />
-        </div>
-      )}
+        )}
 
-      {bookingStep === "success" && completedBooking && (
-        <div className="bg-neutral-900 rounded-xl border border-neutral-800 overflow-hidden shadow-2xl">
-          <BookingSuccess
-            booking={completedBooking}
-            eventType={displayedEventType}
-            onBookAnother={handleBookAnother}
-          />
-        </div>
-      )}
+        {bookingStep === "booking-form" && selectedSlot && (
+          <div className="bg-neutral-900 rounded-xl border border-neutral-800 overflow-hidden shadow-2xl">
+            <BookingForm
+              eventType={displayedEventType}
+              selectedSlot={selectedSlot}
+              selectedDuration={selectedDuration}
+              timezone={timezone}
+              onSubmit={handleFormSubmit}
+              onBack={handleBack}
+              isSubmitting={isSubmitting}
+            />
+          </div>
+        )}
+
+        {bookingStep === "success" && completedBooking && (
+          <div className="bg-neutral-900 rounded-xl border border-neutral-800 overflow-hidden shadow-2xl">
+            <BookingSuccess
+              booking={completedBooking}
+              eventType={displayedEventType}
+              onBookAnother={handleBookAnother}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
