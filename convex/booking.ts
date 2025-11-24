@@ -10,4 +10,7 @@ export const {
   createBooking, // New
   getBooking,    // New
   cancelReservation,
+  heartbeat,     // Presence
+  leave,         // Presence
+  getPresence,   // Presence
 } = makeBookingAPI(components.booking);

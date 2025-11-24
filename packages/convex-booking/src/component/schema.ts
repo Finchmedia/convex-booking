@@ -71,4 +71,23 @@ export default defineSchema({
     .index("by_resource", ["resourceId"])
     .index("by_uid", ["uid"]) // NEW: Query bookings by UID
     .index("by_email", ["bookerEmail"]), // NEW: Find user's bookings
+
+  // Presence: Tracks active users in specific "rooms" (slots)
+  presence: defineTable({
+    user: v.string(),      // "session_id"
+    room: v.string(),      // "slot_timestamp"
+    updated: v.number(),   // Last heartbeat timestamp
+    data: v.optional(v.any()), // { username: "..." }
+  })
+    // Efficiently find everyone in a room to show "Someone is booking..."
+    .index("by_room_updated", ["room", "updated"])
+    // Efficiently find a specific user's session to update heartbeat
+    .index("by_user_room", ["user", "room"]),
+
+  // Presence Heartbeats: Manages cleanup jobs to avoid duplicate scheduling
+  presence_heartbeats: defineTable({
+    user: v.string(),
+    room: v.string(),
+    markAsGone: v.id("_scheduled_functions"), // Reference to the cleanup job
+  }).index("by_user_room", ["user", "room"]),
 });

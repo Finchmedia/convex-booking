@@ -9,6 +9,7 @@
  */
 
 import type * as availability from "../availability.js";
+import type * as presence from "../presence.js";
 import type * as public_ from "../public.js";
 import type * as utils from "../utils.js";
 
@@ -21,6 +22,7 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   availability: typeof availability;
+  presence: typeof presence;
   public: typeof public_;
   utils: typeof utils;
 }> = anyApi as any;

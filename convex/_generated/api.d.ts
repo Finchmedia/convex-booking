@@ -48,6 +48,27 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   booking: {
+    presence: {
+      cleanup: FunctionReference<
+        "mutation",
+        "internal",
+        { room: string; user: string },
+        any
+      >;
+      heartbeat: FunctionReference<
+        "mutation",
+        "internal",
+        { data?: any; room: string; user: string },
+        any
+      >;
+      leave: FunctionReference<
+        "mutation",
+        "internal",
+        { room: string; user: string },
+        any
+      >;
+      list: FunctionReference<"query", "internal", { room: string }, any>;
+    };
     public: {
       cancelReservation: FunctionReference<
         "mutation",

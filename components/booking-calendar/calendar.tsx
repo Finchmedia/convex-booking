@@ -77,7 +77,7 @@ export const Calendar: React.FC<CalendarProps> = ({
   );
 
   // Use Convex hook for slots data - only enabled when visible
-  const { monthSlots, availableSlots, loading, fetchMonthSlots, fetchSlots } =
+  const { monthSlots, availableSlots, isLoading, isReloading, fetchMonthSlots, fetchSlots } =
     useConvexSlots(resourceId, eventLength, hasIntersected);
 
   // Auto-select today's date
@@ -168,7 +168,8 @@ export const Calendar: React.FC<CalendarProps> = ({
         <TimeSlotsPanel
           selectedDate={selectedDate}
           availableSlots={availableSlots}
-          loading={loading}
+          loading={isLoading}
+          isReloading={isReloading}
           timeFormat={timeFormat}
           onTimeFormatChange={setTimeFormat}
           onSlotSelect={onSlotSelect}

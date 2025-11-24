@@ -101,5 +101,34 @@ export function makeBookingAPI(component: ComponentApi) {
         return await ctx.runMutation(component.public.cancelReservation, args);
       },
     }),
+
+    // Presence: Real-time slot locking
+    heartbeat: mutation({
+      args: {
+        room: v.string(), // The Slot ID
+        user: v.string(), // The User/Session ID
+        data: v.optional(v.any()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.presence.heartbeat, args);
+      },
+    }),
+    
+    leave: mutation({
+      args: {
+        room: v.string(),
+        user: v.string(),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.presence.leave, args);
+      },
+    }),
+
+    getPresence: query({
+      args: { room: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.presence.list, args);
+      },
+    }),
   };
 }

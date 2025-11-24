@@ -25,7 +25,7 @@ export const CalendarDayButton = React.memo<CalendarDayButtonProps>(({
         disabled={day.disabled}
         className={`absolute inset-0 flex items-center justify-center rounded-md text-base font-medium transition-all ${
           day.isSelected
-            ? "bg-neutral-700 text-white ring-1 ring-neutral-500" // Matched "Today" style
+            ? "bg-neutral-700 text-white ring-1 ring-white" // Stronger white border for selection
             : day.isToday
             ? "bg-neutral-700 text-white ring-1 ring-neutral-500"
             : day.disabled

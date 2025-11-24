@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useSlotHold } from "@/lib/hooks/use-slot-hold";
 import { Calendar } from "@/components/booking-calendar/calendar";
 import { BookingForm } from "@/components/booking-form/booking-form";
 import { BookingSuccess } from "@/components/booking-form/booking-success";
@@ -40,6 +41,9 @@ export default function Home() {
   
   // Fallback to mock if loading or error (for MVP robustness)
   const eventType = eventTypeData || MOCK_EVENT_TYPE;
+
+  // Real-time Hold: Automatically reserve the slot when selected
+  useSlotHold(selectedSlot);
 
   // Step 1: Calendar slot selection
   const handleSlotSelect = (slot: string) => {
@@ -81,6 +85,7 @@ export default function Home() {
   // Back to calendar
   const handleBack = () => {
     setBookingStep("event-meta");
+    setSelectedSlot(null); // Release the hold
   };
 
   // Reset flow

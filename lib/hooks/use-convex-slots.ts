@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -12,7 +12,8 @@ export type MonthSlots = Record<string, boolean>;
 export interface UseConvexSlotsResult {
   monthSlots: MonthSlots;
   availableSlots: TimeSlot[];
-  loading: boolean;
+  isLoading: boolean; // True on first load
+  isReloading: boolean; // True when refreshing data (keep showing old data)
   fetchMonthSlots: (currentDate: Date) => void;
   fetchSlots: (date: Date) => void;
 }
@@ -24,6 +25,7 @@ export const useConvexSlots = (
 ): UseConvexSlotsResult => {
   const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(null);
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
+  
   const monthAvailability = useQuery(
     api.booking.getMonthAvailability,
     enabled && dateRange
@@ -49,10 +51,12 @@ export const useConvexSlots = (
 
   const monthSlots: MonthSlots = monthAvailability ?? {};
 
-  const availableSlots = useMemo<TimeSlot[]>(() => {
-    if (!daySlots) {
-      return [];
-    }
+  // STALENESS LOGIC: Keep previous data while loading new data
+  const prevSlotsRef = useRef<TimeSlot[]>([]);
+  
+  // Process new data if available
+  const currentSlots = useMemo<TimeSlot[] | undefined>(() => {
+    if (!daySlots) return undefined;
 
     const formatted = (daySlots as any[]).map((slot) => ({
       time: slot.time,
@@ -62,12 +66,26 @@ export const useConvexSlots = (
     formatted.sort(
       (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
     );
-
+    
     return formatted;
   }, [daySlots]);
 
-  const loading =
-    enabled && selectedDateStr !== null && daySlots === undefined;
+  // Update ref only when we have real data
+  useEffect(() => {
+    if (currentSlots) {
+      prevSlotsRef.current = currentSlots;
+    }
+  }, [currentSlots]);
+
+  // Decide what to show: Current data OR Previous data
+  const availableSlots = currentSlots ?? prevSlotsRef.current;
+
+  // Loading states
+  // 1. First load: We have no data at all (neither current nor prev)
+  const isLoading = enabled && selectedDateStr !== null && !currentSlots && prevSlotsRef.current.length === 0;
+  
+  // 2. Reloading: We have prev data, but are waiting for new data
+  const isReloading = enabled && selectedDateStr !== null && !currentSlots && prevSlotsRef.current.length > 0;
 
   // Fetch month slots (for calendar dots)
   const fetchMonthSlots = useCallback(
@@ -110,7 +128,8 @@ export const useConvexSlots = (
   return {
     monthSlots,
     availableSlots,
-    loading,
+    isLoading,
+    isReloading,
     fetchMonthSlots,
     fetchSlots,
   };

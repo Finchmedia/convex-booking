@@ -7,7 +7,8 @@ import { TimeSlotButton } from "./time-slot-button";
 interface TimeSlotsPanelProps {
   selectedDate: Date | null;
   availableSlots: CalcomSlot[];
-  loading: boolean;
+  loading: boolean; // Initial loading (skeleton)
+  isReloading: boolean; // Reloading (opacity)
   timeFormat: "12h" | "24h";
   onTimeFormatChange: (format: "12h" | "24h") => void;
   onSlotSelect: (slotTime: string) => void;
@@ -17,6 +18,7 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
   selectedDate,
   availableSlots,
   loading,
+  isReloading,
   timeFormat,
   onTimeFormatChange,
   onSlotSelect,
@@ -87,7 +89,11 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
       {/* Time Slots */}
       <div className="relative">
         {/* Scroll container with visible scrollbar and height limit */}
-        <div className="scrollbar-thin scrollbar-track-neutral-800 scrollbar-thumb-neutral-600 hover:scrollbar-thumb-neutral-500 max-h-96 overflow-y-auto px-6 pb-4">
+        <div 
+          className={`scrollbar-thin scrollbar-track-neutral-800 scrollbar-thumb-neutral-600 hover:scrollbar-thumb-neutral-500 max-h-96 overflow-y-auto px-6 pb-4 transition-opacity duration-200 ${
+            isReloading ? "opacity-50 pointer-events-none" : "opacity-100"
+          }`}
+        >
           <div className="space-y-2">
             {!selectedDate ? (
               <p className="text-sm text-neutral-400">
