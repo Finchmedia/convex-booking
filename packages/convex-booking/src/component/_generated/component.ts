@@ -75,6 +75,27 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      createEventType: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          description?: string;
+          id: string;
+          lengthInMinutes: number;
+          lengthInMinutesOptions?: Array<number>;
+          locations: Array<{
+            address?: string;
+            public?: boolean;
+            type: string;
+          }>;
+          lockTimeZoneToggle: boolean;
+          slug: string;
+          timezone: string;
+          title: string;
+        },
+        any,
+        Name
+      >;
       createReservation: FunctionReference<
         "mutation",
         "internal",

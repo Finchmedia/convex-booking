@@ -100,8 +100,8 @@ export const EventMetaPanel: React.FC<EventMetaPanelProps> = ({
         )}
 
         {/* Duration Options */}
-        <div className="flex items-start text-xs text-neutral-300">
-          <Clock className="mr-2 mt-[2px] h-3.5 w-3.5 flex-shrink-0" />
+        <div className="flex items-center text-xs text-neutral-300">
+          <Clock className="mr-2 h-3.5 w-3.5 flex-shrink-0" />
           <div className="flex-1">
             {!readOnly && eventType.lengthInMinutesOptions && eventType.lengthInMinutesOptions.length > 1 ? (
               <div className="relative max-w-full">

@@ -338,3 +338,36 @@ export const cancelReservation = mutation({
         await ctx.db.patch(args.reservationId, { status: "cancelled" });
     },
 });
+
+export const createEventType = mutation({
+  args: {
+    id: v.string(),
+    slug: v.string(),
+    title: v.string(),
+    lengthInMinutes: v.number(),
+    lengthInMinutesOptions: v.optional(v.array(v.number())),
+    description: v.optional(v.string()),
+    timezone: v.string(),
+    lockTimeZoneToggle: v.boolean(),
+    locations: v.array(
+      v.object({
+        type: v.string(),
+        address: v.optional(v.string()),
+        public: v.optional(v.boolean()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("event_types")
+      .withIndex("by_external_id", (q) => q.eq("id", args.id))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, args);
+      return existing._id;
+    } else {
+      return await ctx.db.insert("event_types", args);
+    }
+  },
+});

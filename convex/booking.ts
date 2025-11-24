@@ -10,6 +10,7 @@ export const {
   createBooking, // New
   getBooking,    // New
   cancelReservation,
+  createEventType, // Admin/Seed
   heartbeat,     // Presence
   leave,         // Presence
   getPresence,   // Presence

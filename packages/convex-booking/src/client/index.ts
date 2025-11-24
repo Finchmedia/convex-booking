@@ -102,6 +102,29 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
+    createEventType: mutation({
+      args: {
+        id: v.string(),
+        slug: v.string(),
+        title: v.string(),
+        lengthInMinutes: v.number(),
+        lengthInMinutesOptions: v.optional(v.array(v.number())),
+        description: v.optional(v.string()),
+        timezone: v.string(),
+        lockTimeZoneToggle: v.boolean(),
+        locations: v.array(
+          v.object({
+            type: v.string(),
+            address: v.optional(v.string()),
+            public: v.optional(v.boolean()),
+          })
+        ),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.public.createEventType, args);
+      },
+    }),
+
     // Presence: Real-time slot locking
     heartbeat: mutation({
       args: {

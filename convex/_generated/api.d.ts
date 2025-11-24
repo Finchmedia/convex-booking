@@ -9,6 +9,7 @@
  */
 
 import type * as booking from "../booking.js";
+import type * as seed from "../seed.js";
 
 import type {
   ApiFromModules,
@@ -18,6 +19,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   booking: typeof booking;
+  seed: typeof seed;
 }>;
 
 /**
@@ -92,6 +94,26 @@ export declare const components: {
           resourceId: string;
           start: number;
           timezone: string;
+        },
+        any
+      >;
+      createEventType: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          description?: string;
+          id: string;
+          lengthInMinutes: number;
+          lengthInMinutesOptions?: Array<number>;
+          locations: Array<{
+            address?: string;
+            public?: boolean;
+            type: string;
+          }>;
+          lockTimeZoneToggle: boolean;
+          slug: string;
+          timezone: string;
+          title: string;
         },
         any
       >;

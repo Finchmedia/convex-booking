@@ -34,6 +34,7 @@ export default function Home() {
 
   // Mutation
   const createBooking = useMutation(api.booking.createBooking);
+  const createEventType = useMutation(api.booking.createEventType); // For seeding
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch real event type from DB
@@ -41,6 +42,15 @@ export default function Home() {
   
   // Fallback to mock if loading or error (for MVP robustness)
   const eventType = eventTypeData || MOCK_EVENT_TYPE;
+
+  // Seeder function
+  const handleSeed = async () => {
+    if (confirm("Reset/Seed Event Type data?")) {
+      await createEventType(MOCK_EVENT_TYPE);
+      alert("System seeded! Refreshing...");
+      window.location.reload();
+    }
+  };
 
   // Real-time Hold: Automatically reserve the slot when selected
   useSlotHold(selectedSlot);
@@ -62,7 +72,7 @@ export default function Home() {
       const end = start + selectedDuration * 60 * 1000;
 
       const booking = await createBooking({
-        eventTypeId: "studio-30min",
+        eventTypeId: eventType.id, // Use dynamic ID
         resourceId: "studio-a", // Hardcoded for MVP
         start,
         end,
@@ -118,7 +128,7 @@ export default function Home() {
         {bookingStep === "event-meta" && (
           <Calendar
             resourceId="studio-a"
-            eventTypeId="studio-30min"
+            eventTypeId={eventType.id} // Dynamic ID
             onSlotSelect={handleSlotSelect}
             title="Book a Studio Session"
             organizerName="Daniel Finke"
@@ -152,6 +162,16 @@ export default function Home() {
             />
           </div>
         )}
+      </div>
+      
+      {/* Dev Tools */}
+      <div className="fixed bottom-4 right-4 opacity-20 hover:opacity-100 transition-opacity">
+        <button 
+          onClick={handleSeed}
+          className="bg-red-900/50 text-red-200 text-xs px-2 py-1 rounded hover:bg-red-900"
+        >
+          Seed System
+        </button>
       </div>
     </div>
   );
