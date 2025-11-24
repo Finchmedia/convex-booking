@@ -76,17 +76,21 @@ export function slotToTimestamp(date: string, slotIndex: number): string {
  * Generates all possible time slots for a given day within business hours
  * @param date - ISO date string (e.g., "2025-06-17")
  * @param eventLengthMinutes - Event duration in minutes
+ * @param intervalMinutes - Step between slots in minutes (default: 15)
  * @returns Array of { start: ISO timestamp, slot indices }
  */
 export function generateDaySlots(
     date: string,
-    eventLengthMinutes: number
+    eventLengthMinutes: number,
+    intervalMinutes: number = 15
 ): Array<{ start: string; slots: number[] }> {
     const slotsNeeded = Math.ceil(eventLengthMinutes / 15);
+    const step = Math.ceil(intervalMinutes / 15);
     const possibleSlots: Array<{ start: string; slots: number[] }> = [];
 
     // Generate slots from business hours start to end, ensuring we don't go past business hours
-    for (let slotIndex = BUSINESS_HOURS_START; slotIndex + slotsNeeded <= BUSINESS_HOURS_END; slotIndex++) {
+    // We increment by `step` instead of 1
+    for (let slotIndex = BUSINESS_HOURS_START; slotIndex + slotsNeeded <= BUSINESS_HOURS_END; slotIndex += step) {
         const slots = Array.from({ length: slotsNeeded }, (_, i) => slotIndex + i);
         const startTime = slotToTimestamp(date, slotIndex);
         possibleSlots.push({ start: startTime, slots });
@@ -110,17 +114,20 @@ export function areSlotsAvailable(
  * Optimized to exit early and avoid object generation
  * @param eventLengthMinutes - Duration in minutes
  * @param busySlots - Array of busy slot indices
+ * @param intervalMinutes - Step between slots in minutes (default: 15)
  * @returns boolean
  */
 export function isDayAvailable(
     eventLengthMinutes: number,
-    busySlots: number[]
+    busySlots: number[],
+    intervalMinutes: number = 15
 ): boolean {
     const slotsNeeded = Math.ceil(eventLengthMinutes / 15);
+    const step = Math.ceil(intervalMinutes / 15);
     
     // Iterate through potential start times
     // We use the same loop logic as generateDaySlots but without object creation
-    for (let slotIndex = BUSINESS_HOURS_START; slotIndex + slotsNeeded <= BUSINESS_HOURS_END; slotIndex++) {
+    for (let slotIndex = BUSINESS_HOURS_START; slotIndex + slotsNeeded <= BUSINESS_HOURS_END; slotIndex += step) {
         // Check if this specific block is free
         let isBlockFree = true;
         for (let i = 0; i < slotsNeeded; i++) {

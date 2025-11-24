@@ -35,6 +35,7 @@ export function makeBookingAPI(component: ComponentApi) {
         dateFrom: v.string(),
         dateTo: v.string(),
         eventLength: v.number(),
+        slotInterval: v.optional(v.number()),
       },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.public.getMonthAvailability, args);
@@ -45,6 +46,7 @@ export function makeBookingAPI(component: ComponentApi) {
         resourceId: v.string(),
         date: v.string(),
         eventLength: v.number(),
+        slotInterval: v.optional(v.number()),
       },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.public.getDaySlots, args);
@@ -125,10 +127,10 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    // Presence: Real-time slot locking
+    // Presence: Real-time slot locking (batched)
     heartbeat: mutation({
       args: {
-        room: v.string(), // The Slot ID
+        rooms: v.array(v.string()), // Array of Slot IDs
         user: v.string(), // The User/Session ID
         data: v.optional(v.any()),
       },
@@ -136,10 +138,10 @@ export function makeBookingAPI(component: ComponentApi) {
         return await ctx.runMutation(component.presence.heartbeat, args);
       },
     }),
-    
+
     leave: mutation({
       args: {
-        room: v.string(),
+        rooms: v.array(v.string()), // Array of Slot IDs
         user: v.string(),
       },
       handler: async (ctx, args) => {

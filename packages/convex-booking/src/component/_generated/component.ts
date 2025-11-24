@@ -34,14 +34,14 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       heartbeat: FunctionReference<
         "mutation",
         "internal",
-        { data?: any; room: string; user: string },
+        { data?: any; rooms: Array<string>; user: string },
         any,
         Name
       >;
       leave: FunctionReference<
         "mutation",
         "internal",
-        { room: string; user: string },
+        { rooms: Array<string>; user: string },
         any,
         Name
       >;
@@ -89,6 +89,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             type: string;
           }>;
           lockTimeZoneToggle: boolean;
+          slotInterval?: number;
           slug: string;
           timezone: string;
           title: string;
@@ -120,7 +121,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       getDaySlots: FunctionReference<
         "query",
         "internal",
-        { date: string; eventLength: number; resourceId: string },
+        {
+          date: string;
+          eventLength: number;
+          resourceId: string;
+          slotInterval?: number;
+        },
         any,
         Name
       >;
@@ -139,6 +145,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           dateTo: string;
           eventLength: number;
           resourceId: string;
+          slotInterval?: number;
         },
         any,
         Name

@@ -12,12 +12,24 @@ import { useIntersectionObserver } from "@/lib/hooks/use-intersection-observer";
 interface CalendarProps {
   resourceId: string;
   eventTypeId: string; // Event type ID (contains duration, timezone, etc.)
-  onSlotSelect: (slot: string) => void;
+  onSlotSelect: (data: { slot: string; duration: number }) => void; // Pass both slot AND duration
   title?: string;
   description?: string;
   showHeader?: boolean;
   organizerName?: string; // Organizer name to display
   organizerAvatar?: string; // Organizer avatar URL
+
+  // Controlled state props (lifted to parent)
+  selectedDate: Date | null;
+  onDateChange: (date: Date | null) => void;
+  currentMonth: Date;
+  onMonthChange: (date: Date) => void;
+  selectedDuration: number;
+  onDurationChange: (duration: number) => void;
+  timezone: string;
+  onTimezoneChange: (timezone: string) => void;
+  timeFormat: "12h" | "24h";
+  onTimeFormatChange: (format: "12h" | "24h") => void;
 }
 
 export const Calendar: React.FC<CalendarProps> = ({
@@ -29,10 +41,18 @@ export const Calendar: React.FC<CalendarProps> = ({
   showHeader,
   organizerName,
   organizerAvatar,
+  // Controlled state
+  selectedDate,
+  onDateChange,
+  currentMonth,
+  onMonthChange,
+  selectedDuration,
+  onDurationChange,
+  timezone,
+  onTimezoneChange,
+  timeFormat,
+  onTimeFormatChange,
 }) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h");
 
   // Fetch event type configuration
   const eventType = useQuery(api.booking.getEventType, { eventTypeId });
@@ -41,32 +61,14 @@ export const Calendar: React.FC<CalendarProps> = ({
   const eventTimezone = eventType?.timezone || "Europe/Berlin";
   const isTimezoneLocked = eventType?.lockTimeZoneToggle || false;
 
-  // Duration management (support for multiple duration options)
-  const [selectedDuration, setSelectedDuration] = useState<number>(
-    eventType?.lengthInMinutes || 30
-  );
-
-  // Update selected duration when event type loads
-  useEffect(() => {
-    if (eventType?.lengthInMinutes) {
-      setSelectedDuration(eventType.lengthInMinutes);
-    }
-  }, [eventType?.lengthInMinutes]);
-
+  // Use controlled duration from props
   const eventLength = selectedDuration;
 
-  // Use event type timezone if locked, otherwise allow user selection
-  const [userTimezone, setUserTimezone] = useState<string>("");
-
-  // Initialize timezone (use event type timezone if locked)
-  useEffect(() => {
-    if (isTimezoneLocked) {
-      setUserTimezone(eventTimezone);
-    } else {
-      const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      setUserTimezone(browserTimezone);
-    }
-  }, [isTimezoneLocked, eventTimezone]);
+  // Extract slot interval and all duration options for smart defaulting
+  const slotInterval = eventType?.slotInterval;
+  const allDurationOptions = eventType
+    ? [eventType.lengthInMinutes, ...(eventType.lengthInMinutesOptions || [])]
+    : undefined;
 
   // Intersection observer to detect when calendar becomes visible
   const [calendarRef, isIntersecting, hasIntersected] = useIntersectionObserver(
@@ -78,45 +80,51 @@ export const Calendar: React.FC<CalendarProps> = ({
 
   // Use Convex hook for slots data - only enabled when visible
   const { monthSlots, availableSlots, isLoading, isReloading, fetchMonthSlots, fetchSlots } =
-    useConvexSlots(resourceId, eventLength, hasIntersected);
+    useConvexSlots(
+      resourceId,
+      eventLength,
+      slotInterval,
+      allDurationOptions,
+      hasIntersected
+    );
 
   // Auto-select today's date
   const autoSelectToday = () => {
     if (!selectedDate) {
       const today = new Date();
-      setSelectedDate(today);
+      onDateChange(today);
       fetchSlots(today);
     }
   };
 
   // Handle date selection
   const handleDateSelect = (date: Date) => {
-    setSelectedDate(date);
+    onDateChange(date);
     fetchSlots(date);
   };
 
   // Navigation
   const goToPreviousMonth = () => {
-    setCurrentDate(
-      new Date(currentDate.getFullYear(), currentDate.getMonth() - 1)
+    onMonthChange(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1)
     );
   };
 
   const goToNextMonth = () => {
-    setCurrentDate(
-      new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)
+    onMonthChange(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1)
     );
   };
 
   // Fetch month slots when calendar becomes visible or month changes
   useEffect(() => {
     if (hasIntersected) {
-      fetchMonthSlots(currentDate);
+      fetchMonthSlots(currentMonth);
     }
   }, [
     hasIntersected,
-    currentDate.getFullYear(),
-    currentDate.getMonth(),
+    currentMonth.getFullYear(),
+    currentMonth.getMonth(),
     fetchMonthSlots,
   ]);
 
@@ -126,6 +134,13 @@ export const Calendar: React.FC<CalendarProps> = ({
       autoSelectToday();
     }
   }, [monthSlots]);
+
+  // Fetch slots for selected date when it changes (including on mount with persisted date)
+  useEffect(() => {
+    if (selectedDate) {
+      fetchSlots(selectedDate);
+    }
+  }, [selectedDate, fetchSlots]);
 
   return (
     <div
@@ -146,9 +161,9 @@ export const Calendar: React.FC<CalendarProps> = ({
         <EventMetaPanel
           eventType={eventType}
           selectedDuration={selectedDuration}
-          onDurationChange={setSelectedDuration}
-          userTimezone={userTimezone}
-          onTimezoneChange={setUserTimezone}
+          onDurationChange={onDurationChange}
+          userTimezone={timezone}
+          onTimezoneChange={onTimezoneChange}
           timezoneLocked={isTimezoneLocked}
           organizerName={organizerName}
           organizerAvatar={organizerAvatar}
@@ -156,7 +171,7 @@ export const Calendar: React.FC<CalendarProps> = ({
 
         {/* Calendar Grid */}
         <CalendarGrid
-          currentDate={currentDate}
+          currentDate={currentMonth}
           selectedDate={selectedDate}
           monthSlots={monthSlots}
           onDateSelect={handleDateSelect}
@@ -171,8 +186,8 @@ export const Calendar: React.FC<CalendarProps> = ({
           loading={isLoading}
           isReloading={isReloading}
           timeFormat={timeFormat}
-          onTimeFormatChange={setTimeFormat}
-          onSlotSelect={onSlotSelect}
+          onTimeFormatChange={onTimeFormatChange}
+          onSlotSelect={(slot) => onSlotSelect({ slot, duration: selectedDuration })}
         />
       </div>
     </div>

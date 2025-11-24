@@ -42,9 +42,10 @@ export const getMonthAvailability = query({
         dateFrom: v.string(), // "2025-06-17"
         dateTo: v.string(), // "2025-06-20"
         eventLength: v.number(), // Duration in minutes (e.g., 30)
+        slotInterval: v.optional(v.number()), // Slot interval
     },
     handler: async (ctx, args) => {
-        const { resourceId, dateFrom, dateTo, eventLength } = args;
+        const { resourceId, dateFrom, dateTo, eventLength, slotInterval } = args;
 
         // Parse dates
         const startDate = new Date(dateFrom);
@@ -90,12 +91,13 @@ export const getDaySlots = query({
         resourceId: v.string(),
         date: v.string(), // "2025-06-17"
         eventLength: v.number(), // Duration in minutes
+        slotInterval: v.optional(v.number()), // Step between slots (default: 15 or equal to eventLength if business logic dictates, but utils defaults to 15)
     },
     handler: async (ctx, args) => {
-        const { resourceId, date, eventLength } = args;
+        const { resourceId, date, eventLength, slotInterval } = args;
 
         // Generate all possible slots for this day
-        const possibleSlots = generateDaySlots(date, eventLength);
+        const possibleSlots = generateDaySlots(date, eventLength, slotInterval);
 
         // Fetch availability data for this day
         const availabilityDoc = await ctx.db
@@ -346,6 +348,7 @@ export const createEventType = mutation({
     title: v.string(),
     lengthInMinutes: v.number(),
     lengthInMinutesOptions: v.optional(v.array(v.number())),
+    slotInterval: v.optional(v.number()), // Frequency of slots
     description: v.optional(v.string()),
     timezone: v.string(),
     lockTimeZoneToggle: v.boolean(),

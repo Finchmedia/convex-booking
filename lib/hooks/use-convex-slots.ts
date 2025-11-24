@@ -21,11 +21,20 @@ export interface UseConvexSlotsResult {
 export const useConvexSlots = (
   resourceId: string,
   eventLength: number,
+  slotInterval?: number,
+  allDurationOptions?: number[],
   enabled: boolean = true
 ): UseConvexSlotsResult => {
   const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(null);
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
-  
+
+  // Smart defaulting: Use minimum duration for maximum booking flexibility (Cal.com best practice)
+  const effectiveInterval = slotInterval ?? (
+    allDurationOptions && allDurationOptions.length > 0
+      ? Math.min(...allDurationOptions)
+      : eventLength
+  );
+
   const monthAvailability = useQuery(
     api.booking.getMonthAvailability,
     enabled && dateRange
@@ -34,6 +43,7 @@ export const useConvexSlots = (
           dateFrom: dateRange.from,
           dateTo: dateRange.to,
           eventLength,
+          slotInterval: effectiveInterval,
         }
       : "skip"
   );
@@ -45,6 +55,7 @@ export const useConvexSlots = (
           resourceId,
           date: selectedDateStr,
           eventLength,
+          slotInterval: effectiveInterval,
         }
       : "skip"
   );

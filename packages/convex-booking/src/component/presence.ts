@@ -4,101 +4,109 @@ import { mutation, query } from "./_generated/server";
 const TIMEOUT_MS = 10_000; // Users are considered "gone" after 10 seconds
 
 /**
- * signals that a user is present in a specific "room" (time slot).
- * Updates their timestamp and ensures a cleanup job is scheduled.
+ * signals that a user is present in one or more "rooms" (time slots).
+ * Updates their timestamp and ensures a cleanup job is scheduled for each room.
+ * Accepts an array of rooms to batch multiple heartbeats into a single transaction.
  */
 export const heartbeat = mutation({
   args: {
-    room: v.string(),
+    rooms: v.array(v.string()),
     user: v.string(),
     data: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
 
-    // 1. Update or create the presence record
-    const existingPresence = await ctx.db
-      .query("presence")
-      .withIndex("by_user_room", (q) =>
-        q.eq("user", args.user).eq("room", args.room)
-      )
-      .first();
+    // Process each room in the batch
+    for (const room of args.rooms) {
+      // 1. Update or create the presence record
+      const existingPresence = await ctx.db
+        .query("presence")
+        .withIndex("by_user_room", (q) =>
+          q.eq("user", args.user).eq("room", room)
+        )
+        .first();
 
-    if (existingPresence) {
-      await ctx.db.patch(existingPresence._id, {
-        updated: now,
-        data: args.data ?? existingPresence.data,
-      });
-    } else {
-      await ctx.db.insert("presence", {
-        user: args.user,
-        room: args.room,
-        updated: now,
-        data: args.data,
-      });
-    }
-
-    // 2. Ensure a cleanup job is scheduled
-    const existingHeartbeat = await ctx.db
-      .query("presence_heartbeats")
-      .withIndex("by_user_room", (q) =>
-        q.eq("user", args.user).eq("room", args.room)
-      )
-      .first();
-
-    // If we don't have a cleanup job, or (edge case) the previous one might have failed/finished
-    // without cleaning up, we schedule one.
-    if (!existingHeartbeat) {
-      const scheduledId = await ctx.scheduler.runAfter(
-        TIMEOUT_MS,
-        "presence:cleanup",
-        {
-          room: args.room,
+      if (existingPresence) {
+        await ctx.db.patch(existingPresence._id, {
+          updated: now,
+          data: args.data ?? existingPresence.data,
+        });
+      } else {
+        await ctx.db.insert("presence", {
           user: args.user,
-        }
-      );
-      await ctx.db.insert("presence_heartbeats", {
-        user: args.user,
-        room: args.room,
-        markAsGone: scheduledId,
-      });
+          room: room,
+          updated: now,
+          data: args.data,
+        });
+      }
+
+      // 2. Ensure a cleanup job is scheduled
+      const existingHeartbeat = await ctx.db
+        .query("presence_heartbeats")
+        .withIndex("by_user_room", (q) =>
+          q.eq("user", args.user).eq("room", room)
+        )
+        .first();
+
+      // If we don't have a cleanup job, or (edge case) the previous one might have failed/finished
+      // without cleaning up, we schedule one.
+      if (!existingHeartbeat) {
+        const scheduledId = await ctx.scheduler.runAfter(
+          TIMEOUT_MS,
+          "presence:cleanup",
+          {
+            room: room,
+            user: args.user,
+          }
+        );
+        await ctx.db.insert("presence_heartbeats", {
+          user: args.user,
+          room: room,
+          markAsGone: scheduledId,
+        });
+      }
     }
   },
 });
 
 /**
- * Explicitly removes a user from a room.
+ * Explicitly removes a user from one or more rooms.
  * Called when a user navigates away or unmounts.
+ * Accepts an array of rooms to batch multiple leave operations into a single transaction.
  */
 export const leave = mutation({
   args: {
-    room: v.string(),
+    rooms: v.array(v.string()),
     user: v.string(),
   },
   handler: async (ctx, args) => {
-    const presence = await ctx.db
-      .query("presence")
-      .withIndex("by_user_room", (q) =>
-        q.eq("user", args.user).eq("room", args.room)
-      )
-      .first();
+    // Process each room in the batch
+    for (const room of args.rooms) {
+      const presence = await ctx.db
+        .query("presence")
+        .withIndex("by_user_room", (q) =>
+          q.eq("user", args.user).eq("room", room)
+        )
+        .first();
 
-    const heartbeatDoc = await ctx.db
-      .query("presence_heartbeats")
-      .withIndex("by_user_room", (q) =>
-        q.eq("user", args.user).eq("room", args.room)
-      )
-      .first();
+      const heartbeatDoc = await ctx.db
+        .query("presence_heartbeats")
+        .withIndex("by_user_room", (q) =>
+          q.eq("user", args.user).eq("room", room)
+        )
+        .first();
 
-    if (presence) await ctx.db.delete(presence._id);
-    
-    // We can also delete the heartbeat doc immediately, but we might want to 
-    // cancel the scheduled job if possible. For now, deleting the doc is enough
-    // because the cleanup job checks for the doc before doing anything.
-    if (heartbeatDoc) {
-      // Optional: cancel the scheduled job if we had the ID available easily
-      // await ctx.scheduler.cancel(heartbeatDoc.markAsGone);
-      await ctx.db.delete(heartbeatDoc._id);
+      if (presence) await ctx.db.delete(presence._id);
+
+      // We can also delete the heartbeat doc immediately, but we might want to
+      // cancel the scheduled job if possible. For now, deleting the doc is enough
+      // because the cleanup job checks for the doc before doing anything.
+      if (heartbeatDoc) {
+        // Optional: cancel the scheduled job if we had the ID available easily
+        // await ctx.scheduler.cancel(heartbeatDoc.markAsGone);
+        await ctx.db.delete(heartbeatDoc._id);
+      }
     }
   },
 });

@@ -72,8 +72,7 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
       {/* Action Buttons */}
       <div className="flex gap-3">
         <Button
-          variant="outline"
-          className="flex-1 border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
+          className="flex-1 bg-neutral-100 text-neutral-900 hover:bg-neutral-200 font-medium"
           onClick={onBookAnother}
         >
           Book Another

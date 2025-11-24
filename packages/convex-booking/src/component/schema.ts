@@ -8,6 +8,7 @@ export default defineSchema({
     title: v.string(), // "Studio Session"
     lengthInMinutes: v.number(), // Duration in minutes (e.g., 30) - matches Cal.com naming
     lengthInMinutesOptions: v.optional(v.array(v.number())), // Optional: Allow booker to choose duration (e.g., [60, 120, 180])
+    slotInterval: v.optional(v.number()), // Frequency of slots (e.g., 30 = 9:00, 9:30, 10:00). Defaults to lengthInMinutes.
     description: v.optional(v.string()), // "Book a 30-minute studio session"
     timezone: v.string(), // IANA timezone (e.g., "Europe/Berlin")
     lockTimeZoneToggle: v.boolean(), // If true, timezone selector is read-only (performance optimization)
