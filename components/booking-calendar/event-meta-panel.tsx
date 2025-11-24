@@ -104,22 +104,24 @@ export const EventMetaPanel: React.FC<EventMetaPanelProps> = ({
           <Clock className="mr-2 mt-[2px] h-3.5 w-3.5 flex-shrink-0" />
           <div className="flex-1">
             {!readOnly && eventType.lengthInMinutesOptions && eventType.lengthInMinutesOptions.length > 1 ? (
-              <div className="border border-neutral-700 rounded-md p-0.5">
-                <ul className="flex items-center gap-0.5 overflow-x-auto">
-                  {eventType.lengthInMinutesOptions.map((duration) => (
-                    <li
-                      key={duration}
-                      onClick={() => onDurationChange(duration)}
-                      className={`cursor-pointer rounded px-2 py-1 text-xs font-medium transition ${
-                        selectedDuration === duration
-                          ? "bg-neutral-700 text-neutral-100"
-                          : "text-neutral-400 hover:text-neutral-200"
-                      }`}
-                    >
-                      {formatDuration(duration)}
-                    </li>
-                  ))}
-                </ul>
+              <div className="relative max-w-full">
+                <div className="border border-neutral-800 rounded-md bg-neutral-900/50 p-1">
+                  <ul className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                    {eventType.lengthInMinutesOptions.map((duration) => (
+                      <li
+                        key={duration}
+                        onClick={() => onDurationChange(duration)}
+                        className={`flex-1 cursor-pointer text-center rounded px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                          selectedDuration === duration
+                            ? "bg-neutral-700 text-neutral-100 shadow-sm"
+                            : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
+                        }`}
+                      >
+                        <div className="whitespace-nowrap">{formatDuration(duration)}</div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             ) : (
               <span className="text-xs">{formatDuration(selectedDuration)}</span>

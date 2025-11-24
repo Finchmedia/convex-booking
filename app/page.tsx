@@ -11,11 +11,11 @@ import type { BookingStep, BookingFormData, Booking } from "@/types/booking";
 
 // Temporary mock event type - in future fetch from DB
 const MOCK_EVENT_TYPE = {
-  id: "studio-30min",
-  slug: "studio-30min",
+  id: "studio-session",
+  slug: "studio-session",
   title: "Studio Session",
-  lengthInMinutes: 30,
-  lengthInMinutesOptions: [30, 60, 90, 120],
+  lengthInMinutes: 60,
+  lengthInMinutesOptions: [60, 120, 300], // 1h, 2h, 5h
   description: "Book a recording session at Studio A. Includes engineer and basic mixing.",
   locations: [{ type: "address", address: "123 Studio St, Berlin, Germany", public: true }],
   timezone: "Europe/Berlin",
@@ -26,7 +26,7 @@ export default function Home() {
   // Step state
   const [bookingStep, setBookingStep] = useState<BookingStep>("event-meta");
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-  const [selectedDuration, setSelectedDuration] = useState<number>(30);
+  const [selectedDuration, setSelectedDuration] = useState<number>(60);
   const [timezone, setTimezone] = useState<string>(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   );
@@ -37,7 +37,7 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch real event type from DB
-  const eventTypeData = useQuery(api.booking.getEventType, { eventTypeId: "studio-30min" });
+  const eventTypeData = useQuery(api.booking.getEventType, { eventTypeId: "studio-session" });
   
   // Fallback to mock if loading or error (for MVP robustness)
   const eventType = eventTypeData || MOCK_EVENT_TYPE;
