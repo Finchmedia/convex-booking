@@ -27,25 +27,38 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       cleanup: FunctionReference<
         "mutation",
         "internal",
-        { room: string; user: string },
+        { resourceId: string; slot: string; user: string },
+        any,
+        Name
+      >;
+      getDatePresence: FunctionReference<
+        "query",
+        "internal",
+        { date: string; resourceId: string },
         any,
         Name
       >;
       heartbeat: FunctionReference<
         "mutation",
         "internal",
-        { data?: any; rooms: Array<string>; user: string },
+        { data?: any; resourceId: string; slots: Array<string>; user: string },
         any,
         Name
       >;
       leave: FunctionReference<
         "mutation",
         "internal",
-        { rooms: Array<string>; user: string },
+        { resourceId: string; slots: Array<string>; user: string },
         any,
         Name
       >;
-      list: FunctionReference<"query", "internal", { room: string }, any, Name>;
+      list: FunctionReference<
+        "query",
+        "internal",
+        { resourceId: string; slot: string },
+        any,
+        Name
+      >;
     };
     public: {
       cancelReservation: FunctionReference<

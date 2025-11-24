@@ -7,6 +7,7 @@ import { getSessionId } from "../booking/session";
  * Automatically maintains a "hold" on one or more slots by sending periodic heartbeats.
  * Supports multi-slot holds for bookings that span multiple slot intervals.
  *
+ * @param resourceId - The resource ID (e.g. "studio-a")
  * @param slotId - The ID of the selected slot (e.g. "2024-05-20T10:00:00.000Z")
  * @param durationMinutes - Duration of the booking in minutes (LOCKED at slot selection)
  * @param intervalMinutes - Slot interval in minutes (defaults to duration if not provided)
@@ -16,6 +17,7 @@ import { getSessionId } from "../booking/session";
  * If the user wants a different duration, they must click "Back" and reselect.
  */
 export function useSlotHold(
+  resourceId: string,
   slotId: string | null,
   durationMinutes: number = 60,
   intervalMinutes: number = 60
@@ -42,19 +44,19 @@ export function useSlotHold(
     }
 
     // 1. Immediate heartbeat when slot is selected (batched API - single call!)
-    heartbeat({ rooms: affectedSlots, user: userId });
+    heartbeat({ resourceId, slots: affectedSlots, user: userId });
 
     // 2. Periodic heartbeat every 5 seconds
     const interval = setInterval(() => {
-      heartbeat({ rooms: affectedSlots, user: userId });
+      heartbeat({ resourceId, slots: affectedSlots, user: userId });
     }, 5000);
 
     // 3. Cleanup: Explicitly leave when unmounting or changing slots
     return () => {
       clearInterval(interval);
-      leave({ rooms: affectedSlots, user: userId });
+      leave({ resourceId, slots: affectedSlots, user: userId });
     };
-  }, [slotId, intervalMinutes, userId, heartbeat, leave]);
+  }, [resourceId, slotId, intervalMinutes, userId, heartbeat, leave]);
   // NOTE: durationMinutes intentionally NOT in deps - it's locked at selection time
 
   return userId;

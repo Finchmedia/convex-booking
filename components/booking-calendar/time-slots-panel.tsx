@@ -7,6 +7,7 @@ import { TimeSlotButton } from "./time-slot-button";
 interface TimeSlotsPanelProps {
   selectedDate: Date | null;
   availableSlots: CalcomSlot[];
+  reservedSlots: CalcomSlot[]; // NEW: Slots held by other users
   loading: boolean; // Initial loading (skeleton)
   isReloading: boolean; // Reloading (opacity)
   timeFormat: "12h" | "24h";
@@ -17,6 +18,7 @@ interface TimeSlotsPanelProps {
 export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
   selectedDate,
   availableSlots,
+  reservedSlots,
   loading,
   isReloading,
   timeFormat,
@@ -25,6 +27,14 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
 }) => {
   // Get user's timezone for displaying slot times
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Merge available and reserved slots into single chronologically-sorted list
+  const allSlots = React.useMemo(() => {
+    return [
+      ...availableSlots.map(slot => ({ ...slot, isReserved: false })),
+      ...reservedSlots.map(slot => ({ ...slot, isReserved: true }))
+    ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  }, [availableSlots, reservedSlots]);
   // Format selected date for clear display
   const formatSelectedDate = (date: Date | null) => {
     if (!date) return "Select a date";
@@ -108,18 +118,19 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
                   />
                 ))}
               </div>
-            ) : availableSlots.length === 0 ? (
+            ) : allSlots.length === 0 ? (
               <p className="text-sm text-neutral-400">
                 No available times for this date
               </p>
             ) : (
-              availableSlots.map((slot) => (
+              allSlots.map((slot) => (
                 <TimeSlotButton
                   key={slot.time}
                   slot={slot}
                   timeFormat={timeFormat}
                   timezone={userTimezone}
                   onSlotSelect={onSlotSelect}
+                  isReserved={slot.isReserved}
                 />
               ))
             )}

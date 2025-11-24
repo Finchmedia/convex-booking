@@ -54,22 +54,33 @@ export declare const components: {
       cleanup: FunctionReference<
         "mutation",
         "internal",
-        { room: string; user: string },
+        { resourceId: string; slot: string; user: string },
+        any
+      >;
+      getDatePresence: FunctionReference<
+        "query",
+        "internal",
+        { date: string; resourceId: string },
         any
       >;
       heartbeat: FunctionReference<
         "mutation",
         "internal",
-        { data?: any; rooms: Array<string>; user: string },
+        { data?: any; resourceId: string; slots: Array<string>; user: string },
         any
       >;
       leave: FunctionReference<
         "mutation",
         "internal",
-        { rooms: Array<string>; user: string },
+        { resourceId: string; slots: Array<string>; user: string },
         any
       >;
-      list: FunctionReference<"query", "internal", { room: string }, any>;
+      list: FunctionReference<
+        "query",
+        "internal",
+        { resourceId: string; slot: string },
+        any
+      >;
     };
     public: {
       cancelReservation: FunctionReference<

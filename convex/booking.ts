@@ -14,4 +14,5 @@ export const {
   heartbeat,     // Presence
   leave,         // Presence
   getPresence,   // Presence
+  getDatePresence, // Presence (NEW: Date-based presence query)
 } = makeBookingAPI(components.booking);

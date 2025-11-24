@@ -130,7 +130,8 @@ export function makeBookingAPI(component: ComponentApi) {
     // Presence: Real-time slot locking (batched)
     heartbeat: mutation({
       args: {
-        rooms: v.array(v.string()), // Array of Slot IDs
+        resourceId: v.string(), // Resource ID (e.g., "studio-a")
+        slots: v.array(v.string()), // Array of Slot IDs
         user: v.string(), // The User/Session ID
         data: v.optional(v.any()),
       },
@@ -141,7 +142,8 @@ export function makeBookingAPI(component: ComponentApi) {
 
     leave: mutation({
       args: {
-        rooms: v.array(v.string()), // Array of Slot IDs
+        resourceId: v.string(), // Resource ID (e.g., "studio-a")
+        slots: v.array(v.string()), // Array of Slot IDs
         user: v.string(),
       },
       handler: async (ctx, args) => {
@@ -150,9 +152,23 @@ export function makeBookingAPI(component: ComponentApi) {
     }),
 
     getPresence: query({
-      args: { room: v.string() },
+      args: {
+        resourceId: v.string(), // Resource ID (e.g., "studio-a")
+        slot: v.string(), // Slot ID (ISO timestamp)
+      },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.presence.list, args);
+      },
+    }),
+
+    // NEW: Get all presence holds for a resource on a specific date
+    getDatePresence: query({
+      args: {
+        resourceId: v.string(), // Resource ID (e.g., "studio-a")
+        date: v.string(), // Date in YYYY-MM-DD format (e.g., "2025-11-28")
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.presence.getDatePresence, args);
       },
     }),
   };

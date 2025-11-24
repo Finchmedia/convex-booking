@@ -4,11 +4,12 @@ import { getSessionId } from "../booking/session";
 
 /**
  * Checks if a specific slot is currently held by another user.
+ * @param resourceId - The resource ID (e.g. "studio-a")
  * @param slotId - The ID of the slot to check
  */
-export function useSlotPresence(slotId: string) {
+export function useSlotPresence(resourceId: string, slotId: string) {
   // Fetch active users in this slot
-  const presence = useQuery(api.booking.getPresence, { room: slotId });
+  const presence = useQuery(api.booking.getPresence, { resourceId, slot: slotId });
   
   // Get current user's ID
   const myUserId = getSessionId();

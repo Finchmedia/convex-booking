@@ -79,7 +79,7 @@ export const Calendar: React.FC<CalendarProps> = ({
   );
 
   // Use Convex hook for slots data - only enabled when visible
-  const { monthSlots, availableSlots, isLoading, isReloading, fetchMonthSlots, fetchSlots } =
+  const { monthSlots, availableSlots, reservedSlots, isLoading, isReloading, fetchMonthSlots, fetchSlots } =
     useConvexSlots(
       resourceId,
       eventLength,
@@ -183,6 +183,7 @@ export const Calendar: React.FC<CalendarProps> = ({
         <TimeSlotsPanel
           selectedDate={selectedDate}
           availableSlots={availableSlots}
+          reservedSlots={reservedSlots}
           loading={isLoading}
           isReloading={isReloading}
           timeFormat={timeFormat}
