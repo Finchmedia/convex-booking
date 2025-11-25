@@ -2,95 +2,269 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  event_types: defineTable({
-    id: v.string(), // External ID (e.g., "studio-30min")
-    slug: v.string(), // URL-friendly identifier (e.g., "studio-30min")
-    title: v.string(), // "Studio Session"
-    lengthInMinutes: v.number(), // Duration in minutes (e.g., 30) - matches Cal.com naming
-    lengthInMinutesOptions: v.optional(v.array(v.number())), // Optional: Allow booker to choose duration (e.g., [60, 120, 180])
-    slotInterval: v.optional(v.number()), // Frequency of slots (e.g., 30 = 9:00, 9:30, 10:00). Defaults to lengthInMinutes.
-    description: v.optional(v.string()), // "Book a 30-minute studio session"
-    timezone: v.string(), // IANA timezone (e.g., "Europe/Berlin")
-    lockTimeZoneToggle: v.boolean(), // If true, timezone selector is read-only (performance optimization)
-    locations: v.array(
+  // ============================================
+  // ORGANIZATIONS (Full Hierarchy)
+  // ============================================
+  organizations: defineTable({
+    id: v.string(), // External ID
+    name: v.string(),
+    slug: v.string(), // URL-friendly
+    settings: v.optional(
       v.object({
-        type: v.string(), // "address" | "link" | "phone" (MVP: just "address")
-        address: v.optional(v.string()), // For type="address"
-        public: v.optional(v.boolean()), // Whether to show address to booker
+        defaultTimezone: v.optional(v.string()),
+        defaultCurrency: v.optional(v.string()),
       })
     ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
   })
     .index("by_external_id", ["id"])
     .index("by_slug", ["slug"]),
 
+  // Teams within organizations
+  teams: defineTable({
+    id: v.string(),
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    slug: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_external_id", ["id"])
+    .index("by_org", ["organizationId"]),
+
+  // Members (users in orgs/teams)
+  members: defineTable({
+    userId: v.string(), // External auth ID
+    organizationId: v.id("organizations"),
+    teamId: v.optional(v.id("teams")),
+    role: v.string(), // "owner" | "admin" | "member" | "viewer"
+    joinedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_org", ["organizationId"]),
+
+  // ============================================
+  // RESOURCES (Bookable Items)
+  // ============================================
+  resources: defineTable({
+    id: v.string(),
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    type: v.string(), // "room" | "equipment" | "person"
+    description: v.optional(v.string()),
+    timezone: v.string(),
+
+    // Quantity tracking
+    quantity: v.optional(v.number()), // null = 1 (singular)
+    isFungible: v.optional(v.boolean()), // true = any unit works
+
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_external_id", ["id"])
+    .index("by_org", ["organizationId"])
+    .index("by_org_type", ["organizationId", "type"]),
+
+  // ============================================
+  // SCHEDULES (Weekly Patterns)
+  // ============================================
+  schedules: defineTable({
+    id: v.string(),
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    timezone: v.string(),
+    isDefault: v.boolean(),
+    weeklyHours: v.array(
+      v.object({
+        dayOfWeek: v.number(), // 0-6 (Sunday-Saturday)
+        startTime: v.string(), // "09:00"
+        endTime: v.string(), // "17:00"
+      })
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_external_id", ["id"])
+    .index("by_org", ["organizationId"]),
+
+  // Date overrides (holidays, custom hours)
+  date_overrides: defineTable({
+    scheduleId: v.id("schedules"),
+    date: v.string(), // "2025-12-25"
+    type: v.string(), // "unavailable" | "custom"
+    customHours: v.optional(
+      v.array(
+        v.object({
+          startTime: v.string(),
+          endTime: v.string(),
+        })
+      )
+    ),
+  }).index("by_schedule_date", ["scheduleId", "date"]),
+
+  // ============================================
+  // EVENT TYPES (Extended)
+  // ============================================
+  event_types: defineTable({
+    id: v.string(), // External ID (e.g., "studio-30min")
+    slug: v.string(), // URL-friendly identifier (e.g., "studio-30min")
+    title: v.string(), // "Studio Session"
+    lengthInMinutes: v.number(), // Duration in minutes (e.g., 30)
+    lengthInMinutesOptions: v.optional(v.array(v.number())), // Allow booker to choose duration
+    slotInterval: v.optional(v.number()), // Frequency of slots
+    description: v.optional(v.string()),
+    timezone: v.string(), // IANA timezone
+    lockTimeZoneToggle: v.boolean(),
+    locations: v.array(
+      v.object({
+        type: v.string(), // "address" | "link" | "phone"
+        address: v.optional(v.string()),
+        public: v.optional(v.boolean()),
+      })
+    ),
+
+    // NEW: Organization ownership
+    organizationId: v.optional(v.id("organizations")),
+
+    // NEW: Schedule reference
+    scheduleId: v.optional(v.string()),
+
+    // NEW: Resource requirements
+    resourceIds: v.optional(v.array(v.string())),
+
+    // NEW: Buffer times
+    bufferBefore: v.optional(v.number()), // Minutes before booking
+    bufferAfter: v.optional(v.number()), // Minutes after booking
+
+    // NEW: Booking window
+    minNoticeMinutes: v.optional(v.number()), // Min hours ahead required
+    maxFutureMinutes: v.optional(v.number()), // Max days into future
+
+    // NEW: Booking policy
+    requiresConfirmation: v.optional(v.boolean()),
+    isActive: v.optional(v.boolean()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_external_id", ["id"])
+    .index("by_slug", ["slug"])
+    .index("by_org", ["organizationId"]),
+
+  // ============================================
+  // AVAILABILITY (Bitmap Pattern)
+  // ============================================
   daily_availability: defineTable({
-    resourceId: v.string(), // Using string for now as resources might be external IDs
+    resourceId: v.string(),
     date: v.string(), // "2024-05-20" (ISO Date)
-    busySlots: v.array(v.number()), // [32, 33, 34...] (Indices of 15-min chunks)
+    busySlots: v.array(v.number()), // Indices of 15-min chunks (0-95)
   }).index("by_resource_date", ["resourceId", "date"]),
 
+  // Quantity availability tracking (for pooled resources)
+  quantity_availability: defineTable({
+    resourceId: v.string(),
+    date: v.string(),
+    slotQuantities: v.any(), // { "36": 2, "37": 1 } = booked count per slot
+  }).index("by_resource_date", ["resourceId", "date"]),
+
+  // ============================================
+  // BOOKINGS (Extended)
+  // ============================================
   bookings: defineTable({
-    // Core fields (existing)
+    // Core fields
     resourceId: v.string(),
     actorId: v.string(),
     start: v.number(),
     end: v.number(),
-    status: v.string(), // "confirmed", "cancelled"
+    status: v.string(), // "pending" | "confirmed" | "cancelled" | "completed"
 
-    // NEW: Unique identifiers
-    uid: v.string(), // e.g., "bk_abc123xyz" for booking URLs
+    // Unique identifiers
+    uid: v.string(), // e.g., "bk_abc123xyz"
 
-    // NEW: Event reference
+    // References
     eventTypeId: v.string(),
-    timezone: v.string(), // Booker's timezone
+    organizationId: v.optional(v.id("organizations")), // NEW
+    timezone: v.string(),
 
-    // NEW: Booker details
+    // Booker details
     bookerName: v.string(),
     bookerEmail: v.string(),
     bookerPhone: v.optional(v.string()),
     bookerNotes: v.optional(v.string()),
 
-    // NEW: Event snapshot (historical record)
+    // Event snapshot
     eventTitle: v.string(),
     eventDescription: v.optional(v.string()),
 
-    // NEW: Location
+    // Location
     location: v.object({
-      type: v.string(), // "address" | "link" | "phone"
+      type: v.string(),
       value: v.optional(v.string()),
     }),
 
-    // NEW: Timestamps
+    // Timestamps
     createdAt: v.number(),
     updatedAt: v.number(),
     cancelledAt: v.optional(v.number()),
 
-    // NEW: Relationships
-    rescheduleUid: v.optional(v.string()), // Link to original if rescheduled
+    // Relationships
+    rescheduleUid: v.optional(v.string()),
     cancellationReason: v.optional(v.string()),
   })
     .index("by_resource", ["resourceId"])
-    .index("by_uid", ["uid"]) // NEW: Query bookings by UID
-    .index("by_email", ["bookerEmail"]), // NEW: Find user's bookings
+    .index("by_uid", ["uid"])
+    .index("by_email", ["bookerEmail"])
+    .index("by_org", ["organizationId"])
+    .index("by_org_status", ["organizationId", "status"])
+    .index("by_event_type", ["eventTypeId"]),
 
-  // Presence: Tracks active users in specific slots (time slots on specific resources)
+  // Booking items (for multi-resource bookings)
+  booking_items: defineTable({
+    bookingId: v.id("bookings"),
+    resourceId: v.string(),
+    quantity: v.number(),
+  }).index("by_booking", ["bookingId"]),
+
+  // Booking state history (audit trail)
+  booking_history: defineTable({
+    bookingId: v.id("bookings"),
+    fromStatus: v.string(),
+    toStatus: v.string(),
+    changedBy: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    timestamp: v.number(),
+  }).index("by_booking", ["bookingId"]),
+
+  // ============================================
+  // PRESENCE (Real-time Slot Locking)
+  // ============================================
   presence: defineTable({
-    resourceId: v.string(), // "studio-a" - Prevent cross-resource contamination
-    user: v.string(),       // "session_id"
-    slot: v.string(),       // "slot_timestamp" (e.g., "2025-11-28T10:00:00.000Z")
-    updated: v.number(),    // Last heartbeat timestamp
-    data: v.optional(v.any()), // { username: "..." }
+    resourceId: v.string(),
+    user: v.string(),
+    slot: v.string(), // ISO timestamp
+    updated: v.number(),
+    data: v.optional(v.any()),
   })
-    // Efficiently query all slots for a resource+date to show held slots
     .index("by_resource_slot_updated", ["resourceId", "slot", "updated"])
-    // Efficiently find a specific user's session to update heartbeat
     .index("by_user_slot", ["user", "slot"]),
 
-  // Presence Heartbeats: Manages cleanup jobs to avoid duplicate scheduling
   presence_heartbeats: defineTable({
-    resourceId: v.string(), // "studio-a"
+    resourceId: v.string(),
     user: v.string(),
-    slot: v.string(),       // "slot_timestamp"
-    markAsGone: v.id("_scheduled_functions"), // Reference to the cleanup job
+    slot: v.string(),
+    markAsGone: v.id("_scheduled_functions"),
   }).index("by_user_slot", ["user", "slot"]),
+
+  // ============================================
+  // HOOKS (Notification System)
+  // ============================================
+  hooks: defineTable({
+    eventType: v.string(), // "booking.created" | "booking.cancelled" | "booking.confirmed"
+    functionHandle: v.string(),
+    organizationId: v.optional(v.id("organizations")),
+    enabled: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_event", ["eventType", "enabled"]),
 });

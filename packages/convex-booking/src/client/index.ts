@@ -11,14 +11,117 @@ import { type ComponentApi } from "../component/_generated/component";
  */
 export function makeBookingAPI(component: ComponentApi) {
   return {
+    // ============================================
+    // EVENT TYPES
+    // ============================================
     getEventType: query({
-      args: {
-        eventTypeId: v.string(),
-      },
+      args: { eventTypeId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.public.getEventType, args);
       },
     }),
+
+    getEventTypeBySlug: query({
+      args: { slug: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.public.getEventTypeBySlug, args);
+      },
+    }),
+
+    listEventTypes: query({
+      args: {
+        organizationId: v.optional(v.id("organizations")),
+        activeOnly: v.optional(v.boolean()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.public.listEventTypes, args);
+      },
+    }),
+
+    createEventType: mutation({
+      args: {
+        id: v.string(),
+        slug: v.string(),
+        title: v.string(),
+        lengthInMinutes: v.number(),
+        lengthInMinutesOptions: v.optional(v.array(v.number())),
+        slotInterval: v.optional(v.number()),
+        description: v.optional(v.string()),
+        timezone: v.string(),
+        lockTimeZoneToggle: v.boolean(),
+        locations: v.array(
+          v.object({
+            type: v.string(),
+            address: v.optional(v.string()),
+            public: v.optional(v.boolean()),
+          })
+        ),
+        organizationId: v.optional(v.id("organizations")),
+        scheduleId: v.optional(v.string()),
+        resourceIds: v.optional(v.array(v.string())),
+        bufferBefore: v.optional(v.number()),
+        bufferAfter: v.optional(v.number()),
+        minNoticeMinutes: v.optional(v.number()),
+        maxFutureMinutes: v.optional(v.number()),
+        requiresConfirmation: v.optional(v.boolean()),
+        isActive: v.optional(v.boolean()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.public.createEventType, args);
+      },
+    }),
+
+    updateEventType: mutation({
+      args: {
+        id: v.string(),
+        title: v.optional(v.string()),
+        slug: v.optional(v.string()),
+        lengthInMinutes: v.optional(v.number()),
+        lengthInMinutesOptions: v.optional(v.array(v.number())),
+        slotInterval: v.optional(v.number()),
+        description: v.optional(v.string()),
+        timezone: v.optional(v.string()),
+        lockTimeZoneToggle: v.optional(v.boolean()),
+        locations: v.optional(
+          v.array(
+            v.object({
+              type: v.string(),
+              address: v.optional(v.string()),
+              public: v.optional(v.boolean()),
+            })
+          )
+        ),
+        scheduleId: v.optional(v.string()),
+        resourceIds: v.optional(v.array(v.string())),
+        bufferBefore: v.optional(v.number()),
+        bufferAfter: v.optional(v.number()),
+        minNoticeMinutes: v.optional(v.number()),
+        maxFutureMinutes: v.optional(v.number()),
+        requiresConfirmation: v.optional(v.boolean()),
+        isActive: v.optional(v.boolean()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.public.updateEventType, args);
+      },
+    }),
+
+    deleteEventType: mutation({
+      args: { id: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.public.deleteEventType, args);
+      },
+    }),
+
+    toggleEventTypeActive: mutation({
+      args: { id: v.string(), isActive: v.boolean() },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.public.toggleEventTypeActive, args);
+      },
+    }),
+
+    // ============================================
+    // AVAILABILITY
+    // ============================================
     getAvailability: query({
       args: {
         resourceId: v.string(),
@@ -29,6 +132,7 @@ export function makeBookingAPI(component: ComponentApi) {
         return await ctx.runQuery(component.public.getAvailability, args);
       },
     }),
+
     getMonthAvailability: query({
       args: {
         resourceId: v.string(),
@@ -41,6 +145,7 @@ export function makeBookingAPI(component: ComponentApi) {
         return await ctx.runQuery(component.public.getMonthAvailability, args);
       },
     }),
+
     getDaySlots: query({
       args: {
         resourceId: v.string(),
@@ -52,6 +157,10 @@ export function makeBookingAPI(component: ComponentApi) {
         return await ctx.runQuery(component.public.getDaySlots, args);
       },
     }),
+
+    // ============================================
+    // BOOKINGS
+    // ============================================
     createReservation: mutation({
       args: {
         resourceId: v.string(),
@@ -63,8 +172,7 @@ export function makeBookingAPI(component: ComponentApi) {
         return await ctx.runMutation(component.public.createReservation, args);
       },
     }),
-    
-    // NEW: Expose createBooking
+
     createBooking: mutation({
       args: {
         eventTypeId: v.string(),
@@ -87,52 +195,449 @@ export function makeBookingAPI(component: ComponentApi) {
         return await ctx.runMutation(component.public.createBooking, args);
       },
     }),
-    
+
     getBooking: query({
-       args: { bookingId: v.id("bookings") },
-       handler: async (ctx, args) => {
-         return await ctx.runQuery(component.public.getBooking, args);
-       }
+      args: { bookingId: v.id("bookings") },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.public.getBooking, args);
+      },
+    }),
+
+    getBookingByUid: query({
+      args: { uid: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.public.getBookingByUid, args);
+      },
+    }),
+
+    listBookings: query({
+      args: {
+        organizationId: v.optional(v.id("organizations")),
+        resourceId: v.optional(v.string()),
+        status: v.optional(v.string()),
+        dateFrom: v.optional(v.number()),
+        dateTo: v.optional(v.number()),
+        eventTypeId: v.optional(v.string()),
+        limit: v.optional(v.number()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.public.listBookings, args);
+      },
     }),
 
     cancelReservation: mutation({
-      args: {
-        reservationId: v.string(),
-      },
+      args: { reservationId: v.id("bookings") },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.public.cancelReservation, args);
       },
     }),
 
-    createEventType: mutation({
+    // ============================================
+    // ORGANIZATIONS
+    // ============================================
+    getOrganization: query({
+      args: { id: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.organizations.getOrganization, args);
+      },
+    }),
+
+    getOrganizationBySlug: query({
+      args: { slug: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.organizations.getOrganizationBySlug, args);
+      },
+    }),
+
+    listOrganizations: query({
+      args: {},
+      handler: async (ctx) => {
+        return await ctx.runQuery(component.organizations.listOrganizations, {});
+      },
+    }),
+
+    createOrganization: mutation({
       args: {
         id: v.string(),
+        name: v.string(),
         slug: v.string(),
-        title: v.string(),
-        lengthInMinutes: v.number(),
-        lengthInMinutesOptions: v.optional(v.array(v.number())),
-        description: v.optional(v.string()),
-        timezone: v.string(),
-        lockTimeZoneToggle: v.boolean(),
-        locations: v.array(
+        settings: v.optional(
           v.object({
-            type: v.string(),
-            address: v.optional(v.string()),
-            public: v.optional(v.boolean()),
+            defaultTimezone: v.optional(v.string()),
+            defaultCurrency: v.optional(v.string()),
           })
         ),
       },
       handler: async (ctx, args) => {
-        return await ctx.runMutation(component.public.createEventType, args);
+        return await ctx.runMutation(component.organizations.createOrganization, args);
       },
     }),
 
-    // Presence: Real-time slot locking (batched)
+    updateOrganization: mutation({
+      args: {
+        id: v.string(),
+        name: v.optional(v.string()),
+        slug: v.optional(v.string()),
+        settings: v.optional(
+          v.object({
+            defaultTimezone: v.optional(v.string()),
+            defaultCurrency: v.optional(v.string()),
+          })
+        ),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.organizations.updateOrganization, args);
+      },
+    }),
+
+    deleteOrganization: mutation({
+      args: { id: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.organizations.deleteOrganization, args);
+      },
+    }),
+
+    // Teams
+    listTeams: query({
+      args: { organizationId: v.id("organizations") },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.organizations.listTeams, args);
+      },
+    }),
+
+    createTeam: mutation({
+      args: {
+        id: v.string(),
+        organizationId: v.id("organizations"),
+        name: v.string(),
+        slug: v.string(),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.organizations.createTeam, args);
+      },
+    }),
+
+    // Members
+    listMembers: query({
+      args: { organizationId: v.id("organizations") },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.organizations.listMembers, args);
+      },
+    }),
+
+    addMember: mutation({
+      args: {
+        userId: v.string(),
+        organizationId: v.id("organizations"),
+        teamId: v.optional(v.id("teams")),
+        role: v.string(),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.organizations.addMember, args);
+      },
+    }),
+
+    // ============================================
+    // RESOURCES
+    // ============================================
+    getResource: query({
+      args: { id: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.resources.getResource, args);
+      },
+    }),
+
+    listResources: query({
+      args: {
+        organizationId: v.id("organizations"),
+        type: v.optional(v.string()),
+        activeOnly: v.optional(v.boolean()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.resources.listResources, args);
+      },
+    }),
+
+    createResource: mutation({
+      args: {
+        id: v.string(),
+        organizationId: v.id("organizations"),
+        name: v.string(),
+        type: v.string(),
+        description: v.optional(v.string()),
+        timezone: v.string(),
+        quantity: v.optional(v.number()),
+        isFungible: v.optional(v.boolean()),
+        isActive: v.optional(v.boolean()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.resources.createResource, args);
+      },
+    }),
+
+    updateResource: mutation({
+      args: {
+        id: v.string(),
+        name: v.optional(v.string()),
+        type: v.optional(v.string()),
+        description: v.optional(v.string()),
+        timezone: v.optional(v.string()),
+        quantity: v.optional(v.number()),
+        isFungible: v.optional(v.boolean()),
+        isActive: v.optional(v.boolean()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.resources.updateResource, args);
+      },
+    }),
+
+    deleteResource: mutation({
+      args: { id: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.resources.deleteResource, args);
+      },
+    }),
+
+    toggleResourceActive: mutation({
+      args: { id: v.string(), isActive: v.boolean() },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.resources.toggleResourceActive, args);
+      },
+    }),
+
+    // ============================================
+    // SCHEDULES
+    // ============================================
+    getSchedule: query({
+      args: { id: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.schedules.getSchedule, args);
+      },
+    }),
+
+    listSchedules: query({
+      args: { organizationId: v.id("organizations") },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.schedules.listSchedules, args);
+      },
+    }),
+
+    getDefaultSchedule: query({
+      args: { organizationId: v.id("organizations") },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.schedules.getDefaultSchedule, args);
+      },
+    }),
+
+    createSchedule: mutation({
+      args: {
+        id: v.string(),
+        organizationId: v.id("organizations"),
+        name: v.string(),
+        timezone: v.string(),
+        isDefault: v.optional(v.boolean()),
+        weeklyHours: v.array(
+          v.object({
+            dayOfWeek: v.number(),
+            startTime: v.string(),
+            endTime: v.string(),
+          })
+        ),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.schedules.createSchedule, args);
+      },
+    }),
+
+    updateSchedule: mutation({
+      args: {
+        id: v.string(),
+        name: v.optional(v.string()),
+        timezone: v.optional(v.string()),
+        isDefault: v.optional(v.boolean()),
+        weeklyHours: v.optional(
+          v.array(
+            v.object({
+              dayOfWeek: v.number(),
+              startTime: v.string(),
+              endTime: v.string(),
+            })
+          )
+        ),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.schedules.updateSchedule, args);
+      },
+    }),
+
+    deleteSchedule: mutation({
+      args: { id: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.schedules.deleteSchedule, args);
+      },
+    }),
+
+    getEffectiveAvailability: query({
+      args: { scheduleId: v.string(), date: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.schedules.getEffectiveAvailability, args);
+      },
+    }),
+
+    // Date Overrides
+    listDateOverrides: query({
+      args: {
+        scheduleId: v.id("schedules"),
+        dateFrom: v.optional(v.string()),
+        dateTo: v.optional(v.string()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.schedules.listDateOverrides, args);
+      },
+    }),
+
+    createDateOverride: mutation({
+      args: {
+        scheduleId: v.id("schedules"),
+        date: v.string(),
+        type: v.string(),
+        customHours: v.optional(
+          v.array(
+            v.object({
+              startTime: v.string(),
+              endTime: v.string(),
+            })
+          )
+        ),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.schedules.createDateOverride, args);
+      },
+    }),
+
+    deleteDateOverride: mutation({
+      args: { overrideId: v.id("date_overrides") },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.schedules.deleteDateOverride, args);
+      },
+    }),
+
+    // ============================================
+    // MULTI-RESOURCE BOOKING
+    // ============================================
+    checkMultiResourceAvailability: query({
+      args: {
+        resources: v.array(
+          v.object({
+            resourceId: v.string(),
+            quantity: v.optional(v.number()),
+          })
+        ),
+        start: v.number(),
+        end: v.number(),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.multi_resource.checkMultiResourceAvailability, args);
+      },
+    }),
+
+    createMultiResourceBooking: mutation({
+      args: {
+        eventTypeId: v.string(),
+        organizationId: v.optional(v.id("organizations")),
+        resources: v.array(
+          v.object({
+            resourceId: v.string(),
+            quantity: v.optional(v.number()),
+          })
+        ),
+        start: v.number(),
+        end: v.number(),
+        timezone: v.string(),
+        booker: v.object({
+          name: v.string(),
+          email: v.string(),
+          phone: v.optional(v.string()),
+          notes: v.optional(v.string()),
+        }),
+        location: v.optional(
+          v.object({
+            type: v.string(),
+            value: v.optional(v.string()),
+          })
+        ),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.multi_resource.createMultiResourceBooking, args);
+      },
+    }),
+
+    getBookingWithItems: query({
+      args: { bookingId: v.id("bookings") },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.multi_resource.getBookingWithItems, args);
+      },
+    }),
+
+    cancelMultiResourceBooking: mutation({
+      args: {
+        bookingId: v.id("bookings"),
+        reason: v.optional(v.string()),
+        cancelledBy: v.optional(v.string()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.multi_resource.cancelMultiResourceBooking, args);
+      },
+    }),
+
+    // ============================================
+    // HOOKS
+    // ============================================
+    registerHook: mutation({
+      args: {
+        eventType: v.string(),
+        functionHandle: v.string(),
+        organizationId: v.optional(v.id("organizations")),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.hooks.registerHook, args);
+      },
+    }),
+
+    unregisterHook: mutation({
+      args: { hookId: v.id("hooks") },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.hooks.unregisterHook, args);
+      },
+    }),
+
+    transitionBookingState: mutation({
+      args: {
+        bookingId: v.id("bookings"),
+        toStatus: v.string(),
+        reason: v.optional(v.string()),
+        changedBy: v.optional(v.string()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.hooks.transitionBookingState, args);
+      },
+    }),
+
+    getBookingHistory: query({
+      args: { bookingId: v.id("bookings") },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.hooks.getBookingHistory, args);
+      },
+    }),
+
+    // ============================================
+    // PRESENCE (Real-time slot locking)
+    // ============================================
     heartbeat: mutation({
       args: {
-        resourceId: v.string(), // Resource ID (e.g., "studio-a")
-        slots: v.array(v.string()), // Array of Slot IDs
-        user: v.string(), // The User/Session ID
+        resourceId: v.string(),
+        slots: v.array(v.string()),
+        user: v.string(),
         data: v.optional(v.any()),
       },
       handler: async (ctx, args) => {
@@ -142,8 +647,8 @@ export function makeBookingAPI(component: ComponentApi) {
 
     leave: mutation({
       args: {
-        resourceId: v.string(), // Resource ID (e.g., "studio-a")
-        slots: v.array(v.string()), // Array of Slot IDs
+        resourceId: v.string(),
+        slots: v.array(v.string()),
         user: v.string(),
       },
       handler: async (ctx, args) => {
@@ -153,19 +658,18 @@ export function makeBookingAPI(component: ComponentApi) {
 
     getPresence: query({
       args: {
-        resourceId: v.string(), // Resource ID (e.g., "studio-a")
-        slot: v.string(), // Slot ID (ISO timestamp)
+        resourceId: v.string(),
+        slot: v.string(),
       },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.presence.list, args);
       },
     }),
 
-    // NEW: Get all presence holds for a resource on a specific date
     getDatePresence: query({
       args: {
-        resourceId: v.string(), // Resource ID (e.g., "studio-a")
-        date: v.string(), // Date in YYYY-MM-DD format (e.g., "2025-11-28")
+        resourceId: v.string(),
+        date: v.string(),
       },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.presence.getDatePresence, args);

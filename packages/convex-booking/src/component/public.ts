@@ -359,6 +359,16 @@ export const createEventType = mutation({
         public: v.optional(v.boolean()),
       })
     ),
+    // New optional fields for expanded schema
+    organizationId: v.optional(v.id("organizations")),
+    scheduleId: v.optional(v.string()),
+    resourceIds: v.optional(v.array(v.string())),
+    bufferBefore: v.optional(v.number()),
+    bufferAfter: v.optional(v.number()),
+    minNoticeMinutes: v.optional(v.number()),
+    maxFutureMinutes: v.optional(v.number()),
+    requiresConfirmation: v.optional(v.boolean()),
+    isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -366,11 +376,243 @@ export const createEventType = mutation({
       .withIndex("by_external_id", (q) => q.eq("id", args.id))
       .unique();
 
+    const now = Date.now();
+    const data = {
+      ...args,
+      isActive: args.isActive ?? true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
     if (existing) {
-      await ctx.db.patch(existing._id, args);
+      await ctx.db.patch(existing._id, { ...data, createdAt: existing.createdAt });
       return existing._id;
     } else {
-      return await ctx.db.insert("event_types", args);
+      return await ctx.db.insert("event_types", data);
     }
+  },
+});
+
+// ============================================
+// EVENT TYPE LIST & DETAIL QUERIES
+// ============================================
+
+export const listEventTypes = query({
+  args: {
+    organizationId: v.optional(v.id("organizations")),
+    activeOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    let eventTypes;
+
+    if (args.organizationId) {
+      eventTypes = await ctx.db
+        .query("event_types")
+        .withIndex("by_org", (q) => q.eq("organizationId", args.organizationId))
+        .collect();
+    } else {
+      eventTypes = await ctx.db.query("event_types").collect();
+    }
+
+    if (args.activeOnly) {
+      eventTypes = eventTypes.filter((et) => et.isActive !== false);
+    }
+
+    return eventTypes;
+  },
+});
+
+export const getEventTypeBySlug = query({
+  args: {
+    slug: v.string(),
+    organizationId: v.optional(v.id("organizations")),
+  },
+  handler: async (ctx, args) => {
+    const eventTypes = await ctx.db
+      .query("event_types")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .collect();
+
+    if (args.organizationId) {
+      return eventTypes.find((et) => et.organizationId === args.organizationId) ?? null;
+    }
+
+    return eventTypes[0] ?? null;
+  },
+});
+
+export const updateEventType = mutation({
+  args: {
+    id: v.string(),
+    title: v.optional(v.string()),
+    slug: v.optional(v.string()),
+    description: v.optional(v.string()),
+    lengthInMinutes: v.optional(v.number()),
+    lengthInMinutesOptions: v.optional(v.array(v.number())),
+    slotInterval: v.optional(v.number()),
+    timezone: v.optional(v.string()),
+    lockTimeZoneToggle: v.optional(v.boolean()),
+    locations: v.optional(
+      v.array(
+        v.object({
+          type: v.string(),
+          address: v.optional(v.string()),
+          public: v.optional(v.boolean()),
+        })
+      )
+    ),
+    scheduleId: v.optional(v.string()),
+    resourceIds: v.optional(v.array(v.string())),
+    bufferBefore: v.optional(v.number()),
+    bufferAfter: v.optional(v.number()),
+    minNoticeMinutes: v.optional(v.number()),
+    maxFutureMinutes: v.optional(v.number()),
+    requiresConfirmation: v.optional(v.boolean()),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const eventType = await ctx.db
+      .query("event_types")
+      .withIndex("by_external_id", (q) => q.eq("id", args.id))
+      .unique();
+
+    if (!eventType) {
+      throw new Error(`Event type "${args.id}" not found`);
+    }
+
+    const { id, ...updates } = args;
+    const filteredUpdates: Record<string, unknown> = { updatedAt: Date.now() };
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (value !== undefined) {
+        filteredUpdates[key] = value;
+      }
+    }
+
+    await ctx.db.patch(eventType._id, filteredUpdates);
+    return eventType._id;
+  },
+});
+
+export const deleteEventType = mutation({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    const eventType = await ctx.db
+      .query("event_types")
+      .withIndex("by_external_id", (q) => q.eq("id", args.id))
+      .unique();
+
+    if (!eventType) {
+      throw new Error(`Event type "${args.id}" not found`);
+    }
+
+    // Check for existing bookings
+    const bookings = await ctx.db
+      .query("bookings")
+      .withIndex("by_event_type", (q) => q.eq("eventTypeId", args.id))
+      .first();
+
+    if (bookings) {
+      throw new Error(
+        "Cannot delete event type with existing bookings. Deactivate it instead."
+      );
+    }
+
+    await ctx.db.delete(eventType._id);
+    return { success: true };
+  },
+});
+
+export const toggleEventTypeActive = mutation({
+  args: {
+    id: v.string(),
+    isActive: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const eventType = await ctx.db
+      .query("event_types")
+      .withIndex("by_external_id", (q) => q.eq("id", args.id))
+      .unique();
+
+    if (!eventType) {
+      throw new Error(`Event type "${args.id}" not found`);
+    }
+
+    await ctx.db.patch(eventType._id, {
+      isActive: args.isActive,
+      updatedAt: Date.now(),
+    });
+
+    return eventType._id;
+  },
+});
+
+// ============================================
+// BOOKING LIST & DETAIL QUERIES
+// ============================================
+
+export const getBookingByUid = query({
+  args: { uid: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("bookings")
+      .withIndex("by_uid", (q) => q.eq("uid", args.uid))
+      .unique();
+  },
+});
+
+export const listBookings = query({
+  args: {
+    organizationId: v.optional(v.id("organizations")),
+    resourceId: v.optional(v.string()),
+    eventTypeId: v.optional(v.string()),
+    status: v.optional(v.string()),
+    dateFrom: v.optional(v.number()),
+    dateTo: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    let bookings;
+
+    // Use the most specific index available
+    if (args.organizationId) {
+      bookings = await ctx.db
+        .query("bookings")
+        .withIndex("by_org", (q) => q.eq("organizationId", args.organizationId))
+        .collect();
+    } else if (args.resourceId) {
+      bookings = await ctx.db
+        .query("bookings")
+        .withIndex("by_resource", (q) => q.eq("resourceId", args.resourceId))
+        .collect();
+    } else if (args.eventTypeId) {
+      bookings = await ctx.db
+        .query("bookings")
+        .withIndex("by_event_type", (q) => q.eq("eventTypeId", args.eventTypeId))
+        .collect();
+    } else {
+      bookings = await ctx.db.query("bookings").collect();
+    }
+
+    // Apply filters
+    if (args.status) {
+      bookings = bookings.filter((b) => b.status === args.status);
+    }
+    if (args.dateFrom) {
+      bookings = bookings.filter((b) => b.start >= args.dateFrom!);
+    }
+    if (args.dateTo) {
+      bookings = bookings.filter((b) => b.start <= args.dateTo!);
+    }
+
+    // Sort by start time descending (newest first)
+    bookings.sort((a, b) => b.start - a.start);
+
+    // Apply limit
+    if (args.limit) {
+      bookings = bookings.slice(0, args.limit);
+    }
+
+    return bookings;
   },
 });

@@ -23,6 +23,240 @@ import type { FunctionReference } from "convex/server";
  */
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
+    hooks: {
+      getBookingHistory: FunctionReference<
+        "query",
+        "internal",
+        { bookingId: string },
+        any,
+        Name
+      >;
+      getHook: FunctionReference<
+        "query",
+        "internal",
+        { hookId: string },
+        any,
+        Name
+      >;
+      listHooks: FunctionReference<
+        "query",
+        "internal",
+        { eventType?: string; organizationId?: string },
+        any,
+        Name
+      >;
+      registerHook: FunctionReference<
+        "mutation",
+        "internal",
+        { eventType: string; functionHandle: string; organizationId?: string },
+        any,
+        Name
+      >;
+      transitionBookingState: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          bookingId: string;
+          changedBy?: string;
+          reason?: string;
+          toStatus: string;
+        },
+        any,
+        Name
+      >;
+      unregisterHook: FunctionReference<
+        "mutation",
+        "internal",
+        { hookId: string },
+        any,
+        Name
+      >;
+      updateHook: FunctionReference<
+        "mutation",
+        "internal",
+        { enabled?: boolean; functionHandle?: string; hookId: string },
+        any,
+        Name
+      >;
+    };
+    multi_resource: {
+      cancelMultiResourceBooking: FunctionReference<
+        "mutation",
+        "internal",
+        { bookingId: string; cancelledBy?: string; reason?: string },
+        any,
+        Name
+      >;
+      checkMultiResourceAvailability: FunctionReference<
+        "query",
+        "internal",
+        {
+          end: number;
+          resources: Array<{ quantity?: number; resourceId: string }>;
+          start: number;
+        },
+        any,
+        Name
+      >;
+      createMultiResourceBooking: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          booker: {
+            email: string;
+            name: string;
+            notes?: string;
+            phone?: string;
+          };
+          end: number;
+          eventTypeId: string;
+          location?: { type: string; value?: string };
+          organizationId?: string;
+          resources: Array<{ quantity?: number; resourceId: string }>;
+          start: number;
+          timezone: string;
+        },
+        any,
+        Name
+      >;
+      getBookingWithItems: FunctionReference<
+        "query",
+        "internal",
+        { bookingId: string },
+        any,
+        Name
+      >;
+    };
+    organizations: {
+      addMember: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          organizationId: string;
+          role: string;
+          teamId?: string;
+          userId: string;
+        },
+        any,
+        Name
+      >;
+      createOrganization: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          id: string;
+          name: string;
+          settings?: { defaultCurrency?: string; defaultTimezone?: string };
+          slug: string;
+        },
+        any,
+        Name
+      >;
+      createTeam: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string; name: string; organizationId: string; slug: string },
+        any,
+        Name
+      >;
+      deleteOrganization: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
+      deleteTeam: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
+      getMember: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string; userId: string },
+        any,
+        Name
+      >;
+      getOrganization: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
+      getOrganizationBySlug: FunctionReference<
+        "query",
+        "internal",
+        { slug: string },
+        any,
+        Name
+      >;
+      getTeam: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
+      listMembers: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string },
+        any,
+        Name
+      >;
+      listOrganizations: FunctionReference<"query", "internal", {}, any, Name>;
+      listTeams: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string },
+        any,
+        Name
+      >;
+      listUserOrganizations: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
+        any,
+        Name
+      >;
+      removeMember: FunctionReference<
+        "mutation",
+        "internal",
+        { memberId: string },
+        any,
+        Name
+      >;
+      updateMember: FunctionReference<
+        "mutation",
+        "internal",
+        { memberId: string; role?: string; teamId?: string },
+        any,
+        Name
+      >;
+      updateOrganization: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          id: string;
+          name?: string;
+          settings?: { defaultCurrency?: string; defaultTimezone?: string };
+          slug?: string;
+        },
+        any,
+        Name
+      >;
+      updateTeam: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string; name?: string; slug?: string },
+        any,
+        Name
+      >;
+    };
     presence: {
       cleanup: FunctionReference<
         "mutation",
@@ -92,8 +326,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         {
+          bufferAfter?: number;
+          bufferBefore?: number;
           description?: string;
           id: string;
+          isActive?: boolean;
           lengthInMinutes: number;
           lengthInMinutesOptions?: Array<number>;
           locations: Array<{
@@ -102,6 +339,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             type: string;
           }>;
           lockTimeZoneToggle: boolean;
+          maxFutureMinutes?: number;
+          minNoticeMinutes?: number;
+          organizationId?: string;
+          requiresConfirmation?: boolean;
+          resourceIds?: Array<string>;
+          scheduleId?: string;
           slotInterval?: number;
           slug: string;
           timezone: string;
@@ -117,6 +360,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      deleteEventType: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
       getAvailability: FunctionReference<
         "query",
         "internal",
@@ -128,6 +378,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         { bookingId: string },
+        any,
+        Name
+      >;
+      getBookingByUid: FunctionReference<
+        "query",
+        "internal",
+        { uid: string },
         any,
         Name
       >;
@@ -150,6 +407,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      getEventTypeBySlug: FunctionReference<
+        "query",
+        "internal",
+        { organizationId?: string; slug: string },
+        any,
+        Name
+      >;
       getMonthAvailability: FunctionReference<
         "query",
         "internal",
@@ -159,6 +423,279 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           eventLength: number;
           resourceId: string;
           slotInterval?: number;
+        },
+        any,
+        Name
+      >;
+      listBookings: FunctionReference<
+        "query",
+        "internal",
+        {
+          dateFrom?: number;
+          dateTo?: number;
+          eventTypeId?: string;
+          limit?: number;
+          organizationId?: string;
+          resourceId?: string;
+          status?: string;
+        },
+        any,
+        Name
+      >;
+      listEventTypes: FunctionReference<
+        "query",
+        "internal",
+        { activeOnly?: boolean; organizationId?: string },
+        any,
+        Name
+      >;
+      toggleEventTypeActive: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string; isActive: boolean },
+        any,
+        Name
+      >;
+      updateEventType: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          bufferAfter?: number;
+          bufferBefore?: number;
+          description?: string;
+          id: string;
+          isActive?: boolean;
+          lengthInMinutes?: number;
+          lengthInMinutesOptions?: Array<number>;
+          locations?: Array<{
+            address?: string;
+            public?: boolean;
+            type: string;
+          }>;
+          lockTimeZoneToggle?: boolean;
+          maxFutureMinutes?: number;
+          minNoticeMinutes?: number;
+          requiresConfirmation?: boolean;
+          resourceIds?: Array<string>;
+          scheduleId?: string;
+          slotInterval?: number;
+          slug?: string;
+          timezone?: string;
+          title?: string;
+        },
+        any,
+        Name
+      >;
+    };
+    resources: {
+      createResource: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          description?: string;
+          id: string;
+          isActive?: boolean;
+          isFungible?: boolean;
+          name: string;
+          organizationId: string;
+          quantity?: number;
+          timezone: string;
+          type: string;
+        },
+        any,
+        Name
+      >;
+      deleteResource: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
+      getQuantityAvailability: FunctionReference<
+        "query",
+        "internal",
+        { date: string; resourceId: string },
+        any,
+        Name
+      >;
+      getResource: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
+      getResourceAvailability: FunctionReference<
+        "query",
+        "internal",
+        { date: string; resourceId: string },
+        any,
+        Name
+      >;
+      getResourceById: FunctionReference<
+        "query",
+        "internal",
+        { resourceId: string },
+        any,
+        Name
+      >;
+      listResources: FunctionReference<
+        "query",
+        "internal",
+        { activeOnly?: boolean; organizationId: string; type?: string },
+        any,
+        Name
+      >;
+      listResourcesByType: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string; type: string },
+        any,
+        Name
+      >;
+      toggleResourceActive: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string; isActive: boolean },
+        any,
+        Name
+      >;
+      updateResource: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          description?: string;
+          id: string;
+          isActive?: boolean;
+          isFungible?: boolean;
+          name?: string;
+          quantity?: number;
+          timezone?: string;
+          type?: string;
+        },
+        any,
+        Name
+      >;
+    };
+    schedules: {
+      createDateOverride: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          customHours?: Array<{ endTime: string; startTime: string }>;
+          date: string;
+          scheduleId: string;
+          type: string;
+        },
+        any,
+        Name
+      >;
+      createSchedule: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          id: string;
+          isDefault?: boolean;
+          name: string;
+          organizationId: string;
+          timezone: string;
+          weeklyHours: Array<{
+            dayOfWeek: number;
+            endTime: string;
+            startTime: string;
+          }>;
+        },
+        any,
+        Name
+      >;
+      deleteDateOverride: FunctionReference<
+        "mutation",
+        "internal",
+        { overrideId: string },
+        any,
+        Name
+      >;
+      deleteSchedule: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
+      getDateOverride: FunctionReference<
+        "query",
+        "internal",
+        { date: string; scheduleId: string },
+        any,
+        Name
+      >;
+      getDefaultSchedule: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string },
+        any,
+        Name
+      >;
+      getEffectiveAvailability: FunctionReference<
+        "query",
+        "internal",
+        { date: string; scheduleId: string },
+        any,
+        Name
+      >;
+      getSchedule: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        any,
+        Name
+      >;
+      getScheduleById: FunctionReference<
+        "query",
+        "internal",
+        { scheduleId: string },
+        any,
+        Name
+      >;
+      listDateOverrides: FunctionReference<
+        "query",
+        "internal",
+        { dateFrom?: string; dateTo?: string; scheduleId: string },
+        any,
+        Name
+      >;
+      listSchedules: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string },
+        any,
+        Name
+      >;
+      updateDateOverride: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          customHours?: Array<{ endTime: string; startTime: string }>;
+          overrideId: string;
+          type?: string;
+        },
+        any,
+        Name
+      >;
+      updateSchedule: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          id: string;
+          isDefault?: boolean;
+          name?: string;
+          timezone?: string;
+          weeklyHours?: Array<{
+            dayOfWeek: number;
+            endTime: string;
+            startTime: string;
+          }>;
         },
         any,
         Name
