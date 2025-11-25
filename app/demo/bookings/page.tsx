@@ -33,7 +33,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { CalendarDays, Check, X, Clock, Mail, Phone, User } from "lucide-react";
 import { toast } from "sonner";
-import { Id } from "@/convex/_generated/dataModel";
 
 type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed";
 
@@ -57,7 +56,7 @@ export default function BookingsPage() {
   const transitionState = useMutation(api.booking.transitionBookingState);
   const cancelBooking = useMutation(api.booking.cancelReservation);
 
-  const handleConfirm = async (bookingId: Id<"bookings">) => {
+  const handleConfirm = async (bookingId: string) => {
     try {
       await transitionState({
         bookingId,
@@ -70,7 +69,7 @@ export default function BookingsPage() {
     }
   };
 
-  const handleCancel = async (bookingId: Id<"bookings">) => {
+  const handleCancel = async (bookingId: string) => {
     try {
       await cancelBooking({ reservationId: bookingId });
       toast.success("Booking cancelled");
@@ -79,7 +78,7 @@ export default function BookingsPage() {
     }
   };
 
-  const handleComplete = async (bookingId: Id<"bookings">) => {
+  const handleComplete = async (bookingId: string) => {
     try {
       await transitionState({
         bookingId,

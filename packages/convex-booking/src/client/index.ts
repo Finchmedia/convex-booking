@@ -30,7 +30,7 @@ export function makeBookingAPI(component: ComponentApi) {
 
     listEventTypes: query({
       args: {
-        organizationId: v.optional(v.id("organizations")),
+        organizationId: v.optional(v.string()),
         activeOnly: v.optional(v.boolean()),
       },
       handler: async (ctx, args) => {
@@ -56,9 +56,8 @@ export function makeBookingAPI(component: ComponentApi) {
             public: v.optional(v.boolean()),
           })
         ),
-        organizationId: v.optional(v.id("organizations")),
+        organizationId: v.optional(v.string()),
         scheduleId: v.optional(v.string()),
-        resourceIds: v.optional(v.array(v.string())),
         bufferBefore: v.optional(v.number()),
         bufferAfter: v.optional(v.number()),
         minNoticeMinutes: v.optional(v.number()),
@@ -92,7 +91,6 @@ export function makeBookingAPI(component: ComponentApi) {
           )
         ),
         scheduleId: v.optional(v.string()),
-        resourceIds: v.optional(v.array(v.string())),
         bufferBefore: v.optional(v.number()),
         bufferAfter: v.optional(v.number()),
         minNoticeMinutes: v.optional(v.number()),
@@ -197,9 +195,11 @@ export function makeBookingAPI(component: ComponentApi) {
     }),
 
     getBooking: query({
-      args: { bookingId: v.id("bookings") },
+      args: { bookingId: v.string() },
       handler: async (ctx, args) => {
-        return await ctx.runQuery(component.public.getBooking, args);
+        return await ctx.runQuery(component.public.getBooking, {
+          bookingId: args.bookingId as any,
+        });
       },
     }),
 
@@ -212,7 +212,7 @@ export function makeBookingAPI(component: ComponentApi) {
 
     listBookings: query({
       args: {
-        organizationId: v.optional(v.id("organizations")),
+        organizationId: v.optional(v.string()),
         resourceId: v.optional(v.string()),
         status: v.optional(v.string()),
         dateFrom: v.optional(v.number()),
@@ -226,114 +226,11 @@ export function makeBookingAPI(component: ComponentApi) {
     }),
 
     cancelReservation: mutation({
-      args: { reservationId: v.id("bookings") },
+      args: { reservationId: v.string() },
       handler: async (ctx, args) => {
-        return await ctx.runMutation(component.public.cancelReservation, args);
-      },
-    }),
-
-    // ============================================
-    // ORGANIZATIONS
-    // ============================================
-    getOrganization: query({
-      args: { id: v.string() },
-      handler: async (ctx, args) => {
-        return await ctx.runQuery(component.organizations.getOrganization, args);
-      },
-    }),
-
-    getOrganizationBySlug: query({
-      args: { slug: v.string() },
-      handler: async (ctx, args) => {
-        return await ctx.runQuery(component.organizations.getOrganizationBySlug, args);
-      },
-    }),
-
-    listOrganizations: query({
-      args: {},
-      handler: async (ctx) => {
-        return await ctx.runQuery(component.organizations.listOrganizations, {});
-      },
-    }),
-
-    createOrganization: mutation({
-      args: {
-        id: v.string(),
-        name: v.string(),
-        slug: v.string(),
-        settings: v.optional(
-          v.object({
-            defaultTimezone: v.optional(v.string()),
-            defaultCurrency: v.optional(v.string()),
-          })
-        ),
-      },
-      handler: async (ctx, args) => {
-        return await ctx.runMutation(component.organizations.createOrganization, args);
-      },
-    }),
-
-    updateOrganization: mutation({
-      args: {
-        id: v.string(),
-        name: v.optional(v.string()),
-        slug: v.optional(v.string()),
-        settings: v.optional(
-          v.object({
-            defaultTimezone: v.optional(v.string()),
-            defaultCurrency: v.optional(v.string()),
-          })
-        ),
-      },
-      handler: async (ctx, args) => {
-        return await ctx.runMutation(component.organizations.updateOrganization, args);
-      },
-    }),
-
-    deleteOrganization: mutation({
-      args: { id: v.string() },
-      handler: async (ctx, args) => {
-        return await ctx.runMutation(component.organizations.deleteOrganization, args);
-      },
-    }),
-
-    // Teams
-    listTeams: query({
-      args: { organizationId: v.id("organizations") },
-      handler: async (ctx, args) => {
-        return await ctx.runQuery(component.organizations.listTeams, args);
-      },
-    }),
-
-    createTeam: mutation({
-      args: {
-        id: v.string(),
-        organizationId: v.id("organizations"),
-        name: v.string(),
-        slug: v.string(),
-      },
-      handler: async (ctx, args) => {
-        return await ctx.runMutation(component.organizations.createTeam, args);
-      },
-    }),
-
-    // Members
-    listMembers: query({
-      args: { organizationId: v.id("organizations") },
-      handler: async (ctx, args) => {
-        return await ctx.runQuery(component.organizations.listMembers, args);
-      },
-    }),
-
-    addMember: mutation({
-      args: {
-        userId: v.string(),
-        organizationId: v.id("organizations"),
-        teamId: v.optional(v.id("teams")),
-        role: v.string(),
-      },
-      handler: async (ctx, args) => {
-        return await ctx.runMutation(component.organizations.addMember, args);
+        return await ctx.runMutation(component.public.cancelReservation, {
+          reservationId: args.reservationId as any,
+        });
       },
     }),
 
@@ -349,7 +246,7 @@ export function makeBookingAPI(component: ComponentApi) {
 
     listResources: query({
       args: {
-        organizationId: v.id("organizations"),
+        organizationId: v.string(),
         type: v.optional(v.string()),
         activeOnly: v.optional(v.boolean()),
       },
@@ -361,13 +258,14 @@ export function makeBookingAPI(component: ComponentApi) {
     createResource: mutation({
       args: {
         id: v.string(),
-        organizationId: v.id("organizations"),
+        organizationId: v.string(),
         name: v.string(),
         type: v.string(),
         description: v.optional(v.string()),
         timezone: v.string(),
         quantity: v.optional(v.number()),
         isFungible: v.optional(v.boolean()),
+        isStandalone: v.optional(v.boolean()),
         isActive: v.optional(v.boolean()),
       },
       handler: async (ctx, args) => {
@@ -384,6 +282,7 @@ export function makeBookingAPI(component: ComponentApi) {
         timezone: v.optional(v.string()),
         quantity: v.optional(v.number()),
         isFungible: v.optional(v.boolean()),
+        isStandalone: v.optional(v.boolean()),
         isActive: v.optional(v.boolean()),
       },
       handler: async (ctx, args) => {
@@ -406,6 +305,87 @@ export function makeBookingAPI(component: ComponentApi) {
     }),
 
     // ============================================
+    // RESOURCE ↔ EVENT TYPE MAPPING
+    // ============================================
+    getEventTypesForResource: query({
+      args: { resourceId: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.resource_event_types.getEventTypesForResource, args);
+      },
+    }),
+
+    getResourcesForEventType: query({
+      args: { eventTypeId: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.resource_event_types.getResourcesForEventType, args);
+      },
+    }),
+
+    getResourceIdsForEventType: query({
+      args: { eventTypeId: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.resource_event_types.getResourceIdsForEventType, args);
+      },
+    }),
+
+    getEventTypeIdsForResource: query({
+      args: { resourceId: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.resource_event_types.getEventTypeIdsForResource, args);
+      },
+    }),
+
+    hasResourceEventTypeLink: query({
+      args: {
+        resourceId: v.string(),
+        eventTypeId: v.string(),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.resource_event_types.hasLink, args);
+      },
+    }),
+
+    linkResourceToEventType: mutation({
+      args: {
+        resourceId: v.string(),
+        eventTypeId: v.string(),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.resource_event_types.linkResourceToEventType, args);
+      },
+    }),
+
+    unlinkResourceFromEventType: mutation({
+      args: {
+        resourceId: v.string(),
+        eventTypeId: v.string(),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.resource_event_types.unlinkResourceFromEventType, args);
+      },
+    }),
+
+    setResourcesForEventType: mutation({
+      args: {
+        eventTypeId: v.string(),
+        resourceIds: v.array(v.string()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.resource_event_types.setResourcesForEventType, args);
+      },
+    }),
+
+    setEventTypesForResource: mutation({
+      args: {
+        resourceId: v.string(),
+        eventTypeIds: v.array(v.string()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runMutation(component.resource_event_types.setEventTypesForResource, args);
+      },
+    }),
+
+    // ============================================
     // SCHEDULES
     // ============================================
     getSchedule: query({
@@ -416,14 +396,14 @@ export function makeBookingAPI(component: ComponentApi) {
     }),
 
     listSchedules: query({
-      args: { organizationId: v.id("organizations") },
+      args: { organizationId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.schedules.listSchedules, args);
       },
     }),
 
     getDefaultSchedule: query({
-      args: { organizationId: v.id("organizations") },
+      args: { organizationId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.schedules.getDefaultSchedule, args);
       },
@@ -432,7 +412,7 @@ export function makeBookingAPI(component: ComponentApi) {
     createSchedule: mutation({
       args: {
         id: v.string(),
-        organizationId: v.id("organizations"),
+        organizationId: v.string(),
         name: v.string(),
         timezone: v.string(),
         isDefault: v.optional(v.boolean()),
@@ -487,18 +467,22 @@ export function makeBookingAPI(component: ComponentApi) {
     // Date Overrides
     listDateOverrides: query({
       args: {
-        scheduleId: v.id("schedules"),
+        scheduleId: v.string(),
         dateFrom: v.optional(v.string()),
         dateTo: v.optional(v.string()),
       },
       handler: async (ctx, args) => {
-        return await ctx.runQuery(component.schedules.listDateOverrides, args);
+        return await ctx.runQuery(component.schedules.listDateOverrides, {
+          scheduleId: args.scheduleId as any,
+          dateFrom: args.dateFrom,
+          dateTo: args.dateTo,
+        });
       },
     }),
 
     createDateOverride: mutation({
       args: {
-        scheduleId: v.id("schedules"),
+        scheduleId: v.string(),
         date: v.string(),
         type: v.string(),
         customHours: v.optional(
@@ -511,14 +495,21 @@ export function makeBookingAPI(component: ComponentApi) {
         ),
       },
       handler: async (ctx, args) => {
-        return await ctx.runMutation(component.schedules.createDateOverride, args);
+        return await ctx.runMutation(component.schedules.createDateOverride, {
+          scheduleId: args.scheduleId as any,
+          date: args.date,
+          type: args.type,
+          customHours: args.customHours,
+        });
       },
     }),
 
     deleteDateOverride: mutation({
-      args: { overrideId: v.id("date_overrides") },
+      args: { overrideId: v.string() },
       handler: async (ctx, args) => {
-        return await ctx.runMutation(component.schedules.deleteDateOverride, args);
+        return await ctx.runMutation(component.schedules.deleteDateOverride, {
+          overrideId: args.overrideId as any,
+        });
       },
     }),
 
@@ -544,7 +535,7 @@ export function makeBookingAPI(component: ComponentApi) {
     createMultiResourceBooking: mutation({
       args: {
         eventTypeId: v.string(),
-        organizationId: v.optional(v.id("organizations")),
+        organizationId: v.optional(v.string()),
         resources: v.array(
           v.object({
             resourceId: v.string(),
@@ -573,20 +564,26 @@ export function makeBookingAPI(component: ComponentApi) {
     }),
 
     getBookingWithItems: query({
-      args: { bookingId: v.id("bookings") },
+      args: { bookingId: v.string() },
       handler: async (ctx, args) => {
-        return await ctx.runQuery(component.multi_resource.getBookingWithItems, args);
+        return await ctx.runQuery(component.multi_resource.getBookingWithItems, {
+          bookingId: args.bookingId as any,
+        });
       },
     }),
 
     cancelMultiResourceBooking: mutation({
       args: {
-        bookingId: v.id("bookings"),
+        bookingId: v.string(),
         reason: v.optional(v.string()),
         cancelledBy: v.optional(v.string()),
       },
       handler: async (ctx, args) => {
-        return await ctx.runMutation(component.multi_resource.cancelMultiResourceBooking, args);
+        return await ctx.runMutation(component.multi_resource.cancelMultiResourceBooking, {
+          bookingId: args.bookingId as any,
+          reason: args.reason,
+          cancelledBy: args.cancelledBy,
+        });
       },
     }),
 
@@ -597,7 +594,7 @@ export function makeBookingAPI(component: ComponentApi) {
       args: {
         eventType: v.string(),
         functionHandle: v.string(),
-        organizationId: v.optional(v.id("organizations")),
+        organizationId: v.optional(v.string()),
       },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.hooks.registerHook, args);
@@ -605,28 +602,37 @@ export function makeBookingAPI(component: ComponentApi) {
     }),
 
     unregisterHook: mutation({
-      args: { hookId: v.id("hooks") },
+      args: { hookId: v.string() },
       handler: async (ctx, args) => {
-        return await ctx.runMutation(component.hooks.unregisterHook, args);
+        return await ctx.runMutation(component.hooks.unregisterHook, {
+          hookId: args.hookId as any,
+        });
       },
     }),
 
     transitionBookingState: mutation({
       args: {
-        bookingId: v.id("bookings"),
+        bookingId: v.string(),
         toStatus: v.string(),
         reason: v.optional(v.string()),
         changedBy: v.optional(v.string()),
       },
       handler: async (ctx, args) => {
-        return await ctx.runMutation(component.hooks.transitionBookingState, args);
+        return await ctx.runMutation(component.hooks.transitionBookingState, {
+          bookingId: args.bookingId as any,
+          toStatus: args.toStatus,
+          reason: args.reason,
+          changedBy: args.changedBy,
+        });
       },
     }),
 
     getBookingHistory: query({
-      args: { bookingId: v.id("bookings") },
+      args: { bookingId: v.string() },
       handler: async (ctx, args) => {
-        return await ctx.runQuery(component.hooks.getBookingHistory, args);
+        return await ctx.runQuery(component.hooks.getBookingHistory, {
+          bookingId: args.bookingId as any,
+        });
       },
     }),
 

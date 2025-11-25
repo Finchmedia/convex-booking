@@ -116,7 +116,7 @@ export const checkMultiResourceAvailability = query({
 export const createMultiResourceBooking = mutation({
   args: {
     eventTypeId: v.string(),
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.string()),
     resources: v.array(
       v.object({
         resourceId: v.string(),

@@ -31,28 +31,6 @@ export const {
   cancelReservation,
 
   // ============================================
-  // ORGANIZATIONS
-  // ============================================
-  getOrganization,
-  getOrganizationBySlug,
-  listOrganizations,
-  createOrganization,
-  updateOrganization,
-  deleteOrganization,
-
-  // ============================================
-  // TEAMS
-  // ============================================
-  listTeams,
-  createTeam,
-
-  // ============================================
-  // MEMBERS
-  // ============================================
-  listMembers,
-  addMember,
-
-  // ============================================
   // RESOURCES
   // ============================================
   getResource,
@@ -61,6 +39,19 @@ export const {
   updateResource,
   deleteResource,
   toggleResourceActive,
+
+  // ============================================
+  // RESOURCE ↔ EVENT TYPE MAPPING
+  // ============================================
+  getEventTypesForResource,
+  getResourcesForEventType,
+  getResourceIdsForEventType,
+  getEventTypeIdsForResource,
+  hasResourceEventTypeLink,
+  linkResourceToEventType,
+  unlinkResourceFromEventType,
+  setResourcesForEventType,
+  setEventTypesForResource,
 
   // ============================================
   // SCHEDULES

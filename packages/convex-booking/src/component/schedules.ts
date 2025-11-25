@@ -23,7 +23,7 @@ export const getScheduleById = query({
 });
 
 export const listSchedules = query({
-  args: { organizationId: v.id("organizations") },
+  args: { organizationId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("schedules")
@@ -33,7 +33,7 @@ export const listSchedules = query({
 });
 
 export const getDefaultSchedule = query({
-  args: { organizationId: v.id("organizations") },
+  args: { organizationId: v.string() },
   handler: async (ctx, args) => {
     const schedules = await ctx.db
       .query("schedules")
@@ -51,7 +51,7 @@ export const getDefaultSchedule = query({
 export const createSchedule = mutation({
   args: {
     id: v.string(),
-    organizationId: v.id("organizations"),
+    organizationId: v.string(),
     name: v.string(),
     timezone: v.string(),
     isDefault: v.optional(v.boolean()),

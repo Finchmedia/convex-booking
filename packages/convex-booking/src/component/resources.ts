@@ -24,7 +24,7 @@ export const getResourceById = query({
 
 export const listResources = query({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.string(),
     type: v.optional(v.string()),
     activeOnly: v.optional(v.boolean()),
   },
@@ -51,7 +51,7 @@ export const listResources = query({
 
 export const listResourcesByType = query({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.string(),
     type: v.string(),
   },
   handler: async (ctx, args) => {
@@ -71,13 +71,14 @@ export const listResourcesByType = query({
 export const createResource = mutation({
   args: {
     id: v.string(),
-    organizationId: v.id("organizations"),
+    organizationId: v.string(),
     name: v.string(),
     type: v.string(),
     description: v.optional(v.string()),
     timezone: v.string(),
     quantity: v.optional(v.number()),
     isFungible: v.optional(v.boolean()),
+    isStandalone: v.optional(v.boolean()),
     isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -101,6 +102,7 @@ export const createResource = mutation({
       timezone: args.timezone,
       quantity: args.quantity,
       isFungible: args.isFungible,
+      isStandalone: args.isStandalone,
       isActive: args.isActive ?? true,
       createdAt: now,
       updatedAt: now,
@@ -117,6 +119,7 @@ export const updateResource = mutation({
     timezone: v.optional(v.string()),
     quantity: v.optional(v.number()),
     isFungible: v.optional(v.boolean()),
+    isStandalone: v.optional(v.boolean()),
     isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -137,6 +140,7 @@ export const updateResource = mutation({
     if (args.timezone !== undefined) updates.timezone = args.timezone;
     if (args.quantity !== undefined) updates.quantity = args.quantity;
     if (args.isFungible !== undefined) updates.isFungible = args.isFungible;
+    if (args.isStandalone !== undefined) updates.isStandalone = args.isStandalone;
     if (args.isActive !== undefined) updates.isActive = args.isActive;
 
     await ctx.db.patch(resource._id, updates);

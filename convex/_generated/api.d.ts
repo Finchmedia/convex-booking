@@ -138,115 +138,6 @@ export declare const components: {
         any
       >;
     };
-    organizations: {
-      addMember: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          organizationId: string;
-          role: string;
-          teamId?: string;
-          userId: string;
-        },
-        any
-      >;
-      createOrganization: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          id: string;
-          name: string;
-          settings?: { defaultCurrency?: string; defaultTimezone?: string };
-          slug: string;
-        },
-        any
-      >;
-      createTeam: FunctionReference<
-        "mutation",
-        "internal",
-        { id: string; name: string; organizationId: string; slug: string },
-        any
-      >;
-      deleteOrganization: FunctionReference<
-        "mutation",
-        "internal",
-        { id: string },
-        any
-      >;
-      deleteTeam: FunctionReference<
-        "mutation",
-        "internal",
-        { id: string },
-        any
-      >;
-      getMember: FunctionReference<
-        "query",
-        "internal",
-        { organizationId: string; userId: string },
-        any
-      >;
-      getOrganization: FunctionReference<
-        "query",
-        "internal",
-        { id: string },
-        any
-      >;
-      getOrganizationBySlug: FunctionReference<
-        "query",
-        "internal",
-        { slug: string },
-        any
-      >;
-      getTeam: FunctionReference<"query", "internal", { id: string }, any>;
-      listMembers: FunctionReference<
-        "query",
-        "internal",
-        { organizationId: string },
-        any
-      >;
-      listOrganizations: FunctionReference<"query", "internal", {}, any>;
-      listTeams: FunctionReference<
-        "query",
-        "internal",
-        { organizationId: string },
-        any
-      >;
-      listUserOrganizations: FunctionReference<
-        "query",
-        "internal",
-        { userId: string },
-        any
-      >;
-      removeMember: FunctionReference<
-        "mutation",
-        "internal",
-        { memberId: string },
-        any
-      >;
-      updateMember: FunctionReference<
-        "mutation",
-        "internal",
-        { memberId: string; role?: string; teamId?: string },
-        any
-      >;
-      updateOrganization: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          id: string;
-          name?: string;
-          settings?: { defaultCurrency?: string; defaultTimezone?: string };
-          slug?: string;
-        },
-        any
-      >;
-      updateTeam: FunctionReference<
-        "mutation",
-        "internal",
-        { id: string; name?: string; slug?: string },
-        any
-      >;
-    };
     presence: {
       cleanup: FunctionReference<
         "mutation",
@@ -326,7 +217,6 @@ export declare const components: {
           minNoticeMinutes?: number;
           organizationId?: string;
           requiresConfirmation?: boolean;
-          resourceIds?: Array<string>;
           scheduleId?: string;
           slotInterval?: number;
           slug: string;
@@ -446,13 +336,80 @@ export declare const components: {
           maxFutureMinutes?: number;
           minNoticeMinutes?: number;
           requiresConfirmation?: boolean;
-          resourceIds?: Array<string>;
           scheduleId?: string;
           slotInterval?: number;
           slug?: string;
           timezone?: string;
           title?: string;
         },
+        any
+      >;
+    };
+    resource_event_types: {
+      deleteAllLinksForEventType: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeId: string },
+        any
+      >;
+      deleteAllLinksForResource: FunctionReference<
+        "mutation",
+        "internal",
+        { resourceId: string },
+        any
+      >;
+      getEventTypeIdsForResource: FunctionReference<
+        "query",
+        "internal",
+        { resourceId: string },
+        any
+      >;
+      getEventTypesForResource: FunctionReference<
+        "query",
+        "internal",
+        { resourceId: string },
+        any
+      >;
+      getResourceIdsForEventType: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId: string },
+        any
+      >;
+      getResourcesForEventType: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId: string },
+        any
+      >;
+      hasLink: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId: string; resourceId: string },
+        any
+      >;
+      linkResourceToEventType: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeId: string; resourceId: string },
+        any
+      >;
+      setEventTypesForResource: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeIds: Array<string>; resourceId: string },
+        any
+      >;
+      setResourcesForEventType: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeId: string; resourceIds: Array<string> },
+        any
+      >;
+      unlinkResourceFromEventType: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeId: string; resourceId: string },
         any
       >;
     };
@@ -465,6 +422,7 @@ export declare const components: {
           id: string;
           isActive?: boolean;
           isFungible?: boolean;
+          isStandalone?: boolean;
           name: string;
           organizationId: string;
           quantity?: number;
@@ -524,6 +482,7 @@ export declare const components: {
           id: string;
           isActive?: boolean;
           isFungible?: boolean;
+          isStandalone?: boolean;
           name?: string;
           quantity?: number;
           timezone?: string;

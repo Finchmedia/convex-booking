@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useForm, Controller, useFieldArray, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -20,7 +24,44 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { X, Plus, Loader2 } from "lucide-react";
+import { X, Plus, Loader2, Users } from "lucide-react";
+
+// Zod Schema
+const locationSchema = z.object({
+  type: z.string(),
+  address: z.string().optional(),
+  public: z.boolean().optional(),
+});
+
+const eventTypeFormSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  slug: z.string().min(1, "Slug is required"),
+  description: z.string().optional(),
+  durations: z.array(z.number()).min(1, "At least one duration is required"),
+  slotInterval: z.number(),
+  timezone: z.string(),
+  lockTimezone: z.boolean(),
+  locations: z.array(locationSchema).min(1),
+  bufferBefore: z.number(),
+  bufferAfter: z.number(),
+  minNotice: z.number(),
+  maxFuture: z.number(),
+  requiresConfirmation: z.boolean(),
+  isActive: z.boolean(),
+  resourceIds: z.array(z.string()),
+});
+
+type EventTypeFormData = z.infer<typeof eventTypeFormSchema>;
+
+interface Resource {
+  _id: string;
+  id: string;
+  name: string;
+  type: string;
+  description?: string;
+  isActive: boolean;
+  isStandalone?: boolean;
+}
 
 interface EventTypeFormProps {
   eventType?: {
@@ -41,6 +82,8 @@ interface EventTypeFormProps {
     requiresConfirmation?: boolean;
     isActive?: boolean;
   };
+  availableResources: Resource[];
+  initialResourceIds?: string[];
 }
 
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120, 180, 240, 300];
@@ -51,152 +94,194 @@ const LOCATION_TYPES = [
   { value: "address", label: "Address" },
 ];
 
-export function EventTypeForm({ eventType }: EventTypeFormProps) {
+const formatDuration = (minutes: number) => {
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins ? `${hours}h ${mins}m` : `${hours}h`;
+};
+
+// Isolated component to prevent watch subscription thrashing inside map
+function LocationField({
+  index,
+  control,
+  onRemove,
+  canRemove
+}: {
+  index: number;
+  control: any;
+  onRemove: () => void;
+  canRemove: boolean;
+}) {
+  // useWatch inside component = isolated subscription (no thrashing)
+  const locationType = useWatch({ control, name: `locations.${index}.type` });
+
+  return (
+    <div className="flex gap-3 items-start">
+      <Controller
+        name={`locations.${index}.type`}
+        control={control}
+        render={({ field: typeField }) => (
+          <Select value={typeField.value} onValueChange={typeField.onChange}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LOCATION_TYPES.map((type) => (
+                <SelectItem key={type.value} value={type.value}>
+                  {type.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      />
+      {locationType === "address" && (
+        <Controller
+          name={`locations.${index}.address`}
+          control={control}
+          render={({ field: addressField }) => (
+            <Input
+              {...addressField}
+              placeholder="Enter address..."
+              className="flex-1"
+            />
+          )}
+        />
+      )}
+      {canRemove && (
+        <Button type="button" variant="ghost" size="icon" onClick={onRemove}>
+          <X className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+const generateSlug = (value: string) => {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+};
+
+export function EventTypeForm({ eventType, availableResources, initialResourceIds }: EventTypeFormProps) {
   const router = useRouter();
   const createEventType = useMutation(api.booking.createEventType);
   const updateEventType = useMutation(api.booking.updateEventType);
+  const setResourcesForEventType = useMutation(api.booking.setResourcesForEventType);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [title, setTitle] = useState(eventType?.title ?? "");
-  const [slug, setSlug] = useState(eventType?.slug ?? "");
-  const [description, setDescription] = useState(eventType?.description ?? "");
-  const [durations, setDurations] = useState<number[]>(
-    eventType?.lengthInMinutesOptions ?? [eventType?.lengthInMinutes ?? 30]
-  );
-  const [slotInterval, setSlotInterval] = useState(eventType?.slotInterval ?? 15);
-  const [timezone, setTimezone] = useState(
-    eventType?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-  );
-  const [lockTimezone, setLockTimezone] = useState(
-    eventType?.lockTimeZoneToggle ?? false
-  );
-  const [locations, setLocations] = useState<
-    Array<{ type: string; address?: string; public?: boolean }>
-  >(eventType?.locations ?? [{ type: "in_person" }]);
-  const [bufferBefore, setBufferBefore] = useState(eventType?.bufferBefore ?? 0);
-  const [bufferAfter, setBufferAfter] = useState(eventType?.bufferAfter ?? 15);
-  const [minNotice, setMinNotice] = useState(eventType?.minNoticeMinutes ?? 60);
-  const [maxFuture, setMaxFuture] = useState(
-    eventType?.maxFutureMinutes ?? 60 * 24 * 60 // 60 days
-  );
-  const [requiresConfirmation, setRequiresConfirmation] = useState(
-    eventType?.requiresConfirmation ?? false
-  );
-  const [isActive, setIsActive] = useState(eventType?.isActive ?? true);
+  // Memoize default values to prevent re-renders
+  const defaultValues = useMemo<EventTypeFormData>(() => ({
+    title: eventType?.title ?? "",
+    slug: eventType?.slug ?? "",
+    description: eventType?.description ?? "",
+    durations: eventType?.lengthInMinutesOptions ?? [eventType?.lengthInMinutes ?? 30],
+    slotInterval: eventType?.slotInterval ?? 15,
+    timezone: eventType?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    lockTimezone: eventType?.lockTimeZoneToggle ?? false,
+    locations: eventType?.locations ?? [{ type: "in_person" }],
+    bufferBefore: eventType?.bufferBefore ?? 0,
+    bufferAfter: eventType?.bufferAfter ?? 15,
+    minNotice: eventType?.minNoticeMinutes ?? 60,
+    maxFuture: eventType?.maxFutureMinutes ?? 60 * 24 * 60,
+    requiresConfirmation: eventType?.requiresConfirmation ?? false,
+    isActive: eventType?.isActive ?? true,
+    resourceIds: initialResourceIds ?? [],
+  }), [eventType, initialResourceIds]);
 
-  const generateSlug = (value: string) => {
-    return value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-  };
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<EventTypeFormData>({
+    resolver: zodResolver(eventTypeFormSchema),
+    defaultValues,
+  });
 
-  const handleTitleChange = (value: string) => {
-    setTitle(value);
+  const { fields: locationFields, append: appendLocation, remove: removeLocation } = useFieldArray({
+    control,
+    name: "locations",
+  });
+
+  // Use useWatch instead of watch for isolated re-renders
+  const durations = useWatch({ control, name: "durations" }) ?? [];
+  const resourceIds = useWatch({ control, name: "resourceIds" }) ?? [];
+
+  // Auto-generate slug from title (only for new event types)
+  const handleTitleChange = (value: string, onChange: (value: string) => void) => {
+    onChange(value);
     if (!eventType) {
-      setSlug(generateSlug(value));
+      setValue("slug", generateSlug(value));
     }
   };
 
   const addDuration = (duration: number) => {
     if (!durations.includes(duration)) {
-      setDurations([...durations, duration].sort((a, b) => a - b));
+      setValue("durations", [...durations, duration].sort((a, b) => a - b));
     }
   };
 
   const removeDuration = (duration: number) => {
     if (durations.length > 1) {
-      setDurations(durations.filter((d) => d !== duration));
+      setValue("durations", durations.filter((d) => d !== duration));
     }
   };
 
-  const addLocation = () => {
-    setLocations([...locations, { type: "in_person" }]);
-  };
+  const toggleResource = useCallback((resourceId: string) => {
+    const newIds = resourceIds.includes(resourceId)
+      ? resourceIds.filter((id) => id !== resourceId)
+      : [...resourceIds, resourceId];
+    setValue("resourceIds", newIds);
+  }, [resourceIds, setValue]);
 
-  const removeLocation = (index: number) => {
-    if (locations.length > 1) {
-      setLocations(locations.filter((_, i) => i !== index));
-    }
-  };
-
-  const updateLocation = (
-    index: number,
-    field: "type" | "address",
-    value: string
-  ) => {
-    const updated = [...locations];
-    updated[index] = { ...updated[index], [field]: value };
-    setLocations(updated);
-  };
-
-  const formatDuration = (minutes: number) => {
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return mins ? `${hours}h ${mins}m` : `${hours}h`;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title || !slug) {
-      toast.error("Title and slug are required");
-      return;
-    }
-
-    setIsSubmitting(true);
+  const onSubmit = async (data: EventTypeFormData) => {
     try {
+      let eventTypeId: string;
+
+      const payload = {
+        title: data.title,
+        slug: data.slug,
+        description: data.description || undefined,
+        lengthInMinutes: data.durations[0],
+        lengthInMinutesOptions: data.durations.length > 1 ? data.durations : undefined,
+        slotInterval: data.slotInterval,
+        timezone: data.timezone,
+        lockTimeZoneToggle: data.lockTimezone,
+        locations: data.locations,
+        bufferBefore: data.bufferBefore,
+        bufferAfter: data.bufferAfter,
+        minNoticeMinutes: data.minNotice,
+        maxFutureMinutes: data.maxFuture,
+        requiresConfirmation: data.requiresConfirmation,
+        isActive: data.isActive,
+      };
+
       if (eventType) {
-        await updateEventType({
-          id: eventType.id,
-          title,
-          slug,
-          description: description || undefined,
-          lengthInMinutes: durations[0],
-          lengthInMinutesOptions: durations.length > 1 ? durations : undefined,
-          slotInterval,
-          timezone,
-          lockTimeZoneToggle: lockTimezone,
-          locations,
-          bufferBefore,
-          bufferAfter,
-          minNoticeMinutes: minNotice,
-          maxFutureMinutes: maxFuture,
-          requiresConfirmation,
-          isActive,
-        });
+        await updateEventType({ id: eventType.id, ...payload });
+        eventTypeId = eventType.id;
         toast.success("Event type updated");
       } else {
-        await createEventType({
-          id: `et_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          title,
-          slug,
-          description: description || undefined,
-          lengthInMinutes: durations[0],
-          lengthInMinutesOptions: durations.length > 1 ? durations : undefined,
-          slotInterval,
-          timezone,
-          lockTimeZoneToggle: lockTimezone,
-          locations,
-          bufferBefore,
-          bufferAfter,
-          minNoticeMinutes: minNotice,
-          maxFutureMinutes: maxFuture,
-          requiresConfirmation,
-          isActive,
-        });
+        eventTypeId = `et_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        await createEventType({ id: eventTypeId, ...payload });
         toast.success("Event type created");
       }
+
+      // Save resource links
+      await setResourcesForEventType({
+        eventTypeId,
+        resourceIds: data.resourceIds,
+      });
+
       router.push("/demo/event-types");
     } catch (error: any) {
       toast.error(error.message || "Failed to save event type");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-w-2xl">
       {/* Basic Info */}
       <Card>
         <CardHeader>
@@ -208,33 +293,56 @@ export function EventTypeForm({ eventType }: EventTypeFormProps) {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="title">Title</Label>
-            <Input
-              id="title"
-              value={title}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="e.g., 30 Minute Meeting"
+            <Controller
+              name="title"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  id="title"
+                  {...field}
+                  onChange={(e) => handleTitleChange(e.target.value, field.onChange)}
+                  placeholder="e.g., 30 Minute Meeting"
+                />
+              )}
             />
+            {errors.title && (
+              <p className="text-sm text-destructive">{errors.title.message}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="slug">URL Slug</Label>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">/</span>
-              <Input
-                id="slug"
-                value={slug}
-                onChange={(e) => setSlug(generateSlug(e.target.value))}
-                placeholder="30-minute-meeting"
+              <Controller
+                name="slug"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    id="slug"
+                    {...field}
+                    onChange={(e) => field.onChange(generateSlug(e.target.value))}
+                    placeholder="30-minute-meeting"
+                  />
+                )}
               />
             </div>
+            {errors.slug && (
+              <p className="text-sm text-destructive">{errors.slug.message}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe what this event is about..."
-              rows={3}
+            <Controller
+              name="description"
+              control={control}
+              render={({ field }) => (
+                <Textarea
+                  id="description"
+                  {...field}
+                  placeholder="Describe what this event is about..."
+                  rows={3}
+                />
+              )}
             />
           </div>
         </CardContent>
@@ -253,11 +361,7 @@ export function EventTypeForm({ eventType }: EventTypeFormProps) {
             <Label>Duration Options</Label>
             <div className="flex flex-wrap gap-2 mb-3">
               {durations.map((duration) => (
-                <Badge
-                  key={duration}
-                  variant="secondary"
-                  className="px-3 py-1"
-                >
+                <Badge key={duration} variant="secondary" className="px-3 py-1">
                   {formatDuration(duration)}
                   {durations.length > 1 && (
                     <button
@@ -271,38 +375,39 @@ export function EventTypeForm({ eventType }: EventTypeFormProps) {
                 </Badge>
               ))}
             </div>
-            <Select onValueChange={(v) => addDuration(Number(v))}>
+            <Select onValueChange={(v) => addDuration(Number(v))} value="">
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Add duration..." />
               </SelectTrigger>
               <SelectContent>
-                {DURATION_OPTIONS.filter((d) => !durations.includes(d)).map(
-                  (duration) => (
-                    <SelectItem key={duration} value={duration.toString()}>
-                      {formatDuration(duration)}
-                    </SelectItem>
-                  )
-                )}
+                {DURATION_OPTIONS.filter((d) => !durations.includes(d)).map((duration) => (
+                  <SelectItem key={duration} value={duration.toString()}>
+                    {formatDuration(duration)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="slotInterval">Slot Interval</Label>
-            <Select
-              value={slotInterval.toString()}
-              onValueChange={(v) => setSlotInterval(Number(v))}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[15, 30, 60].map((interval) => (
-                  <SelectItem key={interval} value={interval.toString()}>
-                    Every {formatDuration(interval)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="slotInterval"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value.toString()} onValueChange={(v) => field.onChange(Number(v))}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[15, 30, 60].map((interval) => (
+                      <SelectItem key={interval} value={interval.toString()}>
+                        Every {formatDuration(interval)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             <p className="text-xs text-muted-foreground">
               How frequently slots are offered (e.g., every 15 minutes)
             </p>
@@ -314,54 +419,77 @@ export function EventTypeForm({ eventType }: EventTypeFormProps) {
       <Card>
         <CardHeader>
           <CardTitle>Location</CardTitle>
-          <CardDescription>
-            Where will this event take place?
-          </CardDescription>
+          <CardDescription>Where will this event take place?</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {locations.map((location, index) => (
-            <div key={index} className="flex gap-3 items-start">
-              <Select
-                value={location.type}
-                onValueChange={(v) => updateLocation(index, "type", v)}
-              >
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOCATION_TYPES.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {location.type === "address" && (
-                <Input
-                  value={location.address ?? ""}
-                  onChange={(e) =>
-                    updateLocation(index, "address", e.target.value)
-                  }
-                  placeholder="Enter address..."
-                  className="flex-1"
-                />
-              )}
-              {locations.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeLocation(index)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+          {locationFields.map((field, index) => (
+            <LocationField
+              key={field.id}
+              index={index}
+              control={control}
+              onRemove={() => removeLocation(index)}
+              canRemove={locationFields.length > 1}
+            />
           ))}
-          <Button type="button" variant="outline" onClick={addLocation}>
+          <Button type="button" variant="outline" onClick={() => appendLocation({ type: "in_person" })}>
             <Plus className="mr-2 h-4 w-4" />
             Add Location
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Resource Linking */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Linked Resources
+          </CardTitle>
+          <CardDescription>
+            Select which resources this event type can be booked with.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {availableResources.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-muted-foreground mb-2">No resources available</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => router.push("/demo/resources")}>
+                Create Resources
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {availableResources.map((resource) => (
+                <label
+                  key={resource._id}
+                  className={`flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    resourceIds.includes(resource.id)
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:bg-muted/50"
+                  }`}
+                >
+                  <Checkbox
+                    checked={resourceIds.includes(resource.id)}
+                    onCheckedChange={() => toggleResource(resource.id)}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{resource.name}</span>
+                      <Badge variant="outline" className="text-xs">{resource.type}</Badge>
+                      {!resource.isActive && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
+                      {resource.isStandalone === false && <Badge variant="secondary" className="text-xs">Add-on only</Badge>}
+                    </div>
+                    {resource.description && (
+                      <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{resource.description}</p>
+                    )}
+                  </div>
+                </label>
+              ))}
+              <p className="text-xs text-muted-foreground mt-2">
+                {resourceIds.length} resource{resourceIds.length !== 1 ? "s" : ""} selected
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -369,100 +497,102 @@ export function EventTypeForm({ eventType }: EventTypeFormProps) {
       <Card>
         <CardHeader>
           <CardTitle>Buffers & Limits</CardTitle>
-          <CardDescription>
-            Set up buffer time and booking restrictions
-          </CardDescription>
+          <CardDescription>Set up buffer time and booking restrictions</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="bufferBefore">Buffer Before</Label>
-              <Select
-                value={bufferBefore.toString()}
-                onValueChange={(v) => setBufferBefore(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0, 5, 10, 15, 30, 45, 60].map((mins) => (
-                    <SelectItem key={mins} value={mins.toString()}>
-                      {mins === 0 ? "No buffer" : `${mins} minutes`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Buffer Before</Label>
+              <Controller
+                name="bufferBefore"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value.toString()} onValueChange={(v) => field.onChange(Number(v))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 5, 10, 15, 30, 45, 60].map((mins) => (
+                        <SelectItem key={mins} value={mins.toString()}>
+                          {mins === 0 ? "No buffer" : `${mins} minutes`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bufferAfter">Buffer After</Label>
-              <Select
-                value={bufferAfter.toString()}
-                onValueChange={(v) => setBufferAfter(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0, 5, 10, 15, 30, 45, 60].map((mins) => (
-                    <SelectItem key={mins} value={mins.toString()}>
-                      {mins === 0 ? "No buffer" : `${mins} minutes`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Buffer After</Label>
+              <Controller
+                name="bufferAfter"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value.toString()} onValueChange={(v) => field.onChange(Number(v))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 5, 10, 15, 30, 45, 60].map((mins) => (
+                        <SelectItem key={mins} value={mins.toString()}>
+                          {mins === 0 ? "No buffer" : `${mins} minutes`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
           </div>
           <Separator />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="minNotice">Minimum Notice</Label>
-              <Select
-                value={minNotice.toString()}
-                onValueChange={(v) => setMinNotice(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0, 30, 60, 120, 240, 480, 1440, 2880].map((mins) => (
-                    <SelectItem key={mins} value={mins.toString()}>
-                      {mins === 0
-                        ? "No minimum"
-                        : mins < 60
-                        ? `${mins} minutes`
-                        : mins < 1440
-                        ? `${mins / 60} hours`
-                        : `${mins / 1440} days`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Minimum Notice</Label>
+              <Controller
+                name="minNotice"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value.toString()} onValueChange={(v) => field.onChange(Number(v))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 30, 60, 120, 240, 480, 1440, 2880].map((mins) => (
+                        <SelectItem key={mins} value={mins.toString()}>
+                          {mins === 0
+                            ? "No minimum"
+                            : mins < 60
+                            ? `${mins} minutes`
+                            : mins < 1440
+                            ? `${mins / 60} hours`
+                            : `${mins / 1440} days`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="maxFuture">Book Up To</Label>
-              <Select
-                value={maxFuture.toString()}
-                onValueChange={(v) => setMaxFuture(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[
-                    7 * 24 * 60,
-                    14 * 24 * 60,
-                    30 * 24 * 60,
-                    60 * 24 * 60,
-                    90 * 24 * 60,
-                    180 * 24 * 60,
-                    365 * 24 * 60,
-                  ].map((mins) => (
-                    <SelectItem key={mins} value={mins.toString()}>
-                      {mins / (24 * 60)} days in advance
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Book Up To</Label>
+              <Controller
+                name="maxFuture"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value.toString()} onValueChange={(v) => field.onChange(Number(v))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[7, 14, 30, 60, 90, 180, 365].map((days) => (
+                        <SelectItem key={days} value={(days * 24 * 60).toString()}>
+                          {days} days in advance
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
           </div>
         </CardContent>
@@ -482,9 +612,12 @@ export function EventTypeForm({ eventType }: EventTypeFormProps) {
                 Bookings will be pending until you confirm them
               </p>
             </div>
-            <Switch
-              checked={requiresConfirmation}
-              onCheckedChange={setRequiresConfirmation}
+            <Controller
+              name="requiresConfirmation"
+              control={control}
+              render={({ field }) => (
+                <Switch checked={field.value} onCheckedChange={field.onChange} />
+              )}
             />
           </div>
           <Separator />
@@ -495,7 +628,13 @@ export function EventTypeForm({ eventType }: EventTypeFormProps) {
                 Prevent guests from changing the timezone
               </p>
             </div>
-            <Switch checked={lockTimezone} onCheckedChange={setLockTimezone} />
+            <Controller
+              name="lockTimezone"
+              control={control}
+              render={({ field }) => (
+                <Switch checked={field.value} onCheckedChange={field.onChange} />
+              )}
+            />
           </div>
           <Separator />
           <div className="flex items-center justify-between">
@@ -505,18 +644,20 @@ export function EventTypeForm({ eventType }: EventTypeFormProps) {
                 Deactivated event types cannot be booked
               </p>
             </div>
-            <Switch checked={isActive} onCheckedChange={setIsActive} />
+            <Controller
+              name="isActive"
+              control={control}
+              render={({ field }) => (
+                <Switch checked={field.value} onCheckedChange={field.onChange} />
+              )}
+            />
           </div>
         </CardContent>
       </Card>
 
       {/* Actions */}
       <div className="flex justify-end gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => router.push("/demo/event-types")}
-        >
+        <Button type="button" variant="outline" onClick={() => router.push("/demo/event-types")}>
           Cancel
         </Button>
         <Button type="submit" disabled={isSubmitting}>

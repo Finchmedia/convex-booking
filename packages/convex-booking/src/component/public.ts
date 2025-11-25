@@ -360,9 +360,8 @@ export const createEventType = mutation({
       })
     ),
     // New optional fields for expanded schema
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.string()),
     scheduleId: v.optional(v.string()),
-    resourceIds: v.optional(v.array(v.string())),
     bufferBefore: v.optional(v.number()),
     bufferAfter: v.optional(v.number()),
     minNoticeMinutes: v.optional(v.number()),
@@ -399,7 +398,7 @@ export const createEventType = mutation({
 
 export const listEventTypes = query({
   args: {
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.string()),
     activeOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -425,7 +424,7 @@ export const listEventTypes = query({
 export const getEventTypeBySlug = query({
   args: {
     slug: v.string(),
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const eventTypes = await ctx.db
@@ -462,7 +461,6 @@ export const updateEventType = mutation({
       )
     ),
     scheduleId: v.optional(v.string()),
-    resourceIds: v.optional(v.array(v.string())),
     bufferBefore: v.optional(v.number()),
     bufferAfter: v.optional(v.number()),
     minNoticeMinutes: v.optional(v.number()),
@@ -563,7 +561,7 @@ export const getBookingByUid = query({
 
 export const listBookings = query({
   args: {
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.string()),
     resourceId: v.optional(v.string()),
     eventTypeId: v.optional(v.string()),
     status: v.optional(v.string()),

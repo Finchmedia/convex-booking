@@ -22,7 +22,7 @@ export type HookEventType = (typeof HOOK_EVENTS)[number];
 
 export const listHooks = query({
   args: {
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.string()),
     eventType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -57,7 +57,7 @@ export const registerHook = mutation({
   args: {
     eventType: v.string(),
     functionHandle: v.string(),
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Validate event type
@@ -119,7 +119,7 @@ export const unregisterHook = mutation({
 export const triggerHooks = internalMutation({
   args: {
     eventType: v.string(),
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.string()),
     payload: v.any(),
   },
   handler: async (ctx, args) => {

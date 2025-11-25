@@ -6,6 +6,8 @@ import { EventTypeForm } from "../_components/event-type-form";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useParams } from "next/navigation";
 
+const DEMO_ORG_ID = "demo-org";
+
 export default function EditEventTypePage() {
   const params = useParams();
   const eventTypeId = params.id as string;
@@ -14,7 +16,19 @@ export default function EditEventTypePage() {
     eventTypeId,
   });
 
-  if (eventType === undefined) {
+  // Fetch all resources for the form
+  const allResources = useQuery(api.booking.listResources, {
+    organizationId: DEMO_ORG_ID,
+    activeOnly: false,
+  });
+
+  // Fetch linked resource IDs for this event type
+  const linkedResourceIds = useQuery(api.booking.getResourceIdsForEventType, {
+    eventTypeId,
+  });
+
+  // Wait for ALL data before rendering form
+  if (eventType === undefined || !allResources || linkedResourceIds === undefined) {
     return (
       <div className="space-y-6">
         <div>
@@ -68,6 +82,8 @@ export default function EditEventTypePage() {
           requiresConfirmation: eventType.requiresConfirmation,
           isActive: eventType.isActive,
         }}
+        availableResources={allResources}
+        initialResourceIds={linkedResourceIds}
       />
     </div>
   );

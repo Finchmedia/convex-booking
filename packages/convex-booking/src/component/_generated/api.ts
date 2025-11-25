@@ -11,9 +11,9 @@
 import type * as availability from "../availability.js";
 import type * as hooks from "../hooks.js";
 import type * as multi_resource from "../multi_resource.js";
-import type * as organizations from "../organizations.js";
 import type * as presence from "../presence.js";
 import type * as public_ from "../public.js";
+import type * as resource_event_types from "../resource_event_types.js";
 import type * as resources from "../resources.js";
 import type * as schedules from "../schedules.js";
 import type * as utils from "../utils.js";
@@ -29,9 +29,9 @@ const fullApi: ApiFromModules<{
   availability: typeof availability;
   hooks: typeof hooks;
   multi_resource: typeof multi_resource;
-  organizations: typeof organizations;
   presence: typeof presence;
   public: typeof public_;
+  resource_event_types: typeof resource_event_types;
   resources: typeof resources;
   schedules: typeof schedules;
   utils: typeof utils;

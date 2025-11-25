@@ -127,136 +127,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Name
       >;
     };
-    organizations: {
-      addMember: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          organizationId: string;
-          role: string;
-          teamId?: string;
-          userId: string;
-        },
-        any,
-        Name
-      >;
-      createOrganization: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          id: string;
-          name: string;
-          settings?: { defaultCurrency?: string; defaultTimezone?: string };
-          slug: string;
-        },
-        any,
-        Name
-      >;
-      createTeam: FunctionReference<
-        "mutation",
-        "internal",
-        { id: string; name: string; organizationId: string; slug: string },
-        any,
-        Name
-      >;
-      deleteOrganization: FunctionReference<
-        "mutation",
-        "internal",
-        { id: string },
-        any,
-        Name
-      >;
-      deleteTeam: FunctionReference<
-        "mutation",
-        "internal",
-        { id: string },
-        any,
-        Name
-      >;
-      getMember: FunctionReference<
-        "query",
-        "internal",
-        { organizationId: string; userId: string },
-        any,
-        Name
-      >;
-      getOrganization: FunctionReference<
-        "query",
-        "internal",
-        { id: string },
-        any,
-        Name
-      >;
-      getOrganizationBySlug: FunctionReference<
-        "query",
-        "internal",
-        { slug: string },
-        any,
-        Name
-      >;
-      getTeam: FunctionReference<
-        "query",
-        "internal",
-        { id: string },
-        any,
-        Name
-      >;
-      listMembers: FunctionReference<
-        "query",
-        "internal",
-        { organizationId: string },
-        any,
-        Name
-      >;
-      listOrganizations: FunctionReference<"query", "internal", {}, any, Name>;
-      listTeams: FunctionReference<
-        "query",
-        "internal",
-        { organizationId: string },
-        any,
-        Name
-      >;
-      listUserOrganizations: FunctionReference<
-        "query",
-        "internal",
-        { userId: string },
-        any,
-        Name
-      >;
-      removeMember: FunctionReference<
-        "mutation",
-        "internal",
-        { memberId: string },
-        any,
-        Name
-      >;
-      updateMember: FunctionReference<
-        "mutation",
-        "internal",
-        { memberId: string; role?: string; teamId?: string },
-        any,
-        Name
-      >;
-      updateOrganization: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          id: string;
-          name?: string;
-          settings?: { defaultCurrency?: string; defaultTimezone?: string };
-          slug?: string;
-        },
-        any,
-        Name
-      >;
-      updateTeam: FunctionReference<
-        "mutation",
-        "internal",
-        { id: string; name?: string; slug?: string },
-        any,
-        Name
-      >;
-    };
     presence: {
       cleanup: FunctionReference<
         "mutation",
@@ -343,7 +213,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           minNoticeMinutes?: number;
           organizationId?: string;
           requiresConfirmation?: boolean;
-          resourceIds?: Array<string>;
           scheduleId?: string;
           slotInterval?: number;
           slug: string;
@@ -476,13 +345,91 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           maxFutureMinutes?: number;
           minNoticeMinutes?: number;
           requiresConfirmation?: boolean;
-          resourceIds?: Array<string>;
           scheduleId?: string;
           slotInterval?: number;
           slug?: string;
           timezone?: string;
           title?: string;
         },
+        any,
+        Name
+      >;
+    };
+    resource_event_types: {
+      deleteAllLinksForEventType: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeId: string },
+        any,
+        Name
+      >;
+      deleteAllLinksForResource: FunctionReference<
+        "mutation",
+        "internal",
+        { resourceId: string },
+        any,
+        Name
+      >;
+      getEventTypeIdsForResource: FunctionReference<
+        "query",
+        "internal",
+        { resourceId: string },
+        any,
+        Name
+      >;
+      getEventTypesForResource: FunctionReference<
+        "query",
+        "internal",
+        { resourceId: string },
+        any,
+        Name
+      >;
+      getResourceIdsForEventType: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId: string },
+        any,
+        Name
+      >;
+      getResourcesForEventType: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId: string },
+        any,
+        Name
+      >;
+      hasLink: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId: string; resourceId: string },
+        any,
+        Name
+      >;
+      linkResourceToEventType: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeId: string; resourceId: string },
+        any,
+        Name
+      >;
+      setEventTypesForResource: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeIds: Array<string>; resourceId: string },
+        any,
+        Name
+      >;
+      setResourcesForEventType: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeId: string; resourceIds: Array<string> },
+        any,
+        Name
+      >;
+      unlinkResourceFromEventType: FunctionReference<
+        "mutation",
+        "internal",
+        { eventTypeId: string; resourceId: string },
         any,
         Name
       >;
@@ -496,6 +443,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           id: string;
           isActive?: boolean;
           isFungible?: boolean;
+          isStandalone?: boolean;
           name: string;
           organizationId: string;
           quantity?: number;
@@ -569,6 +517,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           id: string;
           isActive?: boolean;
           isFungible?: boolean;
+          isStandalone?: boolean;
           name?: string;
           quantity?: number;
           timezone?: string;

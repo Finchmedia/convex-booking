@@ -34,8 +34,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Users, Plus, Pencil, Trash, Building } from "lucide-react";
+import { Users, Plus, Pencil, Trash } from "lucide-react";
 import { toast } from "sonner";
+
+// Demo organization ID - in production, this would come from your auth system
+const DEMO_ORG_ID = "demo-org";
 
 const RESOURCE_TYPES = [
   { value: "room", label: "Room" },
@@ -55,37 +58,19 @@ export default function ResourcesPage() {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     quantity: 1,
     isFungible: false,
+    isStandalone: true,
     isActive: true,
   });
 
-  // Get organizations to find one to use
-  const organizations = useQuery(api.booking.listOrganizations, {});
-  const firstOrg = organizations?.[0];
-
-  // Only query resources if we have an organization
-  const resources = useQuery(
-    api.booking.listResources,
-    firstOrg ? { organizationId: firstOrg._id } : "skip"
-  );
+  // Query resources for the demo organization
+  const resources = useQuery(api.booking.listResources, {
+    organizationId: DEMO_ORG_ID,
+  });
 
   const createResource = useMutation(api.booking.createResource);
   const updateResource = useMutation(api.booking.updateResource);
   const deleteResource = useMutation(api.booking.deleteResource);
   const toggleActive = useMutation(api.booking.toggleResourceActive);
-  const createOrganization = useMutation(api.booking.createOrganization);
-
-  const handleCreateDemoOrg = async () => {
-    try {
-      await createOrganization({
-        id: `org_${Date.now()}`,
-        name: "Demo Organization",
-        slug: "demo",
-      });
-      toast.success("Demo organization created!");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to create organization");
-    }
-  };
 
   const openCreateModal = () => {
     setFormData({
@@ -95,6 +80,7 @@ export default function ResourcesPage() {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       quantity: 1,
       isFungible: false,
+      isStandalone: true,
       isActive: true,
     });
     setEditingResource(null);
@@ -109,6 +95,7 @@ export default function ResourcesPage() {
       timezone: resource.timezone,
       quantity: resource.quantity || 1,
       isFungible: resource.isFungible || false,
+      isStandalone: resource.isStandalone !== false, // Default to true if undefined
       isActive: resource.isActive,
     });
     setEditingResource(resource);
@@ -118,10 +105,6 @@ export default function ResourcesPage() {
   const handleSubmit = async () => {
     if (!formData.name) {
       toast.error("Name is required");
-      return;
-    }
-    if (!firstOrg) {
-      toast.error("No organization found");
       return;
     }
 
@@ -135,19 +118,21 @@ export default function ResourcesPage() {
           timezone: formData.timezone,
           quantity: formData.quantity,
           isFungible: formData.isFungible,
+          isStandalone: formData.isStandalone,
           isActive: formData.isActive,
         });
         toast.success("Resource updated");
       } else {
         await createResource({
           id: `res_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          organizationId: firstOrg._id,
+          organizationId: DEMO_ORG_ID,
           name: formData.name,
           type: formData.type,
           description: formData.description || undefined,
           timezone: formData.timezone,
           quantity: formData.quantity,
           isFungible: formData.isFungible,
+          isStandalone: formData.isStandalone,
           isActive: formData.isActive,
         });
         toast.success("Resource created");
@@ -181,35 +166,6 @@ export default function ResourcesPage() {
     return RESOURCE_TYPES.find((t) => t.value === type)?.label ?? type;
   };
 
-  // Show setup message if no organization exists
-  if (organizations !== undefined && organizations.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Resources</h1>
-          <p className="text-muted-foreground">
-            Manage bookable resources like rooms, equipment, or staff
-          </p>
-        </div>
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center">
-              <Building className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-semibold">No Organization</h3>
-              <p className="text-muted-foreground mt-2">
-                Create an organization first to manage resources
-              </p>
-              <Button className="mt-4" onClick={handleCreateDemoOrg}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Demo Organization
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -219,7 +175,7 @@ export default function ResourcesPage() {
             Manage bookable resources like rooms, equipment, or staff
           </p>
         </div>
-        <Button onClick={openCreateModal} disabled={!firstOrg}>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           New Resource
         </Button>
@@ -434,6 +390,21 @@ export default function ResourcesPage() {
                 </p>
               </div>
             )}
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="isStandalone">Standalone Booking</Label>
+                <p className="text-sm text-muted-foreground">
+                  Can be booked directly. Disable for add-ons only (e.g., microphones, engineers)
+                </p>
+              </div>
+              <Switch
+                id="isStandalone"
+                checked={formData.isStandalone}
+                onCheckedChange={(v) =>
+                  setFormData({ ...formData, isStandalone: v })
+                }
+              />
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <Label htmlFor="isActive">Active</Label>

@@ -33,10 +33,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Clock, Plus, Pencil, Trash, Star, Building } from "lucide-react";
+import { Clock, Plus, Pencil, Trash, Star } from "lucide-react";
 import { toast } from "sonner";
-import { Id } from "@/convex/_generated/dataModel";
-import Link from "next/link";
+
+// Demo organization ID - in production, this would come from your auth system
+const DEMO_ORG_ID = "demo-org";
 
 const DAYS_OF_WEEK = [
   { value: 0, label: "Sunday" },
@@ -70,33 +71,14 @@ export default function SchedulesPage() {
     weeklyHours: [] as WeeklyHour[],
   });
 
-  // Get organizations to find one to use
-  const organizations = useQuery(api.booking.listOrganizations, {});
-  const firstOrg = organizations?.[0];
-
-  // Only query schedules if we have an organization
-  const schedules = useQuery(
-    api.booking.listSchedules,
-    firstOrg ? { organizationId: firstOrg._id } : "skip"
-  );
+  // Query schedules for the demo organization
+  const schedules = useQuery(api.booking.listSchedules, {
+    organizationId: DEMO_ORG_ID,
+  });
 
   const createSchedule = useMutation(api.booking.createSchedule);
   const updateSchedule = useMutation(api.booking.updateSchedule);
   const deleteSchedule = useMutation(api.booking.deleteSchedule);
-  const createOrganization = useMutation(api.booking.createOrganization);
-
-  const handleCreateDemoOrg = async () => {
-    try {
-      await createOrganization({
-        id: `org_${Date.now()}`,
-        name: "Demo Organization",
-        slug: "demo",
-      });
-      toast.success("Demo organization created!");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to create organization");
-    }
-  };
 
   const openCreateModal = () => {
     setFormData({
@@ -156,10 +138,6 @@ export default function SchedulesPage() {
       toast.error("Name is required");
       return;
     }
-    if (!firstOrg) {
-      toast.error("No organization found");
-      return;
-    }
 
     try {
       if (editingSchedule) {
@@ -174,7 +152,7 @@ export default function SchedulesPage() {
       } else {
         await createSchedule({
           id: `sch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          organizationId: firstOrg._id,
+          organizationId: DEMO_ORG_ID,
           name: formData.name,
           timezone: formData.timezone,
           isDefault: formData.isDefault,
@@ -209,35 +187,6 @@ export default function SchedulesPage() {
       .join(", ");
   };
 
-  // Show setup message if no organization exists
-  if (organizations !== undefined && organizations.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Schedules</h1>
-          <p className="text-muted-foreground">
-            Manage availability schedules for your event types
-          </p>
-        </div>
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center">
-              <Building className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-semibold">No Organization</h3>
-              <p className="text-muted-foreground mt-2">
-                Create an organization first to manage schedules
-              </p>
-              <Button className="mt-4" onClick={handleCreateDemoOrg}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Demo Organization
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -247,7 +196,7 @@ export default function SchedulesPage() {
             Manage availability schedules for your event types
           </p>
         </div>
-        <Button onClick={openCreateModal} disabled={!firstOrg}>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           New Schedule
         </Button>

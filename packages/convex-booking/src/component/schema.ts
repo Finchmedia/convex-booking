@@ -3,52 +3,11 @@ import { v } from "convex/values";
 
 export default defineSchema({
   // ============================================
-  // ORGANIZATIONS (Full Hierarchy)
-  // ============================================
-  organizations: defineTable({
-    id: v.string(), // External ID
-    name: v.string(),
-    slug: v.string(), // URL-friendly
-    settings: v.optional(
-      v.object({
-        defaultTimezone: v.optional(v.string()),
-        defaultCurrency: v.optional(v.string()),
-      })
-    ),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_external_id", ["id"])
-    .index("by_slug", ["slug"]),
-
-  // Teams within organizations
-  teams: defineTable({
-    id: v.string(),
-    organizationId: v.id("organizations"),
-    name: v.string(),
-    slug: v.string(),
-    createdAt: v.number(),
-  })
-    .index("by_external_id", ["id"])
-    .index("by_org", ["organizationId"]),
-
-  // Members (users in orgs/teams)
-  members: defineTable({
-    userId: v.string(), // External auth ID
-    organizationId: v.id("organizations"),
-    teamId: v.optional(v.id("teams")),
-    role: v.string(), // "owner" | "admin" | "member" | "viewer"
-    joinedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_org", ["organizationId"]),
-
-  // ============================================
   // RESOURCES (Bookable Items)
   // ============================================
   resources: defineTable({
     id: v.string(),
-    organizationId: v.id("organizations"),
+    organizationId: v.string(), // External org ID from auth system
     name: v.string(),
     type: v.string(), // "room" | "equipment" | "person"
     description: v.optional(v.string()),
@@ -57,6 +16,9 @@ export default defineSchema({
     // Quantity tracking
     quantity: v.optional(v.number()), // null = 1 (singular)
     isFungible: v.optional(v.boolean()), // true = any unit works
+
+    // Booking constraint
+    isStandalone: v.optional(v.boolean()), // false = can't be booked alone (e.g., rental equipment)
 
     isActive: v.boolean(),
     createdAt: v.number(),
@@ -71,7 +33,7 @@ export default defineSchema({
   // ============================================
   schedules: defineTable({
     id: v.string(),
-    organizationId: v.id("organizations"),
+    organizationId: v.string(), // External org ID from auth system
     name: v.string(),
     timezone: v.string(),
     isDefault: v.boolean(),
@@ -124,24 +86,21 @@ export default defineSchema({
       })
     ),
 
-    // NEW: Organization ownership
-    organizationId: v.optional(v.id("organizations")),
+    // Organization ownership (external ID)
+    organizationId: v.optional(v.string()),
 
-    // NEW: Schedule reference
+    // Schedule reference
     scheduleId: v.optional(v.string()),
 
-    // NEW: Resource requirements
-    resourceIds: v.optional(v.array(v.string())),
-
-    // NEW: Buffer times
+    // Buffer times
     bufferBefore: v.optional(v.number()), // Minutes before booking
     bufferAfter: v.optional(v.number()), // Minutes after booking
 
-    // NEW: Booking window
+    // Booking window
     minNoticeMinutes: v.optional(v.number()), // Min hours ahead required
     maxFutureMinutes: v.optional(v.number()), // Max days into future
 
-    // NEW: Booking policy
+    // Booking policy
     requiresConfirmation: v.optional(v.boolean()),
     isActive: v.optional(v.boolean()),
 
@@ -152,6 +111,16 @@ export default defineSchema({
     .index("by_external_id", ["id"])
     .index("by_slug", ["slug"])
     .index("by_org", ["organizationId"]),
+
+  // ============================================
+  // RESOURCE ↔ EVENT TYPE MAPPING (Many-to-Many)
+  // ============================================
+  resource_event_types: defineTable({
+    resourceId: v.string(),
+    eventTypeId: v.string(),
+  })
+    .index("by_resource", ["resourceId"]) // Resource → Event Types
+    .index("by_event_type", ["eventTypeId"]), // Event Type → Resources
 
   // ============================================
   // AVAILABILITY (Bitmap Pattern)
@@ -185,7 +154,7 @@ export default defineSchema({
 
     // References
     eventTypeId: v.string(),
-    organizationId: v.optional(v.id("organizations")), // NEW
+    organizationId: v.optional(v.string()), // External org ID from auth system
     timezone: v.string(),
 
     // Booker details
@@ -263,7 +232,7 @@ export default defineSchema({
   hooks: defineTable({
     eventType: v.string(), // "booking.created" | "booking.cancelled" | "booking.confirmed"
     functionHandle: v.string(),
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.string()), // External org ID from auth system
     enabled: v.boolean(),
     createdAt: v.number(),
   }).index("by_event", ["eventType", "enabled"]),
