@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Calendar, Clock, MapPin, ChevronRight } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, MapPin, ChevronRight, ExternalLink } from "lucide-react";
 
 // Demo organization ID - in production, this would come from URL or auth
 const DEMO_ORG_ID = "demo-org";
@@ -78,7 +78,7 @@ export default function ResourceBookingPage() {
           {/* Back to Event Types */}
           <button
             onClick={() => setSelectedEventType(null)}
-            className="flex items-center text-neutral-400 hover:text-white transition-colors mb-6 text-sm"
+            className="flex items-center text-neutral-400 hover:text-white transition-colors text-sm mb-6"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Event Types
@@ -96,6 +96,20 @@ export default function ResourceBookingPage() {
               console.log("Booking completed:", booking);
             }}
           />
+
+          {/* Real-time presence demo */}
+          <div className="mt-8 text-center">
+            <button
+              onClick={() => window.open(window.location.href, '_blank', 'noopener')}
+              className="inline-flex items-center gap-2 text-sm text-neutral-300 hover:text-white transition-colors px-5 py-2.5 rounded-lg border border-neutral-700 hover:border-neutral-500 bg-neutral-800/50 hover:bg-neutral-800"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open in new tab to test real-time presence
+            </button>
+            <p className="text-xs text-neutral-500 mt-2">
+              Select a time slot in both tabs to see live conflict detection
+            </p>
+          </div>
         </div>
       </div>
     );
