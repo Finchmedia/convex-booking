@@ -99,8 +99,8 @@ export function Booker({
     }
   };
 
-  // Real-time Hold: Automatically reserve all affected slots (multi-slot support)
-  useSlotHold(resourceId, selectedSlot, selectedDuration, slotInterval);
+  // Real-time Hold: Automatically reserve all affected slots (quantum coverage)
+  useSlotHold(resourceId, selectedSlot, selectedDuration);
 
   // Step 1: Calendar slot selection (captures BOTH slot AND duration atomically)
   const handleSlotSelect = (data: { slot: string; duration: number }) => {

@@ -83,11 +83,11 @@ export default function BookPage() {
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-neutral-800 text-neutral-400 group-hover:bg-primary/20 group-hover:text-primary transition-colors">
+                        <div className="p-2 rounded-lg bg-neutral-800 text-neutral-400 group-hover:bg-blue-500/20 group-hover:text-blue-400 transition-colors">
                           {getTypeIcon(resource.type)}
                         </div>
                         <div>
-                          <CardTitle className="text-white group-hover:text-primary transition-colors">
+                          <CardTitle className="text-white">
                             {resource.name}
                           </CardTitle>
                           <Badge

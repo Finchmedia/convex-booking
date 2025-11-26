@@ -173,7 +173,7 @@ export default function ResourceBookingPage() {
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <CardTitle className="text-white group-hover:text-primary transition-colors">
+                        <CardTitle className="text-white">
                           {eventType.title}
                         </CardTitle>
                         {eventType.description && (
@@ -182,7 +182,7 @@ export default function ResourceBookingPage() {
                           </CardDescription>
                         )}
                       </div>
-                      <ChevronRight className="h-5 w-5 text-neutral-600 group-hover:text-primary transition-colors" />
+                      <ChevronRight className="h-5 w-5 text-neutral-600 group-hover:text-neutral-300 transition-colors" />
                     </div>
                   </CardHeader>
                   <CardContent>
