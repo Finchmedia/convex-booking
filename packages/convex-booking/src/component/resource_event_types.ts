@@ -33,8 +33,8 @@ export const getEventTypesForResource = query({
       })
     );
 
-    // Filter out nulls (deleted event types)
-    return eventTypes.filter((et) => et !== null);
+    // Filter out nulls (deleted event types) and inactive event types
+    return eventTypes.filter((et) => et !== null && et.isActive !== false);
   },
 });
 
