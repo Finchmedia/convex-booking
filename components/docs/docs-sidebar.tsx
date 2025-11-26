@@ -1,15 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from "@/components/ui/sidebar";
 
 interface NavItem {
   title: string;
@@ -74,64 +85,61 @@ const navigation: NavItem[] = [
   },
 ];
 
-function NavSection({ item }: { item: NavItem }) {
-  const pathname = usePathname();
-  const isActive = item.items?.some((child) => child.href === pathname);
-
-  return (
-    <Collapsible defaultOpen={isActive || true} className="group">
-      <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground hover:text-foreground/80">
-        {item.title}
-        <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-90" />
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="ml-2 border-l border-border pl-3 pb-2">
-          {item.items?.map((child) => (
-            <NavLink key={child.href} item={child} />
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function NavLink({ item }: { item: NavItem }) {
-  const pathname = usePathname();
-  const isActive = pathname === item.href;
-
-  return (
-    <Link
-      href={item.href || "#"}
-      className={cn(
-        "block py-1.5 text-sm transition-colors",
-        isActive
-          ? "text-foreground font-medium"
-          : "text-muted-foreground hover:text-foreground"
-      )}
-    >
-      {item.title}
-    </Link>
-  );
-}
-
 export function DocsSidebar() {
-  return (
-    <ScrollArea className="h-full py-6 pr-6">
-      <nav className="space-y-1">
-        {navigation.map((item) => (
-          <NavSection key={item.title} item={item} />
-        ))}
-      </nav>
-    </ScrollArea>
-  );
-}
+  const pathname = usePathname();
 
-export function DocsMobileNav() {
   return (
-    <nav className="space-y-1 p-4">
-      {navigation.map((item) => (
-        <NavSection key={item.title} item={item} />
-      ))}
-    </nav>
+    <Sidebar>
+      <SidebarHeader>
+        <Link href="/" className="flex items-center gap-2 px-2">
+          <Image
+            src="/convex_booking_logo.png"
+            alt="ConvexBooking"
+            width={32}
+            height={32}
+            className="dark:invert"
+          />
+          <span className="font-semibold text-lg">ConvexBooking</span>
+        </Link>
+      </SidebarHeader>
+      <SidebarContent className="gap-0">
+        {navigation.map((section) => (
+          <Collapsible
+            key={section.title}
+            defaultOpen
+            className="group/collapsible"
+          >
+            <SidebarGroup>
+              <SidebarGroupLabel
+                asChild
+                className="group/label text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-sm"
+              >
+                <CollapsibleTrigger>
+                  {section.title}
+                  <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                </CollapsibleTrigger>
+              </SidebarGroupLabel>
+              <CollapsibleContent>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {section.items?.map((item) => (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={pathname === item.href}
+                        >
+                          <Link href={item.href || "#"}>{item.title}</Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </CollapsibleContent>
+            </SidebarGroup>
+          </Collapsible>
+        ))}
+      </SidebarContent>
+      <SidebarRail />
+    </Sidebar>
   );
 }
