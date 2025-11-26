@@ -24,6 +24,12 @@ export default function DocsLayout({
           <Separator orientation="vertical" className="mr-2 h-4" />
           <nav className="flex items-center gap-6 text-sm">
             <Link
+              href="/"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Home
+            </Link>
+            <Link
               href="/docs"
               className="text-foreground font-medium"
             >
