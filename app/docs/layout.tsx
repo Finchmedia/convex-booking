@@ -30,10 +30,10 @@ export default function DocsLayout({
               Docs
             </Link>
             <Link
-              href="/demo"
+              href="/admin"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              Demo
+              Admin
             </Link>
             <Link
               href="/book"

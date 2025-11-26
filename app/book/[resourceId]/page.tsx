@@ -181,7 +181,7 @@ export default function ResourceBookingPage() {
                   <p className="text-muted-foreground mt-2">
                     This resource doesn't have any booking types configured yet.
                   </p>
-                  <Link href="/demo/event-types" className="mt-4 inline-block">
+                  <Link href="/admin/event-types" className="mt-4 inline-block">
                     <Button variant="outline" size="sm">
                       Configure Event Types
                     </Button>
@@ -259,7 +259,7 @@ export default function ResourceBookingPage() {
         {/* Admin Link */}
         <div className="text-center mt-12">
           <Link
-            href="/demo"
+            href="/admin"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             Admin Dashboard

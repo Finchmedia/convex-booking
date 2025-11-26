@@ -72,7 +72,7 @@ export default function EventTypesPage() {
             Manage your booking types and their settings
           </p>
         </div>
-        <Link href="/demo/event-types/new">
+        <Link href="/admin/event-types/new">
           <Button>
             <Plus className="mr-2 h-4 w-4" />
             New Event Type
@@ -101,7 +101,7 @@ export default function EventTypesPage() {
               <p className="text-muted-foreground">
                 Get started by creating your first event type
               </p>
-              <Link href="/demo/event-types/new">
+              <Link href="/admin/event-types/new">
                 <Button className="mt-4">
                   <Plus className="mr-2 h-4 w-4" />
                   Create Event Type
@@ -181,7 +181,7 @@ export default function EventTypesPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem asChild>
-                            <Link href={`/demo/event-types/${eventType.id}`}>
+                            <Link href={`/admin/event-types/${eventType.id}`}>
                               <Pencil className="mr-2 h-4 w-4" />
                               Edit
                             </Link>

@@ -132,7 +132,7 @@ export default function BookPage() {
           </Link>
           <span className="text-border">|</span>
           <Link
-            href="/demo"
+            href="/admin"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             Admin Dashboard

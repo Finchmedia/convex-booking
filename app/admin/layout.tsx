@@ -35,27 +35,27 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const navigationItems = [
   {
     title: "Dashboard",
-    href: "/demo",
+    href: "/admin",
     icon: LayoutDashboard,
   },
   {
     title: "Event Types",
-    href: "/demo/event-types",
+    href: "/admin/event-types",
     icon: Calendar,
   },
   {
     title: "Bookings",
-    href: "/demo/bookings",
+    href: "/admin/bookings",
     icon: CalendarDays,
   },
   {
     title: "Schedules",
-    href: "/demo/schedules",
+    href: "/admin/schedules",
     icon: Clock,
   },
   {
     title: "Resources",
-    href: "/demo/resources",
+    href: "/admin/resources",
     icon: Users,
   },
 ];
@@ -66,7 +66,7 @@ function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader>
-        <Link href="/demo" className="flex items-center gap-2 px-2">
+        <Link href="/admin" className="flex items-center gap-2 px-2">
           <Image
             src="/convex_booking_logo.png"
             alt="ConvexBooking"
@@ -87,8 +87,8 @@ function AppSidebar() {
                   <SidebarMenuButton
                     asChild
                     isActive={
-                      item.href === "/demo"
-                        ? pathname === "/demo"
+                      item.href === "/admin"
+                        ? pathname === "/admin"
                         : pathname.startsWith(item.href)
                     }
                   >
@@ -132,7 +132,7 @@ function AppSidebar() {
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <Link href="/demo/settings">
+                  <Link href="/admin/settings">
                     <Settings className="h-4 w-4" />
                     <span>Settings</span>
                   </Link>

@@ -17,28 +17,28 @@ export default function DemoDashboard() {
       title: "Event Types",
       value: eventTypes?.length ?? 0,
       icon: Calendar,
-      href: "/demo/event-types",
+      href: "/admin/event-types",
       description: "Active event types",
     },
     {
       title: "Total Bookings",
       value: bookings?.length ?? 0,
       icon: CalendarDays,
-      href: "/demo/bookings",
+      href: "/admin/bookings",
       description: "Recent bookings",
     },
     {
       title: "Upcoming",
       value: bookings?.filter((b) => b.start > Date.now() && b.status === "confirmed").length ?? 0,
       icon: Clock,
-      href: "/demo/bookings?status=confirmed",
+      href: "/admin/bookings?status=confirmed",
       description: "Confirmed upcoming",
     },
     {
       title: "Pending",
       value: bookings?.filter((b) => b.status === "pending").length ?? 0,
       icon: Users,
-      href: "/demo/bookings?status=pending",
+      href: "/admin/bookings?status=pending",
       description: "Awaiting confirmation",
     },
   ];
@@ -143,7 +143,7 @@ export default function DemoDashboard() {
 
       {/* Quick Actions */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Link href="/demo/event-types/new">
+        <Link href="/admin/event-types/new">
           <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
             <CardHeader>
               <CardTitle className="text-lg">Create Event Type</CardTitle>
@@ -153,7 +153,7 @@ export default function DemoDashboard() {
             </CardHeader>
           </Card>
         </Link>
-        <Link href="/demo/schedules">
+        <Link href="/admin/schedules">
           <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
             <CardHeader>
               <CardTitle className="text-lg">Manage Schedules</CardTitle>

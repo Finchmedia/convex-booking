@@ -75,7 +75,7 @@ export default function Home() {
           </Link>
 
           <Link
-            href="/demo"
+            href="/admin"
             className="group p-8 rounded-xl border border-border bg-card/50 hover:bg-muted hover:border-foreground/20 hover:shadow-lg hover:scale-[1.02] transition-all duration-200"
           >
             <div className="flex flex-col items-center gap-4">

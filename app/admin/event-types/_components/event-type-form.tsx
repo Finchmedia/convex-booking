@@ -274,7 +274,7 @@ export function EventTypeForm({ eventType, availableResources, initialResourceId
         resourceIds: data.resourceIds,
       });
 
-      router.push("/demo/event-types");
+      router.push("/admin/event-types");
     } catch (error: any) {
       toast.error(error.message || "Failed to save event type");
     }
@@ -453,7 +453,7 @@ export function EventTypeForm({ eventType, availableResources, initialResourceId
           {availableResources.length === 0 ? (
             <div className="text-center py-4">
               <p className="text-sm text-muted-foreground mb-2">No resources available</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => router.push("/demo/resources")}>
+              <Button type="button" variant="outline" size="sm" onClick={() => router.push("/admin/resources")}>
                 Create Resources
               </Button>
             </div>
@@ -657,7 +657,7 @@ export function EventTypeForm({ eventType, availableResources, initialResourceId
 
       {/* Actions */}
       <div className="flex justify-end gap-3">
-        <Button type="button" variant="outline" onClick={() => router.push("/demo/event-types")}>
+        <Button type="button" variant="outline" onClick={() => router.push("/admin/event-types")}>
           Cancel
         </Button>
         <Button type="submit" disabled={isSubmitting}>
