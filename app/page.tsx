@@ -46,7 +46,7 @@ export default function Home() {
           </p>
           <Link
             href="/docs"
-            className="inline-flex items-center gap-3 px-6 py-4 rounded-lg border border-border bg-card/30 hover:bg-card/50 transition-colors"
+            className="inline-flex items-center gap-3 px-6 py-4 rounded-lg border border-border bg-card/30 hover:bg-muted hover:border-foreground/20 hover:shadow-lg hover:scale-[1.02] transition-all duration-200"
           >
             <div className="p-2 rounded-md bg-muted text-muted-foreground">
               <BookOpen className="w-4 h-4" />
