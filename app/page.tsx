@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   Calendar,
   Settings,
@@ -8,14 +9,12 @@ import {
   Shield,
   Layers,
   Timer,
-  Database,
-  GitBranch,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-card to-background">
+    <div className="min-h-screen bg-gradient-to-br from-white via-gray-300 to-white dark:from-background dark:via-muted dark:to-background">
       {/* Theme Toggle */}
       <div className="fixed top-4 right-4 z-50">
         <ThemeToggle />
@@ -39,7 +38,7 @@ export default function Home() {
         <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-20">
           <Link
             href="/book"
-            className="group p-8 rounded-xl border border-border bg-card/50 hover:bg-accent/50 hover:border-border transition-all duration-200"
+            className="group p-8 rounded-xl border border-border bg-card/50 hover:bg-muted hover:border-foreground/20 hover:shadow-lg hover:scale-[1.02] transition-all duration-200"
           >
             <div className="flex flex-col items-center gap-4">
               <div className="p-4 rounded-full bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/20 transition-colors">
@@ -58,7 +57,7 @@ export default function Home() {
 
           <Link
             href="/demo"
-            className="group p-8 rounded-xl border border-border bg-card/50 hover:bg-accent/50 hover:border-border transition-all duration-200"
+            className="group p-8 rounded-xl border border-border bg-card/50 hover:bg-muted hover:border-foreground/20 hover:shadow-lg hover:scale-[1.02] transition-all duration-200"
           >
             <div className="flex flex-col items-center gap-4">
               <div className="p-4 rounded-full bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 transition-colors">
@@ -144,13 +143,36 @@ export default function Home() {
           <h2 className="text-2xl font-bold text-foreground text-center mb-6">
             Tech Stack
           </h2>
-          <div className="flex flex-wrap justify-center gap-3">
-            <TechBadge icon={<Database className="w-4 h-4" />} label="Convex" />
-            <TechBadge icon={<GitBranch className="w-4 h-4" />} label="Next.js 15" />
-            <TechBadge label="React 19" />
-            <TechBadge label="TypeScript" />
-            <TechBadge label="shadcn/ui" />
-            <TechBadge label="Tailwind CSS" />
+          <div className="flex flex-wrap justify-center gap-4">
+            <TechBadge
+              icon={<Image src="/convex-color.svg" alt="Convex" width={24} height={24} />}
+              label="Convex"
+            />
+            <TechBadge
+              icon={
+                <>
+                  <Image src="/nextjs-icon-light-background.svg" alt="Next.js" width={24} height={24} className="dark:hidden" />
+                  <Image src="/nextjs-icon-dark-background.svg" alt="Next.js" width={24} height={24} className="hidden dark:block" />
+                </>
+              }
+              label="Next.js 15"
+            />
+            <TechBadge
+              icon={<Image src="/react.png" alt="React" width={26} height={24} />}
+              label="React 19"
+            />
+            <TechBadge
+              icon={<Image src="/typescript.svg" alt="TypeScript" width={24} height={24} className="rounded" />}
+              label="TypeScript"
+            />
+            <TechBadge
+              icon={<ShadcnIcon />}
+              label="shadcn/ui"
+            />
+            <TechBadge
+              icon={<Image src="/tailwind.svg" alt="Tailwind CSS" width={28} height={18} />}
+              label="Tailwind CSS"
+            />
           </div>
         </section>
 
@@ -226,9 +248,43 @@ function TechBadge({
   label: string;
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-sm">
+    <span className="inline-flex items-center gap-3 px-5 py-3 rounded-full bg-muted text-foreground text-base font-medium">
       {icon}
       {label}
     </span>
+  );
+}
+
+function ShadcnIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 256 256"
+      className="w-6 h-6"
+    >
+      <rect width="256" height="256" fill="none" />
+      <line
+        x1="208"
+        y1="128"
+        x2="128"
+        y2="208"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="32"
+      />
+      <line
+        x1="192"
+        y1="40"
+        x2="40"
+        y2="192"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="32"
+      />
+    </svg>
   );
 }
