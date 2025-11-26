@@ -275,7 +275,7 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="p-6 rounded-lg border border-border bg-card/30">
+    <div className="sweep-border-card p-6 rounded-lg border border-border bg-card/30 transition-all duration-200">
       <div className="flex items-center gap-3 mb-3">
         <div className="p-2 rounded-md bg-muted text-muted-foreground">
           {icon}
@@ -297,7 +297,7 @@ function ArchCard({
   detail: string;
 }) {
   return (
-    <div className="p-6 rounded-lg border border-border bg-card/30">
+    <div className="sweep-border-card p-6 rounded-lg border border-border bg-card/30 transition-all duration-200">
       <h3 className="font-semibold text-foreground mb-2">{title}</h3>
       <p className="text-sm text-muted-foreground mb-3">{description}</p>
       <code className="text-xs text-muted-foreground/70 bg-muted px-2 py-1 rounded">
