@@ -11,6 +11,7 @@ import {
   Settings,
   Users,
   ChevronLeft,
+  BookOpen,
 } from "lucide-react";
 import {
   Sidebar,
@@ -66,8 +67,14 @@ function AppSidebar() {
     <Sidebar>
       <SidebarHeader>
         <Link href="/demo" className="flex items-center gap-2 px-2">
-          <Image src="/convex-color.svg" alt="Convex" width={32} height={32} />
-          <span className="font-semibold text-lg">Convex Booking</span>
+          <Image
+            src="/convex_booking_logo.png"
+            alt="ConvexBooking"
+            width={32}
+            height={32}
+            className="dark:invert"
+          />
+          <span className="font-semibold text-lg">ConvexBooking</span>
         </Link>
       </SidebarHeader>
       <SidebarContent className="gap-0">
@@ -99,6 +106,14 @@ function AppSidebar() {
           <SidebarGroupLabel>Tools</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link href="/docs">
+                    <BookOpen className="h-4 w-4" />
+                    <span>Documentation</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <Link href="/book">

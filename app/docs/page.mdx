@@ -1,0 +1,77 @@
+# Introduction
+
+ConvexBooking is an open-source, real-time booking system built as a [Convex component](https://docs.convex.dev/components). It provides everything you need to add booking functionality to your application.
+
+<Callout type="info">
+  This documentation is a work in progress. If you spot issues or have suggestions, please reach out!
+</Callout>
+
+## Features
+
+- **Real-time Presence** - Slot locking prevents double bookings. Other users see reserved slots instantly.
+- **Multi-Duration Support** - Flexible booking lengths (30min, 1h, 2h, 5h) with intelligent conflict detection.
+- **O(1) Availability Queries** - Scales to millions of bookings using discrete time buckets.
+- **ACID Transactions** - Race-condition free bookings with Convex's transactional guarantees.
+- **Multi-Resource Booking** - Book rooms, equipment, or people. Resources can be bundled or standalone.
+- **Flexible Schedules** - Define availability windows, date overrides, and buffer times.
+
+## How It Works
+
+ConvexBooking uses a **discrete time bucket** architecture where availability is pre-computed and stored in 15-minute intervals (called "quanta"). This enables O(1) availability checks regardless of how many historical bookings exist.
+
+```typescript
+// Check if a slot is available
+const isAvailable = await ctx.runQuery(api.booking.getAvailability, {
+  resourceId: "studio-a",
+  start: Date.now(),
+  end: Date.now() + 60 * 60 * 1000, // 1 hour later
+});
+```
+
+The real-time presence system uses heartbeats to temporarily hold slots while users are selecting them, preventing double-booking scenarios.
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    Your App                          │
+├─────────────────────────────────────────────────────┤
+│  <Booker />          │  Admin Dashboard             │
+│  - Calendar          │  - Resource Management       │
+│  - Time Slots        │  - Schedule Configuration    │
+│  - Booking Form      │  - Booking Management        │
+├─────────────────────────────────────────────────────┤
+│              ConvexBooking Component                 │
+│  ┌─────────────┐ ┌──────────────┐ ┌──────────────┐ │
+│  │  Resources  │ │   Schedules  │ │  Bookings    │ │
+│  └─────────────┘ └──────────────┘ └──────────────┘ │
+│  ┌─────────────┐ ┌──────────────┐ ┌──────────────┐ │
+│  │ Event Types │ │   Presence   │ │ Availability │ │
+│  └─────────────┘ └──────────────┘ └──────────────┘ │
+├─────────────────────────────────────────────────────┤
+│                    Convex                            │
+└─────────────────────────────────────────────────────┘
+```
+
+## Quick Example
+
+```tsx
+import { Booker } from "@/components/booker/booker";
+
+export default function BookingPage() {
+  return (
+    <Booker
+      eventTypeId="30-min-consultation"
+      resourceId="studio-a"
+      title="Book a Session"
+      description="Select a time that works for you"
+    />
+  );
+}
+```
+
+## Next Steps
+
+- [Quick Start](/docs/getting-started) - Get ConvexBooking running in 5 minutes
+- [Core Concepts](/docs/concepts/architecture) - Understand the architecture
+- [API Reference](/docs/api/queries) - Full API documentation

@@ -1,0 +1,154 @@
+# Quick Start
+
+Get ConvexBooking running in your project in a few minutes.
+
+<Callout type="info">
+  This guide assumes you already have a Convex project set up. If not, run `npx convex dev` to get started.
+</Callout>
+
+## 1. Install the Component
+
+```bash
+npm install convex-booking
+```
+
+## 2. Add to Your Convex Config
+
+Update your `convex/convex.config.ts` to include the booking component:
+
+```typescript
+import { defineApp } from "convex/server";
+import booking from "convex-booking/convex.config";
+
+const app = defineApp();
+app.use(booking);
+
+export default app;
+```
+
+## 3. Create the Booking API
+
+Create a file at `convex/booking.ts` to expose the component API:
+
+```typescript
+import { components } from "./_generated/api";
+import { makeBookingAPI } from "convex-booking";
+
+export const {
+  // Resources
+  createResource,
+  updateResource,
+  deleteResource,
+  listResources,
+
+  // Schedules
+  createSchedule,
+  updateSchedule,
+  deleteSchedule,
+  listSchedules,
+
+  // Event Types
+  createEventType,
+  updateEventType,
+  deleteEventType,
+  listEventTypes,
+
+  // Availability
+  getMonthAvailability,
+  getDaySlots,
+
+  // Bookings
+  createBooking,
+  cancelBooking,
+  listBookings,
+
+  // Presence (real-time slot locking)
+  heartbeat,
+  leave,
+  getDatePresence,
+} = makeBookingAPI(components.booking);
+```
+
+## 4. Create Your First Resource
+
+A resource is anything that can be booked (a room, equipment, or person).
+
+```typescript
+// In your admin setup or seed script
+await ctx.runMutation(api.booking.createResource, {
+  id: "studio-a",
+  organizationId: "org-1",
+  name: "Studio A",
+  type: "room",
+  timezone: "Europe/Berlin",
+});
+```
+
+## 5. Create a Schedule
+
+Schedules define when resources are available:
+
+```typescript
+await ctx.runMutation(api.booking.createSchedule, {
+  id: "business-hours",
+  organizationId: "org-1",
+  name: "Business Hours",
+  timezone: "Europe/Berlin",
+  isDefault: true,
+  weeklyHours: [
+    { dayOfWeek: 1, startTime: "09:00", endTime: "17:00" }, // Monday
+    { dayOfWeek: 2, startTime: "09:00", endTime: "17:00" }, // Tuesday
+    { dayOfWeek: 3, startTime: "09:00", endTime: "17:00" }, // Wednesday
+    { dayOfWeek: 4, startTime: "09:00", endTime: "17:00" }, // Thursday
+    { dayOfWeek: 5, startTime: "09:00", endTime: "17:00" }, // Friday
+  ],
+});
+```
+
+## 6. Create an Event Type
+
+Event types are booking templates that connect resources and schedules:
+
+```typescript
+await ctx.runMutation(api.booking.createEventType, {
+  id: "studio-session",
+  slug: "studio-session",
+  title: "Studio Session",
+  lengthInMinutes: 60,
+  lengthInMinutesOptions: [60, 120, 300], // 1h, 2h, or 5h
+  slotInterval: 60,
+  timezone: "Europe/Berlin",
+  organizationId: "org-1",
+  scheduleId: "business-hours",
+});
+```
+
+## 7. Add the Booker Component
+
+Now you can add the booking UI to your app:
+
+```tsx
+import { Booker } from "@/components/booker/booker";
+
+export default function BookingPage() {
+  return (
+    <div className="max-w-4xl mx-auto p-6">
+      <Booker
+        eventTypeId="studio-session"
+        resourceId="studio-a"
+        title="Book Studio A"
+        description="Select a time for your session"
+        onBookingComplete={(booking) => {
+          console.log("Booking created:", booking);
+        }}
+      />
+    </div>
+  );
+}
+```
+
+## Next Steps
+
+- [Installation Guide](/docs/installation) - Detailed setup instructions
+- [Core Concepts](/docs/concepts/architecture) - Understand how it works
+- [Booker Component](/docs/components/booker) - All props and customization options

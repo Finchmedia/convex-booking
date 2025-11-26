@@ -11,6 +11,7 @@ import {
   Timer,
   Github,
   Linkedin,
+  BookOpen,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -24,7 +25,14 @@ export default function Home() {
       <div className="max-w-5xl mx-auto px-4 py-16">
         {/* 1. Hero Section */}
         <header className="text-center py-32 mb-20">
-          <h1 className="text-7xl font-bold text-foreground mb-8">
+          <h1 className="text-7xl font-bold text-foreground mb-8 flex items-center justify-center gap-4">
+            <Image
+              src="/convex_booking_logo.png"
+              alt=""
+              width={80}
+              height={80}
+              className="dark:invert"
+            />
             ConvexBooking
           </h1>
           <p className="text-3xl text-foreground mb-6 flex items-center justify-center">
@@ -32,10 +40,17 @@ export default function Home() {
             <Image src="/convex-logotype-black.svg" alt="Convex" width={170} height={38} className="dark:hidden -ml-1 translate-y-[1px]" />
             <Image src="/convex-logotype-white.svg" alt="Convex" width={170} height={38} className="hidden dark:block -ml-1 translate-y-[1px]" />
           </p>
-          <p className="text-xl text-muted-foreground/70 max-w-2xl mx-auto">
+          <p className="text-xl text-muted-foreground/70 max-w-2xl mx-auto mb-8">
             An open-source booking component with presence-aware slot locking,
             multi-duration support, and O(1) availability queries.
           </p>
+          <Link
+            href="/docs"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-foreground text-background font-medium hover:bg-foreground/90 transition-colors"
+          >
+            <BookOpen className="w-5 h-5" />
+            Read the Docs
+          </Link>
         </header>
 
         {/* 2. Demo Cards (Primary CTA) */}
