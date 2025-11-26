@@ -29,8 +29,8 @@ export default function Home() {
             <Image
               src="/convex_booking_logo.png"
               alt=""
-              width={80}
-              height={80}
+              width={120}
+              height={120}
               className="dark:invert"
             />
             ConvexBooking
