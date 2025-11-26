@@ -1,7 +1,7 @@
 # ConvexBooking: Real-Time Booking System Documentation
 
 > **Project Status**: Production-Ready Core Component
-> **Last Major Update**: November 24, 2025 (Presence-Aware Slot Filtering)
+> **Last Major Update**: November 26, 2025 (Form Architecture & Schema Simplification)
 > **Philosophy**: Deep-diving beyond "hello world" into production-grade, scalable systems
 
 ---
@@ -171,6 +171,53 @@ User B books StudioB at 10:00 → presence.slot = "2025-11-24T10:00:00.000Z"
 - Cal.com: Slots disappear mysteriously
 - Us: Transparency + hints slots might become available (10s timeout)
 
+### Bug #4: Form Infinite Loop (FIXED Nov 26)
+**Error:** `Maximum update depth exceeded` in SelectTrigger component
+**Scenario:**
+```
+Event Type Form with resource selection
+→ useQuery returns linkedResourceIds (new array reference each time)
+→ useEffect syncs to form state
+→ Form state change triggers re-render
+→ useQuery returns new array reference
+→ INFINITE LOOP! ❌
+```
+
+**Root Causes:**
+1. Convex `useQuery` returns new array references on each subscription update
+2. `useEffect` dependency on array triggers on every render
+3. Radix UI components in React 19 require proper `React.forwardRef`
+
+**Solution: Container/Presenter Pattern**
+```typescript
+// BEFORE: Queries inside form (BAD)
+function EventTypeForm({ eventTypeId }) {
+  const resources = useQuery(api.listResources);  // Reactive!
+  const linkedIds = useQuery(api.getLinkedIds);   // Reactive!
+
+  useEffect(() => {
+    form.setValue("resourceIds", linkedIds);  // TRIGGERS LOOP!
+  }, [linkedIds]);
+}
+
+// AFTER: Queries in parent, form receives props (GOOD)
+function EditEventTypePage() {
+  const resources = useQuery(api.listResources);
+  const linkedIds = useQuery(api.getLinkedIds);
+
+  if (!resources || !linkedIds) return <Skeleton />;
+
+  return (
+    <EventTypeForm
+      availableResources={resources}      // Static prop
+      initialResourceIds={linkedIds}      // Static prop
+    />
+  );
+}
+```
+
+**Key Insight:** Forms should be "dumb" - receive data as props, not fetch reactively.
+
 ---
 
 ## 🚀 Key Architectural Pattern: Frontend Derivation
@@ -223,11 +270,16 @@ Every heartbeat (5s):
 
 ### Backend Component (`packages/convex-booking/src/component/`)
 ```
-schema.ts          - Database schema (presence, bookings, daily_availability)
-presence.ts        - Heartbeat, leave, cleanup, getDatePresence (range query)
-public.ts          - getDaySlots, getMonthAvailability, createBooking
-utils.ts           - Slot calculations, bitmap operations, date math
-availability.ts    - Core availability logic (isAvailable)
+schema.ts              - Database schema (presence, bookings, daily_availability)
+presence.ts            - Heartbeat, leave, cleanup, getDatePresence (range query)
+public.ts              - getDaySlots, getMonthAvailability, createBooking
+utils.ts               - Slot calculations, bitmap operations, date math
+availability.ts        - Core availability logic (isAvailable)
+resources.ts           - Resource CRUD operations
+schedules.ts           - Schedule management (availability windows)
+resource_event_types.ts - Event type ↔ Resource linking (M:N relationship)
+hooks.ts               - State machine hooks for booking lifecycle
+multi_resource.ts      - Multi-resource booking operations
 ```
 
 ### Client API (`packages/convex-booking/src/client/`)
@@ -287,6 +339,29 @@ booker.tsx             - 3-step booking flow
 booking.ts             - Exports component API to main app
                          - makeBookingAPI(components.booking)
                          - Export: getDatePresence, heartbeat, leave, etc.
+```
+
+### Admin UI (`app/demo/`)
+```
+page.tsx               - Dashboard overview
+layout.tsx             - Sidebar navigation with shadcn/ui
+
+event-types/
+├─ page.tsx            - List all event types
+├─ new/page.tsx        - Create event type (Container)
+├─ [id]/page.tsx       - Edit event type (Container)
+└─ _components/
+   └─ event-type-form.tsx  - Shared form (Presenter, no queries!)
+
+resources/page.tsx     - Resource management CRUD
+schedules/page.tsx     - Schedule/availability management
+bookings/page.tsx      - Booking list and management
+```
+
+### Public Booking (`app/book/`)
+```
+page.tsx               - Resource selection
+[resourceId]/page.tsx  - Booker flow for specific resource
 ```
 
 ---
@@ -394,6 +469,31 @@ return { available, reserved }
 **To change duration:** User must click "Back" and reselect
 **Code:** `booker.tsx:108` - `setSelectedDuration(data.duration)` locked
 
+### 7. Radix UI Components Need forwardRef
+**Error:** `Maximum update depth exceeded` or `Component is not a function`
+**Problem:** Radix UI primitives (Select, Switch, Checkbox) require ref forwarding
+**Wrong:**
+```typescript
+const Select = (props) => <SelectPrimitive.Root {...props} />
+```
+**Right:**
+```typescript
+const SelectTrigger = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.Trigger ref={ref} {...props} />
+))
+SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
+```
+**Why:** React 19 + Radix UI 2.x requires explicit ref forwarding
+
+### 8. Forms Should Not Have Reactive Queries
+**Anti-pattern:** `useQuery` inside form component
+**Pattern:** Container/Presenter - parent fetches, form receives props
+**Why:** Convex queries return new references → useEffect loops → infinite renders
+**Rule:** Forms are "dumb" components that receive initial data as props
+
 ---
 
 ## 🎓 Key Learnings & Patterns
@@ -449,9 +549,76 @@ useEffect(() => {
 const currentData = processedSlots ?? prevSlotsRef.current
 ```
 
+### Pattern 5: Container/Presenter for Forms
+**Problem:** Forms with `useQuery` cause infinite loops due to array reference changes
+**Solution:** Separate data fetching (Container) from form rendering (Presenter)
+
+```typescript
+// Container: Handles data fetching and loading states
+function EditPage({ id }) {
+  const data = useQuery(api.getData, { id });
+  const related = useQuery(api.getRelated, { id });
+
+  if (!data || !related) return <Skeleton />;
+
+  return <Form initialData={data} relatedItems={related} />;
+}
+
+// Presenter: Pure form logic, no queries
+function Form({ initialData, relatedItems }) {
+  const form = useForm({ defaultValues: initialData });
+  // Form never re-renders due to query updates!
+}
+```
+
+**When to use:**
+- Edit forms that load existing data
+- Forms with related data (dropdowns, multi-select)
+- Any form where you'd be tempted to sync query → state
+
+**Benefits:**
+- No useEffect sync needed
+- No infinite loop risk
+- Clear separation of concerns
+- Form only mounts when data is ready
+
 ---
 
 ## 🚀 Recent Major Work
+
+### Commit 0de2e40: Form Architecture & Schema Simplification (Nov 26, 2025)
+**Impact:** 27 files changed, 2,017 insertions, 1,419 deletions
+
+**What We Fixed:**
+1. **Form Infinite Loop**
+   - Moved queries from `event-type-form.tsx` to parent pages
+   - Form now receives `availableResources` and `initialResourceIds` as props
+   - Eliminated useEffect sync that caused render loops
+
+2. **Radix UI forwardRef**
+   - Fixed Select, Switch, Checkbox components with proper `React.forwardRef`
+   - Added `displayName` for React DevTools
+   - Compatible with React 19 + Radix UI 2.x
+
+3. **Schema Simplification**
+   - Changed `organizationId` from `v.id("organizations")` to `v.string()`
+   - Removed deprecated `organizations.ts` (consolidated into resources)
+   - Added `resource_event_types.ts` for M:N event type linking
+
+4. **New Public Booking Routes**
+   - Added `app/book/` for public-facing booking pages
+   - Added `app/book/[resourceId]/page.tsx` for resource-specific booking
+
+**Architecture Pattern Established:**
+```
+Container (Page)          Presenter (Form)
+├─ useQuery(resources)    ├─ Receives props
+├─ useQuery(linkedIds)    ├─ No queries
+├─ Loading skeleton       ├─ Pure form logic
+└─ Passes data as props   └─ Submits mutations
+```
+
+---
 
 ### Commit 9309894: Presence-Aware Slot Filtering (Nov 24, 2025)
 **Impact:** 14 files changed, 1,139 insertions, 86 deletions
@@ -635,4 +802,4 @@ This is not just app logic—it's a **reusable Convex component** (`@convex-dev/
 ---
 
 **Built with 🎵 for the future of booking systems**
-*Last Updated: November 24, 2025*
+*Last Updated: November 26, 2025*
