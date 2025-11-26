@@ -298,7 +298,7 @@ function TechBadge({
   label: string;
 }) {
   return (
-    <span className="inline-flex items-center gap-3 px-5 py-3 rounded-full bg-muted text-foreground text-base font-medium">
+    <span className="inline-flex items-center gap-3 px-5 py-3 rounded-full bg-muted dark:bg-neutral-700 text-foreground text-base font-medium">
       {icon}
       {label}
     </span>
