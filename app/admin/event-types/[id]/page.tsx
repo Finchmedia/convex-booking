@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
 import { EventTypeForm } from "../_components/event-type-form";
 import { Skeleton } from "@/components/ui/skeleton";

@@ -224,7 +224,7 @@ export default function Home() {
                   href="https://www.linkedin.com/in/daniel-finke-563623178/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-accent transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-muted text-foreground hover:bg-accent hover:border-foreground/20 transition-all duration-200"
                 >
                   <Linkedin className="w-4 h-4" />
                   LinkedIn
@@ -233,7 +233,7 @@ export default function Home() {
                   href="https://github.com/Finchmedia"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-accent transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-muted text-foreground hover:bg-accent hover:border-foreground/20 transition-all duration-200"
                 >
                   <Github className="w-4 h-4" />
                   GitHub
