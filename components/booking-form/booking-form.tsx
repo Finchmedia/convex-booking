@@ -76,10 +76,10 @@ export const BookingForm: React.FC<BookingFormProps> = ({
       {/* Right: Booking Form */}
       <div className="flex-1 p-6">
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-neutral-100">
+          <h2 className="text-xl font-semibold text-foreground">
             Enter Details
           </h2>
-          <p className="text-sm text-neutral-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             {formatDate(selectedSlot, timezone)} at{" "}
             {formatTime(selectedSlot, "12h", timezone)}
           </p>
@@ -92,15 +92,15 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-neutral-200">Name *</FormLabel>
+                  <FormLabel className="text-foreground">Name *</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="John Doe"
                       {...field}
-                      className="bg-neutral-800 border-neutral-700 text-neutral-100 focus:ring-neutral-500 focus:border-neutral-500"
+                      className="bg-muted border-border text-foreground focus:ring-ring focus:border-ring"
                     />
                   </FormControl>
-                  <FormMessage className="text-red-400" />
+                  <FormMessage className="text-destructive" />
                 </FormItem>
               )}
             />
@@ -110,16 +110,16 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-neutral-200">Email *</FormLabel>
+                  <FormLabel className="text-foreground">Email *</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="john@example.com"
                       type="email"
                       {...field}
-                      className="bg-neutral-800 border-neutral-700 text-neutral-100 focus:ring-neutral-500 focus:border-neutral-500"
+                      className="bg-muted border-border text-foreground focus:ring-ring focus:border-ring"
                     />
                   </FormControl>
-                  <FormMessage className="text-red-400" />
+                  <FormMessage className="text-destructive" />
                 </FormItem>
               )}
             />
@@ -127,7 +127,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <button
                 type="button"
-                className="flex items-center justify-center px-4 py-2 border border-neutral-700 rounded-md shadow-sm text-sm font-medium text-neutral-300 bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                className="flex items-center justify-center px-4 py-2 border border-border rounded-md shadow-sm text-sm font-medium text-muted-foreground bg-muted hover:bg-accent transition-colors"
               >
                 <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
                   <path
@@ -151,10 +151,10 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               </button>
               <button
                 type="button"
-                className="flex items-center justify-center px-4 py-2 border border-neutral-700 rounded-md shadow-sm text-sm font-medium text-neutral-300 bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                className="flex items-center justify-center px-4 py-2 border border-border rounded-md shadow-sm text-sm font-medium text-muted-foreground bg-muted hover:bg-accent transition-colors"
               >
                 <svg
-                  className="h-5 w-5 mr-2 text-neutral-100"
+                  className="h-5 w-5 mr-2 text-foreground"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
@@ -166,10 +166,10 @@ export const BookingForm: React.FC<BookingFormProps> = ({
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-neutral-700"></div>
+                <div className="w-full border-t border-border"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-neutral-900 text-neutral-400">
+                <span className="px-2 bg-card text-muted-foreground">
                   Or continue with email
                 </span>
               </div>
@@ -180,7 +180,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               name="phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-neutral-200">
+                  <FormLabel className="text-foreground">
                     Phone Number
                   </FormLabel>
                   <FormControl>
@@ -188,10 +188,10 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                       placeholder="+1 (555) 000-0000"
                       type="tel"
                       {...field}
-                      className="bg-neutral-800 border-neutral-700 text-neutral-100 focus:ring-neutral-500 focus:border-neutral-500"
+                      className="bg-muted border-border text-foreground focus:ring-ring focus:border-ring"
                     />
                   </FormControl>
-                  <FormMessage className="text-red-400" />
+                  <FormMessage className="text-destructive" />
                 </FormItem>
               )}
             />
@@ -201,7 +201,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-neutral-200">
+                  <FormLabel className="text-foreground">
                     Additional Notes
                   </FormLabel>
                   <FormControl>
@@ -209,10 +209,10 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                       placeholder="Please share anything that will help prepare for our meeting."
                       {...field}
                       rows={4}
-                      className="bg-neutral-800 border-neutral-700 text-neutral-100 focus:ring-neutral-500 focus:border-neutral-500 resize-none"
+                      className="bg-muted border-border text-foreground focus:ring-ring focus:border-ring resize-none"
                     />
                   </FormControl>
-                  <FormMessage className="text-red-400" />
+                  <FormMessage className="text-destructive" />
                 </FormItem>
               )}
             />
@@ -222,14 +222,14 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                 type="button"
                 variant="outline"
                 onClick={onBack}
-                className="flex-1 border-neutral-700 bg-transparent text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
+                className="flex-1 border-border bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Back
               </Button>
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-1 bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
+                className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {isSubmitting ? (
                   <div className="flex items-center justify-center">

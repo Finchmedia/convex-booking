@@ -25,14 +25,14 @@ export const CalendarDayButton = React.memo<CalendarDayButtonProps>(({
         disabled={day.disabled}
         className={`absolute inset-0 flex items-center justify-center rounded-md text-base font-medium transition-all ${
           day.isSelected
-            ? "bg-neutral-700 text-white ring-1 ring-white" // Stronger white border for selection
+            ? "bg-accent text-foreground ring-1 ring-foreground" // Stronger border for selection
             : day.isToday
-            ? "bg-neutral-700 text-white ring-1 ring-neutral-500"
+            ? "bg-accent text-foreground ring-1 ring-muted-foreground"
             : day.disabled
-            ? "cursor-not-allowed text-neutral-600"
+            ? "cursor-not-allowed text-muted-foreground/50"
             : day.hasSlots
-            ? "bg-neutral-800 text-neutral-100 hover:border-2 hover:border-neutral-500"
-            : "text-neutral-500 hover:bg-neutral-800"
+            ? "bg-muted text-foreground hover:ring-2 hover:ring-foreground/50"
+            : "text-muted-foreground hover:bg-muted hover:ring-1 hover:ring-foreground/30"
         } ${!day.isCurrentMonth ? "opacity-40" : ""}`}>
         {day.day}
         {/* Show dot ONLY if it's Today, regardless of hasSlots */}

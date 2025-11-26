@@ -11,20 +11,25 @@ import {
   Database,
   GitBranch,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
+    <div className="min-h-screen bg-gradient-to-br from-background via-card to-background">
+      {/* Theme Toggle */}
+      <div className="fixed top-4 right-4 z-50">
+        <ThemeToggle />
+      </div>
       <div className="max-w-5xl mx-auto px-4 py-16">
         {/* 1. Hero Section */}
         <header className="text-center py-32 mb-20">
-          <h1 className="text-7xl font-bold text-white mb-8">
+          <h1 className="text-7xl font-bold text-foreground mb-8">
             ConvexBooking
           </h1>
-          <p className="text-3xl text-neutral-400 mb-6">
+          <p className="text-3xl text-muted-foreground mb-6">
             Real-time booking system for Convex
           </p>
-          <p className="text-xl text-neutral-500 max-w-2xl mx-auto">
+          <p className="text-xl text-muted-foreground/70 max-w-2xl mx-auto">
             A production-ready booking component with presence-aware slot locking,
             multi-duration support, and O(1) availability queries.
           </p>
@@ -34,17 +39,17 @@ export default function Home() {
         <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-20">
           <Link
             href="/book"
-            className="group p-8 rounded-xl border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800/50 hover:border-neutral-700 transition-all duration-200"
+            className="group p-8 rounded-xl border border-border bg-card/50 hover:bg-accent/50 hover:border-border transition-all duration-200"
           >
             <div className="flex flex-col items-center gap-4">
               <div className="p-4 rounded-full bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/20 transition-colors">
                 <Calendar className="w-8 h-8" />
               </div>
               <div className="text-center">
-                <h2 className="text-xl font-semibold text-white mb-2">
+                <h2 className="text-xl font-semibold text-foreground mb-2">
                   Try Booking
                 </h2>
-                <p className="text-sm text-neutral-400">
+                <p className="text-sm text-muted-foreground">
                   Experience the customer-facing booking flow
                 </p>
               </div>
@@ -53,17 +58,17 @@ export default function Home() {
 
           <Link
             href="/demo"
-            className="group p-8 rounded-xl border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800/50 hover:border-neutral-700 transition-all duration-200"
+            className="group p-8 rounded-xl border border-border bg-card/50 hover:bg-accent/50 hover:border-border transition-all duration-200"
           >
             <div className="flex flex-col items-center gap-4">
               <div className="p-4 rounded-full bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 transition-colors">
                 <Settings className="w-8 h-8" />
               </div>
               <div className="text-center">
-                <h2 className="text-xl font-semibold text-white mb-2">
+                <h2 className="text-xl font-semibold text-foreground mb-2">
                   Admin Dashboard
                 </h2>
-                <p className="text-sm text-neutral-400">
+                <p className="text-sm text-muted-foreground">
                   Manage resources, schedules, and bookings
                 </p>
               </div>
@@ -73,7 +78,7 @@ export default function Home() {
 
         {/* 3. Features Section */}
         <section className="mb-20">
-          <h2 className="text-2xl font-bold text-white text-center mb-10">
+          <h2 className="text-2xl font-bold text-foreground text-center mb-10">
             Features
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -112,7 +117,7 @@ export default function Home() {
 
         {/* 4. Architecture Section */}
         <section className="mb-20">
-          <h2 className="text-2xl font-bold text-white text-center mb-10">
+          <h2 className="text-2xl font-bold text-foreground text-center mb-10">
             Architecture
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -136,7 +141,7 @@ export default function Home() {
 
         {/* 5. Tech Stack */}
         <section className="mb-20">
-          <h2 className="text-2xl font-bold text-white text-center mb-6">
+          <h2 className="text-2xl font-bold text-foreground text-center mb-6">
             Tech Stack
           </h2>
           <div className="flex flex-wrap justify-center gap-3">
@@ -150,19 +155,19 @@ export default function Home() {
         </section>
 
         {/* 6. Footer */}
-        <footer className="text-center pt-8 border-t border-neutral-800">
-          <p className="text-neutral-500 text-sm">
+        <footer className="text-center pt-8 border-t border-border">
+          <p className="text-muted-foreground text-sm">
             Built with{" "}
             <a
               href="https://convex.dev"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-neutral-400 hover:text-white transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
               Convex
             </a>
           </p>
-          <p className="text-neutral-600 text-xs mt-2">
+          <p className="text-muted-foreground/50 text-xs mt-2">
             Development Demo
           </p>
         </footer>
@@ -181,14 +186,14 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="p-6 rounded-lg border border-neutral-800 bg-neutral-900/30">
+    <div className="p-6 rounded-lg border border-border bg-card/30">
       <div className="flex items-center gap-3 mb-3">
-        <div className="p-2 rounded-md bg-neutral-800 text-neutral-400">
+        <div className="p-2 rounded-md bg-muted text-muted-foreground">
           {icon}
         </div>
-        <h3 className="font-semibold text-white">{title}</h3>
+        <h3 className="font-semibold text-foreground">{title}</h3>
       </div>
-      <p className="text-sm text-neutral-400">{description}</p>
+      <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
@@ -203,10 +208,10 @@ function ArchCard({
   detail: string;
 }) {
   return (
-    <div className="p-6 rounded-lg border border-neutral-800 bg-neutral-900/30">
-      <h3 className="font-semibold text-white mb-2">{title}</h3>
-      <p className="text-sm text-neutral-400 mb-3">{description}</p>
-      <code className="text-xs text-neutral-500 bg-neutral-800 px-2 py-1 rounded">
+    <div className="p-6 rounded-lg border border-border bg-card/30">
+      <h3 className="font-semibold text-foreground mb-2">{title}</h3>
+      <p className="text-sm text-muted-foreground mb-3">{description}</p>
+      <code className="text-xs text-muted-foreground/70 bg-muted px-2 py-1 rounded">
         {detail}
       </code>
     </div>
@@ -221,7 +226,7 @@ function TechBadge({
   label: string;
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-800 text-neutral-300 text-sm">
+    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-sm">
       {icon}
       {label}
     </span>

@@ -33,24 +33,24 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
 
       {/* Heading */}
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-neutral-100 mb-2">
+        <h1 className="text-2xl font-bold text-foreground mb-2">
           You're booked!
         </h1>
-        <p className="text-neutral-400">
+        <p className="text-muted-foreground">
           A confirmation email has been sent to {booking.bookerEmail}
         </p>
       </div>
 
       {/* Booking Details Card */}
-      <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-6 space-y-4 mb-6">
+      <div className="bg-muted border border-border rounded-lg p-6 space-y-4 mb-6">
         <div className="flex items-start gap-3">
-          <Calendar className="h-5 w-5 text-neutral-400 mt-0.5" />
+          <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
           <div>
-            <p className="font-medium text-neutral-100">{eventType.title}</p>
-            <p className="text-sm text-neutral-400 mt-1">
+            <p className="font-medium text-foreground">{eventType.title}</p>
+            <p className="text-sm text-muted-foreground mt-1">
               {formatDateTime(booking.start, booking.timezone)}
             </p>
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-muted-foreground">
               {formatDuration(booking.end - booking.start)} duration
             </p>
           </div>
@@ -58,21 +58,21 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
 
         {booking.location.value && (
           <div className="flex items-start gap-3">
-            <MapPin className="h-5 w-5 text-neutral-400 mt-0.5" />
-            <p className="text-sm text-neutral-300">{booking.location.value}</p>
+            <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
+            <p className="text-sm text-foreground">{booking.location.value}</p>
           </div>
         )}
 
         <div className="flex items-start gap-3">
-          <User className="h-5 w-5 text-neutral-400 mt-0.5" />
-          <p className="text-sm text-neutral-300">{booking.bookerName}</p>
+          <User className="h-5 w-5 text-muted-foreground mt-0.5" />
+          <p className="text-sm text-foreground">{booking.bookerName}</p>
         </div>
       </div>
 
       {/* Action Buttons */}
       <div className="flex gap-3">
         <Button
-          className="flex-1 bg-neutral-100 text-neutral-900 hover:bg-neutral-200 font-medium"
+          className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
           onClick={onBookAnother}
         >
           Book Another

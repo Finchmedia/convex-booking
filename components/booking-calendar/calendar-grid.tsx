@@ -46,7 +46,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
         {DAYS.map((day) => (
           <div
             key={day}
-            className="flex h-14 w-14 items-center justify-center text-sm font-medium text-neutral-400">
+            className="flex h-14 w-14 items-center justify-center text-sm font-medium text-muted-foreground">
             {day}
           </div>
         ))}

@@ -11,7 +11,6 @@ import {
   Users,
   ChevronLeft,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
   Sidebar,
   SidebarContent,
@@ -19,14 +18,17 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
+  SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const navigationItems = [
   {
@@ -61,15 +63,15 @@ function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="border-b px-6 py-4">
-        <Link href="/demo" className="flex items-center gap-2">
+      <SidebarHeader>
+        <Link href="/demo" className="flex items-center gap-2 px-2">
           <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
             <Calendar className="h-4 w-4 text-primary-foreground" />
           </div>
           <span className="font-semibold text-lg">Convex Booking</span>
         </Link>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="gap-0">
         <SidebarGroup>
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -94,7 +96,6 @@ function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <Separator className="my-4" />
         <SidebarGroup>
           <SidebarGroupLabel>Tools</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -127,6 +128,7 @@ function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarRail />
     </Sidebar>
   );
 }
@@ -138,15 +140,18 @@ export default function DemoLayout({
 }) {
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background">
-        <AppSidebar />
-        <main className="flex-1 overflow-auto">
-          <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6">
-            <SidebarTrigger />
-          </header>
-          <div className="p-6">{children}</div>
-        </main>
-      </div>
+      <AppSidebar />
+      <SidebarInset>
+        <header className="bg-background sticky top-0 flex h-16 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <div className="flex-1" />
+          <ThemeToggle />
+        </header>
+        <div className="flex flex-1 flex-col gap-4 p-4">
+          {children}
+        </div>
+      </SidebarInset>
       <Toaster />
     </SidebarProvider>
   );

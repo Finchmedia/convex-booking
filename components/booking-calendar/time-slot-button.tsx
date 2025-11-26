@@ -29,8 +29,8 @@ export const TimeSlotButton: React.FC<TimeSlotButtonProps> = ({
       className={`w-full rounded-md border px-3 py-2 text-center text-sm font-medium transition-all
         ${
           isReserved
-            ? "cursor-not-allowed border-neutral-800 bg-neutral-900 text-neutral-600 opacity-60"
-            : "border-neutral-600 bg-neutral-800 text-neutral-200 hover:border-neutral-500 hover:bg-neutral-700"
+            ? "cursor-not-allowed border-border bg-card text-muted-foreground/50 opacity-60"
+            : "border-border bg-muted text-foreground hover:border-foreground/50 hover:bg-accent"
         }
       `}
     >

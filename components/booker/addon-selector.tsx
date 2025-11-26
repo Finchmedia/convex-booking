@@ -47,7 +47,7 @@ export function AddonSelector({
   // Loading state
   if (resources === undefined) {
     return (
-      <Card className="bg-neutral-900/50 border-neutral-800">
+      <Card className="bg-card/50 border-border">
         <CardHeader>
           <Skeleton className="h-6 w-32" />
         </CardHeader>
@@ -101,19 +101,19 @@ export function AddonSelector({
     selectedAddons.find((a) => a.resourceId === resourceId);
 
   return (
-    <Card className="bg-neutral-900/50 border-neutral-800">
+    <Card className="bg-card/50 border-border">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-white">
+        <CardTitle className="flex items-center gap-2 text-foreground">
           <Package className="h-5 w-5" />
           Add-ons
         </CardTitle>
-        <CardDescription className="text-neutral-400">
+        <CardDescription className="text-muted-foreground">
           Optional extras you can add to your booking
         </CardDescription>
       </CardHeader>
       <CardContent>
         {!addons || addons.length === 0 ? (
-          <p className="text-neutral-500 text-sm">No add-ons available</p>
+          <p className="text-muted-foreground text-sm">No add-ons available</p>
         ) : (
           <div className="space-y-4">
             {addons.map((addon) => {
@@ -129,7 +129,7 @@ export function AddonSelector({
                     p-4 rounded-lg border transition-all cursor-pointer
                     ${selected
                       ? "border-primary/50 bg-primary/5"
-                      : "border-neutral-800 hover:border-neutral-700 bg-neutral-900/30"
+                      : "border-border hover:border-border bg-card/30"
                     }
                   `}
                   onClick={() => toggleAddon(addon.id, addon.name, maxQuantity)}
@@ -146,16 +146,16 @@ export function AddonSelector({
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <div>
-                          <Label className="text-white font-medium cursor-pointer">
+                          <Label className="text-foreground font-medium cursor-pointer">
                             {addon.name}
                           </Label>
                           {addon.description && (
-                            <p className="text-neutral-500 text-sm mt-0.5">
+                            <p className="text-muted-foreground text-sm mt-0.5">
                               {addon.description}
                             </p>
                           )}
                         </div>
-                        <Badge variant="outline" className="text-neutral-500 border-neutral-700">
+                        <Badge variant="outline" className="text-muted-foreground border-border">
                           {addon.type}
                         </Badge>
                       </div>
@@ -166,7 +166,7 @@ export function AddonSelector({
                           className="flex items-center gap-3 mt-3"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <span className="text-sm text-neutral-400">Quantity:</span>
+                          <span className="text-sm text-muted-foreground">Quantity:</span>
                           <div className="flex items-center gap-2">
                             <Button
                               variant="outline"
@@ -177,7 +177,7 @@ export function AddonSelector({
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
-                            <span className="text-white font-medium w-8 text-center">
+                            <span className="text-foreground font-medium w-8 text-center">
                               {selectedAddon?.quantity || 1}
                             </span>
                             <Button
@@ -190,7 +190,7 @@ export function AddonSelector({
                               <Plus className="h-3 w-3" />
                             </Button>
                           </div>
-                          <span className="text-xs text-neutral-500">
+                          <span className="text-xs text-muted-foreground">
                             (max {maxQuantity})
                           </span>
                         </div>

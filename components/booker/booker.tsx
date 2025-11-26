@@ -169,12 +169,12 @@ export function Booker({
       {showHeader && bookingStep === "event-meta" && (title || description) && (
         <div className="text-center mb-8">
           {title && (
-            <h1 className="text-4xl font-bold text-neutral-100 mb-4">
+            <h1 className="text-4xl font-bold text-foreground mb-4">
               {title}
             </h1>
           )}
           {description && (
-            <p className="text-neutral-400">{description}</p>
+            <p className="text-muted-foreground">{description}</p>
           )}
         </div>
       )}
@@ -204,7 +204,7 @@ export function Booker({
 
       {/* Step 2: Booking Form */}
       {bookingStep === "booking-form" && selectedSlot && (
-        <div className="bg-neutral-900 rounded-xl border border-neutral-800 overflow-hidden shadow-2xl">
+        <div className="bg-card rounded-xl border border-border overflow-hidden shadow-2xl">
           <BookingForm
             eventType={displayedEventType}
             selectedSlot={selectedSlot}
@@ -219,7 +219,7 @@ export function Booker({
 
       {/* Step 3: Success Screen */}
       {bookingStep === "success" && completedBooking && (
-        <div className="bg-neutral-900 rounded-xl border border-neutral-800 overflow-hidden shadow-2xl">
+        <div className="bg-card rounded-xl border border-border overflow-hidden shadow-2xl">
           <BookingSuccess
             booking={completedBooking}
             eventType={displayedEventType}

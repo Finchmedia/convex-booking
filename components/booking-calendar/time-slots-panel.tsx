@@ -67,19 +67,19 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
   };
 
   return (
-    <div className="w-full border-t border-neutral-800 md:w-60 lg:w-72 md:border-t-0 md:border-l">
+    <div className="w-full border-t border-border md:w-60 lg:w-72 md:border-t-0 md:border-l">
       <div className="p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-100">
+          <h3 className="text-sm font-semibold text-foreground">
             {formatSelectedDate(selectedDate)}
           </h3>
-          <div className="flex overflow-hidden rounded-md border border-neutral-600 bg-neutral-800">
+          <div className="flex overflow-hidden rounded-md border border-border bg-muted">
             <button
               onClick={() => onTimeFormatChange("12h")}
               className={`px-2 py-1 text-xs font-medium transition-colors ${
                 timeFormat === "12h"
-                  ? "bg-neutral-700 text-neutral-100"
-                  : "text-neutral-400 hover:text-neutral-200"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}>
               12h
             </button>
@@ -87,8 +87,8 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
               onClick={() => onTimeFormatChange("24h")}
               className={`px-2 py-1 text-xs font-medium transition-colors ${
                 timeFormat === "24h"
-                  ? "bg-neutral-700 text-neutral-100"
-                  : "text-neutral-400 hover:text-neutral-200"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}>
               24h
             </button>
@@ -99,14 +99,14 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
       {/* Time Slots */}
       <div className="relative">
         {/* Scroll container with visible scrollbar and height limit */}
-        <div 
-          className={`scrollbar-thin scrollbar-track-neutral-800 scrollbar-thumb-neutral-600 hover:scrollbar-thumb-neutral-500 max-h-96 overflow-y-auto px-6 pb-4 transition-opacity duration-200 ${
+        <div
+          className={`scrollbar-thin scrollbar-track-muted scrollbar-thumb-accent hover:scrollbar-thumb-accent/80 max-h-96 overflow-y-auto px-6 pb-4 transition-opacity duration-200 ${
             isReloading ? "opacity-50 pointer-events-none" : "opacity-100"
           }`}
         >
           <div className="space-y-2">
             {!selectedDate ? (
-              <p className="text-sm text-neutral-400">
+              <p className="text-sm text-muted-foreground">
                 Please select a date to see available times
               </p>
             ) : loading ? (
@@ -114,12 +114,12 @@ export const TimeSlotsPanel: React.FC<TimeSlotsPanelProps> = ({
                 {[...Array(6)].map((_, i) => (
                   <div
                     key={i}
-                    className="h-9 animate-pulse rounded-md bg-neutral-700"
+                    className="h-9 animate-pulse rounded-md bg-accent"
                   />
                 ))}
               </div>
             ) : allSlots.length === 0 ? (
-              <p className="text-sm text-neutral-400">
+              <p className="text-sm text-muted-foreground">
                 No available times for this date
               </p>
             ) : (
