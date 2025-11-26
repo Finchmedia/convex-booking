@@ -1,5 +1,6 @@
 import type { MDXComponents } from "mdx/types";
 import { Callout } from "@/components/docs/callout";
+import { CodeBlock } from "@/components/docs/code-block";
 
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
@@ -41,21 +42,30 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
         {children}
       </ol>
     ),
-    // Code styling (inline)
-    code: ({ children }) => (
-      <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm">
-        {children}
-      </code>
-    ),
-    // Pre/code block styling is handled by rehype-pretty-code
-    pre: ({ children, ...props }) => (
-      <pre
-        className="mb-4 mt-4 overflow-x-auto rounded-lg border border-border bg-neutral-900 p-4"
-        {...props}
-      >
-        {children}
-      </pre>
-    ),
+    // Inline code styling (code blocks are handled by CodeBlock via pre)
+    code: ({ children, className, ...props }) => {
+      // If it has a data-* attribute or language class, it's inside a code block - let it pass through
+      const isBlockCode =
+        className?.includes("language-") ||
+        Object.keys(props).some((k) => k.startsWith("data-"));
+
+      if (isBlockCode) {
+        return (
+          <code className={className} {...props}>
+            {children}
+          </code>
+        );
+      }
+
+      // Inline code styling
+      return (
+        <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm">
+          {children}
+        </code>
+      );
+    },
+    // Code blocks with syntax highlighting via rehype-pretty-code
+    pre: (props) => <CodeBlock {...props} />,
     // Link styling
     a: ({ href, children }) => (
       <a

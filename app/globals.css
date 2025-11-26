@@ -167,3 +167,52 @@
   opacity: 1;
   animation: rotateBorder 4s linear infinite;
 }
+
+/* ========================================
+   Shiki Syntax Highlighting (rehype-pretty-code)
+   ======================================== */
+
+/* Code block base styling */
+pre > code {
+  display: grid;
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+/* Line styling */
+pre [data-line] {
+  padding: 0 1rem;
+  border-left: 2px solid transparent;
+}
+
+/* Highlighted lines */
+pre [data-highlighted-line] {
+  background: rgba(200, 200, 255, 0.1);
+  border-left-color: rgb(59, 130, 246);
+}
+
+/* Highlighted characters/words */
+pre [data-highlighted-chars] {
+  background: rgba(200, 200, 255, 0.15);
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.25rem;
+}
+
+/* Dual theme support via Shiki CSS variables */
+/* rehype-pretty-code outputs data-theme with space-separated theme names */
+
+/* Light mode (default) */
+code[data-theme*=" "],
+code[data-theme*=" "] span {
+  color: var(--shiki-light);
+  background-color: transparent;
+}
+
+/* Dark mode */
+.dark code[data-theme*=" "],
+.dark code[data-theme*=" "] span {
+  color: var(--shiki-dark);
+  background-color: transparent;
+}
