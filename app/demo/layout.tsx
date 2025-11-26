@@ -101,9 +101,17 @@ function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
+                  <Link href="/book">
+                    <Calendar className="h-4 w-4" />
+                    <span>Try Booking</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
                   <Link href="/">
                     <ChevronLeft className="h-4 w-4" />
-                    <span>Back to Booker</span>
+                    <span>Back to Home</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

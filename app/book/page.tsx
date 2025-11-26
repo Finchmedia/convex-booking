@@ -117,8 +117,15 @@ export default function BookPage() {
           </div>
         )}
 
-        {/* Footer Link */}
-        <div className="text-center mt-12">
+        {/* Footer Links */}
+        <div className="text-center mt-12 flex items-center justify-center gap-4">
+          <Link
+            href="/"
+            className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors"
+          >
+            ← Back to Home
+          </Link>
+          <span className="text-neutral-700">|</span>
           <Link
             href="/demo"
             className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors"
