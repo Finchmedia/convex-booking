@@ -101,7 +101,6 @@ export default function ResourceBookingPage() {
             title={resource.name}
             description={selectedEventType.description || resource.description}
             organizerName="Studio Team"
-            showDevTools={false}
             onBookingComplete={(booking) => {
               console.log("Booking completed:", booking);
             }}

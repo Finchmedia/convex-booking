@@ -8,21 +8,8 @@ import { useSlotHold } from "@/lib/hooks/use-slot-hold";
 import { Calendar } from "@/components/booking-calendar/calendar";
 import { BookingForm } from "@/components/booking-form/booking-form";
 import { BookingSuccess } from "@/components/booking-form/booking-success";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { BookingStep, BookingFormData, Booking } from "@/types/booking";
-
-// Default mock event type for development/seeding
-const DEFAULT_MOCK_EVENT_TYPE = {
-  id: "studio-session",
-  slug: "studio-session",
-  title: "Studio Session",
-  lengthInMinutes: 60,
-  lengthInMinutesOptions: [60, 120, 300], // 1h, 2h, 5h
-  slotInterval: 60, // Hourly slots (will default to Math.min(lengthInMinutesOptions) = 60)
-  description: "Book a recording session at Studio A. Includes engineer and basic mixing.",
-  locations: [{ type: "address", address: "123 Studio St, Berlin, Germany", public: true }],
-  timezone: "Europe/Berlin",
-  lockTimeZoneToggle: false,
-};
 
 export interface BookerProps {
   /** Event type ID to book */
@@ -39,10 +26,6 @@ export interface BookerProps {
   organizerName?: string;
   /** Organizer avatar URL */
   organizerAvatar?: string;
-  /** Show dev tools seed button (default: false) */
-  showDevTools?: boolean;
-  /** Mock event type for seeding (default: provided) */
-  mockEventType?: any;
   /** Callback when booking is successfully created */
   onBookingComplete?: (booking: Booking) => void;
 }
@@ -55,8 +38,6 @@ export function Booker({
   showHeader = true,
   organizerName,
   organizerAvatar,
-  showDevTools = false,
-  mockEventType = DEFAULT_MOCK_EVENT_TYPE,
   onBookingComplete,
 }: BookerProps) {
   // Step state
@@ -75,30 +56,17 @@ export function Booker({
 
   // Mutations
   const createBooking = useMutation(api.booking.createBooking);
-  const createEventType = useMutation(api.booking.createEventType); // For seeding
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch real event type from DB
-  const eventTypeData = useQuery(api.booking.getEventType, { eventTypeId });
-
-  // Fallback to mock if loading or error (for MVP robustness)
-  const eventType = eventTypeData || mockEventType;
+  // Fetch event type from DB
+  const eventType = useQuery(api.booking.getEventType, { eventTypeId });
 
   // Calculate effective slot interval (smart defaulting - same logic as useConvexSlots)
-  const slotInterval = eventType.slotInterval ?? (
-    eventType.lengthInMinutesOptions && eventType.lengthInMinutesOptions.length > 0
+  const slotInterval = eventType?.slotInterval ?? (
+    eventType?.lengthInMinutesOptions && eventType.lengthInMinutesOptions.length > 0
       ? Math.min(...eventType.lengthInMinutesOptions, eventType.lengthInMinutes)
-      : eventType.lengthInMinutes
+      : eventType?.lengthInMinutes
   );
-
-  // Seeder function (dev tools)
-  const handleSeed = async () => {
-    if (confirm("Reset/Seed Event Type data?")) {
-      await createEventType(mockEventType);
-      alert("System seeded! Refreshing...");
-      window.location.reload();
-    }
-  };
 
   // Real-time Hold: Automatically reserve all affected slots (quantum coverage)
   useSlotHold(resourceId, selectedSlot, selectedDuration);
@@ -159,10 +127,22 @@ export function Booker({
   };
 
   // Memoize event type with selected duration for display
-  const displayedEventType = useMemo(() => ({
-    ...eventType,
-    lengthInMinutes: selectedDuration, // Override base length with user selection
-  }), [eventType, selectedDuration]);
+  const displayedEventType = useMemo(() => {
+    if (!eventType) return undefined;
+    return {
+      ...eventType,
+      lengthInMinutes: selectedDuration, // Override base length with user selection
+    };
+  }, [eventType, selectedDuration]);
+
+  // Show loading state if event type is still loading
+  if (eventType === undefined) {
+    return (
+      <div className="bg-card rounded-xl border border-border overflow-hidden shadow-2xl p-8">
+        <Skeleton className="h-64 w-full bg-muted" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -229,17 +209,6 @@ export function Booker({
         </div>
       )}
 
-      {/* Dev Tools */}
-      {showDevTools && (
-        <div className="fixed bottom-4 right-4 opacity-20 hover:opacity-100 transition-opacity">
-          <button
-            onClick={handleSeed}
-            className="bg-red-900/50 text-red-200 text-xs px-2 py-1 rounded hover:bg-red-900"
-          >
-            Seed System
-          </button>
-        </div>
-      )}
     </>
   );
 }

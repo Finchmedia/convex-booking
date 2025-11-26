@@ -8,6 +8,7 @@ import { TimeSlotsPanel } from "./time-slots-panel";
 import { EventMetaPanel } from "./event-meta-panel";
 import { useConvexSlots } from "@/lib/hooks/use-convex-slots";
 import { useIntersectionObserver } from "@/lib/hooks/use-intersection-observer";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface CalendarProps {
   resourceId: string;
@@ -57,9 +58,18 @@ export const Calendar: React.FC<CalendarProps> = ({
   // Fetch event type configuration
   const eventType = useQuery(api.booking.getEventType, { eventTypeId });
 
+  // Show loading state if event type is still loading
+  if (eventType === undefined) {
+    return (
+      <div className="bg-card overflow-hidden rounded-xl border border-border shadow p-8">
+        <Skeleton className="h-96 w-full bg-muted" />
+      </div>
+    );
+  }
+
   // Event type timezone (overrides browser timezone when locked)
-  const eventTimezone = eventType?.timezone || "Europe/Berlin";
-  const isTimezoneLocked = eventType?.lockTimeZoneToggle || false;
+  const eventTimezone = eventType.timezone || "Europe/Berlin";
+  const isTimezoneLocked = eventType.lockTimeZoneToggle || false;
 
   // Use controlled duration from props
   const eventLength = selectedDuration;
