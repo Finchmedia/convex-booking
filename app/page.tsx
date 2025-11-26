@@ -44,26 +44,15 @@ export default function Home() {
             An open-source booking component with presence-aware slot locking,
             multi-duration support, and O(1) availability queries.
           </p>
-          <div className="max-w-sm mx-auto">
-            <Link
-              href="/docs"
-              className="group p-8 rounded-xl border border-border bg-card/50 hover:bg-muted hover:border-foreground/20 hover:shadow-lg hover:scale-[1.02] transition-all duration-200 block"
-            >
-              <div className="flex flex-col items-center gap-4">
-                <div className="p-4 rounded-full bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20 transition-colors">
-                  <BookOpen className="w-8 h-8" />
-                </div>
-                <div className="text-center">
-                  <h2 className="text-xl font-semibold text-foreground mb-2">
-                    Read the Docs
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Learn about architecture, guides, and API reference
-                  </p>
-                </div>
-              </div>
-            </Link>
-          </div>
+          <Link
+            href="/docs"
+            className="inline-flex items-center gap-3 px-6 py-4 rounded-lg border border-border bg-card/30 hover:bg-card/50 transition-colors"
+          >
+            <div className="p-2 rounded-md bg-muted text-muted-foreground">
+              <BookOpen className="w-4 h-4" />
+            </div>
+            <span className="font-semibold text-foreground">Read the Docs</span>
+          </Link>
         </header>
 
         {/* 2. Demo Cards (Primary CTA) */}
