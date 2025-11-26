@@ -9,6 +9,8 @@ import {
   Shield,
   Layers,
   Timer,
+  Github,
+  Linkedin,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -25,11 +27,13 @@ export default function Home() {
           <h1 className="text-7xl font-bold text-foreground mb-8">
             ConvexBooking
           </h1>
-          <p className="text-3xl text-muted-foreground mb-6">
-            Real-time booking system for Convex
+          <p className="text-3xl text-foreground mb-6 flex items-center justify-center">
+            <span>Real-time booking system for</span>
+            <Image src="/convex-logotype-black.svg" alt="Convex" width={170} height={38} className="dark:hidden -ml-1 translate-y-[1px]" />
+            <Image src="/convex-logotype-white.svg" alt="Convex" width={170} height={38} className="hidden dark:block -ml-1 translate-y-[1px]" />
           </p>
           <p className="text-xl text-muted-foreground/70 max-w-2xl mx-auto">
-            A production-ready booking component with presence-aware slot locking,
+            An open-source booking component with presence-aware slot locking,
             multi-duration support, and O(1) availability queries.
           </p>
         </header>
@@ -176,7 +180,53 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 6. Footer */}
+        {/* 6. About Me */}
+        <section className="mb-20">
+          <h2 className="text-2xl font-bold text-foreground text-center mb-10">
+            About Me
+          </h2>
+          <div className="flex flex-col md:flex-row items-center gap-8 p-8 rounded-xl border border-border bg-card/30">
+            <Image
+              src="/daniel_avatar.jpg"
+              alt="Daniel Finke"
+              width={128}
+              height={128}
+              className="w-32 h-32 rounded-full object-cover shrink-0"
+            />
+            <div className="flex-1 text-center md:text-left">
+              <h3 className="text-xl font-semibold text-foreground mb-3">Daniel Finke</h3>
+              <p className="text-muted-foreground mb-4">
+                From crafting beats as a musician and producer to building workflows in Airtable and no-code tools,
+                my journey has been one of constant learning. Now I&apos;m exploring fullstack development with Convex,
+                curious to see how far I can push myself and picking up something new every day. This booking component
+                is my first contribution to the open-source community — still a work in progress, so if you spot bugs
+                or have ideas, I&apos;d genuinely love to hear from you.
+              </p>
+              <div className="flex gap-3 justify-center md:justify-start">
+                <a
+                  href="https://www.linkedin.com/in/daniel-finke-563623178/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-accent transition-colors"
+                >
+                  <Linkedin className="w-4 h-4" />
+                  LinkedIn
+                </a>
+                <a
+                  href="https://github.com/Finchmedia"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-accent transition-colors"
+                >
+                  <Github className="w-4 h-4" />
+                  GitHub
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 7. Footer */}
         <footer className="text-center pt-8 border-t border-border">
           <p className="text-muted-foreground text-sm">
             Built with{" "}

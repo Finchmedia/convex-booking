@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Calendar,
@@ -65,9 +66,7 @@ function AppSidebar() {
     <Sidebar>
       <SidebarHeader>
         <Link href="/demo" className="flex items-center gap-2 px-2">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <Calendar className="h-4 w-4 text-primary-foreground" />
-          </div>
+          <Image src="/convex-color.svg" alt="Convex" width={32} height={32} />
           <span className="font-semibold text-lg">Convex Booking</span>
         </Link>
       </SidebarHeader>
