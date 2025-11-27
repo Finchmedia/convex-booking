@@ -5,9 +5,11 @@ import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
 import { useSlotHold } from "@/lib/hooks/use-slot-hold";
+import { useBookingValidation } from "@/lib/hooks/use-booking-validation";
 import { Calendar } from "@/components/booking-calendar/calendar";
 import { BookingForm } from "@/components/booking-form/booking-form";
 import { BookingSuccess } from "@/components/booking-form/booking-success";
+import { BookingErrorDialog } from "@/components/booker/booking-error-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BookingStep, BookingFormData, Booking } from "@/types/booking";
 
@@ -58,8 +60,10 @@ export function Booker({
   const createBooking = useMutation(api.booking.createBooking);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch event type from DB
+  // Fetch event type, resource, and link state from DB
   const eventType = useQuery(api.booking.getEventType, { eventTypeId });
+  const resource = useQuery(api.booking.getResource, { id: resourceId });
+  const hasLink = useQuery(api.booking.hasResourceEventTypeLink, { resourceId, eventTypeId });
 
   // Calculate effective slot interval (smart defaulting - same logic as useConvexSlots)
   const slotInterval = eventType?.slotInterval ?? (
@@ -70,6 +74,15 @@ export function Booker({
 
   // Real-time Hold: Automatically reserve all affected slots (quantum coverage)
   useSlotHold(resourceId, selectedSlot, selectedDuration);
+
+  // Reactive validation: Monitor event type, resource, and link state
+  const validation = useBookingValidation(
+    eventType,
+    resource,
+    hasLink,
+    selectedDuration,
+    resourceId
+  );
 
   // Step 1: Calendar slot selection (captures BOTH slot AND duration atomically)
   const handleSlotSelect = (data: { slot: string; duration: number }) => {
@@ -126,6 +139,18 @@ export function Booker({
     setCompletedBooking(null);
   };
 
+  // Reset calendar state (for duration_invalid error)
+  const handleReset = () => {
+    setBookingStep("event-meta");
+    setSelectedSlot(null);
+    // Reset to first available duration
+    if (eventType?.lengthInMinutesOptions?.length) {
+      setSelectedDuration(Math.min(...eventType.lengthInMinutesOptions));
+    } else if (eventType) {
+      setSelectedDuration(eventType.lengthInMinutes);
+    }
+  };
+
   // Memoize event type with selected duration for display
   const displayedEventType = useMemo(() => {
     if (!eventType) return undefined;
@@ -146,6 +171,11 @@ export function Booker({
 
   return (
     <>
+      {/* Error Dialog (blocking) */}
+      {validation.status === "error" && validation.error && (
+        <BookingErrorDialog error={validation.error} onReset={handleReset} />
+      )}
+
       {/* Optional Header */}
       {showHeader && bookingStep === "event-meta" && (title || description) && (
         <div className="text-center mb-8">

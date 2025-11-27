@@ -227,7 +227,35 @@ export const createBooking = mutation({
 
     if (!eventType) throw new Error("Event type not found");
 
-    // 2. Check availability (reuse existing logic from createReservation)
+    // Validate event type is active
+    if (eventType.isActive === false) {
+      throw new Error("Event type is no longer active");
+    }
+
+    // 2. Validate resource exists and is active
+    const resource = await ctx.db
+      .query("resources")
+      .withIndex("by_external_id", (q) => q.eq("id", args.resourceId))
+      .unique();
+
+    if (!resource) throw new Error("Resource not found");
+
+    if (resource.isActive === false) {
+      throw new Error("Resource is no longer active");
+    }
+
+    // 3. Validate resource is linked to event type
+    const link = await ctx.db
+      .query("resource_event_types")
+      .withIndex("by_resource", (q) => q.eq("resourceId", args.resourceId))
+      .filter((q) => q.eq(q.field("eventTypeId"), args.eventTypeId))
+      .unique();
+
+    if (!link) {
+      throw new Error("Resource is not available for this event type");
+    }
+
+    // 4. Check availability (reuse existing logic from createReservation)
     const startChunk = Math.floor((args.start % 86400000) / 900000);
     const endChunk = Math.floor((args.end % 86400000) / 900000);
     const dateStr = new Date(args.start).toISOString().split("T")[0];
@@ -248,10 +276,10 @@ export const createBooking = mutation({
       }
     }
 
-    // 3. Generate unique booking UID
+    // 5. Generate unique booking UID
     const uid = `bk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // 4. Create booking record
+    // 6. Create booking record
     const bookingId = await ctx.db.insert("bookings", {
       uid,
       resourceId: args.resourceId,
@@ -272,7 +300,7 @@ export const createBooking = mutation({
       updatedAt: Date.now(),
     });
 
-    // 5. Mark slots as busy in daily_availability
+    // 7. Mark slots as busy in daily_availability
     const busyChunks = Array.from(
       { length: endChunk - startChunk },
       (_, i) => startChunk + i
@@ -290,7 +318,7 @@ export const createBooking = mutation({
       });
     }
 
-    // 6. Return full booking object
+    // 8. Return full booking object
     return await ctx.db.get(bookingId);
   },
 });
