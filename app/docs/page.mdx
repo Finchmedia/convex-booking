@@ -19,7 +19,7 @@ ConvexBooking is an open-source, real-time booking system built as a [Convex com
 
 ConvexBooking uses a **discrete time bucket** architecture where availability is pre-computed and stored in 15-minute intervals (called "quanta"). This enables O(1) availability checks regardless of how many historical bookings exist.
 
-```typescript
+```typescript title="convex/availability.ts"
 // Check if a slot is available
 const isAvailable = await ctx.runQuery(api.booking.getAvailability, {
   resourceId: "studio-a",

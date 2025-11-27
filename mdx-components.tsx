@@ -1,9 +1,42 @@
 import type { MDXComponents } from "mdx/types";
+import React from "react";
 import { Callout } from "@/components/docs/callout";
 import { CodeBlock } from "@/components/docs/code-block";
 
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
+    // Handle figure elements from rehype-pretty-code (extracts title from figcaption)
+    figure: ({ children, ...props }) => {
+      const isCodeFigure = "data-rehype-pretty-code-figure" in props;
+      if (!isCodeFigure) {
+        return <figure {...props}>{children}</figure>;
+      }
+
+      // Extract title from figcaption
+      let title: string | undefined;
+      React.Children.forEach(children, (child) => {
+        if (React.isValidElement(child) && child.type === "figcaption") {
+          const figcaptionChildren = child.props.children;
+          if (typeof figcaptionChildren === "string") {
+            title = figcaptionChildren;
+          }
+        }
+      });
+
+      // Filter out figcaption, pass title to pre/CodeBlock
+      const processed = React.Children.map(children, (child) => {
+        if (!React.isValidElement(child)) return child;
+        // Remove figcaption (already extracted title)
+        if (child.props?.["data-rehype-pretty-code-title"] !== undefined) return null;
+        // Pass title to element with data-language (the code block)
+        if (child.props?.["data-language"] && title) {
+          return React.cloneElement(child, { "data-title": title } as React.Attributes);
+        }
+        return child;
+      });
+
+      return <figure {...props}>{processed}</figure>;
+    },
     // Default heading styles
     h1: ({ children }) => (
       <h1 className="scroll-m-20 text-4xl font-bold tracking-tight mb-6">

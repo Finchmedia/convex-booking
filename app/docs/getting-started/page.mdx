@@ -16,7 +16,7 @@ npm install convex-booking
 
 Update your `convex/convex.config.ts` to include the booking component:
 
-```typescript
+```typescript title="convex/convex.config.ts"
 import { defineApp } from "convex/server";
 import booking from "convex-booking/convex.config";
 
@@ -30,7 +30,7 @@ export default app;
 
 Create a file at `convex/booking.ts` to expose the component API:
 
-```typescript
+```typescript title="convex/booking.ts"
 import { components } from "./_generated/api";
 import { makeBookingAPI } from "convex-booking";
 
