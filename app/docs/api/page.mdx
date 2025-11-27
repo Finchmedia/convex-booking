@@ -1,0 +1,260 @@
+<DocPage toc={[
+  { title: "Setup", url: "#setup", depth: 2 },
+  { title: "Queries", url: "#queries", depth: 2 },
+  { title: "Availability Queries", url: "#availability-queries", depth: 3 },
+  { title: "Resource Queries", url: "#resource-queries", depth: 3 },
+  { title: "Event Type Queries", url: "#event-type-queries", depth: 3 },
+  { title: "Mutations", url: "#mutations", depth: 2 },
+  { title: "Booking Mutations", url: "#booking-mutations", depth: 3 },
+  { title: "Resource Mutations", url: "#resource-mutations", depth: 3 },
+  { title: "Frontend Hooks", url: "#frontend-hooks", depth: 2 },
+]}>
+
+# API Reference
+
+The ConvexBooking API is exposed through the `makeBookingAPI` function, which wraps the component's functions for use in your app.
+
+## Setup
+
+First, create a booking API file in your convex folder:
+
+```typescript title="convex/booking.ts"
+import { components } from "./_generated/api";
+import { makeBookingAPI } from "convex-booking";
+
+export const {
+  // Availability
+  getAvailability,
+  getMonthAvailability,
+  getDaySlots,
+
+  // Resources
+  getResource,
+  listResources,
+  createResource,
+  updateResource,
+  deleteResource,
+
+  // Schedules
+  getSchedule,
+  listSchedules,
+  createSchedule,
+  updateSchedule,
+  deleteSchedule,
+
+  // Event Types
+  getEventType,
+  listEventTypes,
+  createEventType,
+  updateEventType,
+  deleteEventType,
+
+  // Bookings
+  createBooking,
+  cancelBooking,
+  listBookings,
+
+  // Presence
+  heartbeat,
+  leave,
+  getDatePresence,
+} = makeBookingAPI(components.booking);
+```
+
+## Queries
+
+### Availability Queries
+
+#### `getMonthAvailability`
+
+Get availability dots for a calendar month.
+
+```typescript
+const availability = await ctx.runQuery(api.booking.getMonthAvailability, {
+  resourceId: "studio-a",
+  dateFrom: "2025-01-01",
+  dateTo: "2025-01-31",
+  eventLength: 60,
+  slotInterval: 60, // optional
+});
+// Returns: { "2025-01-15": true, "2025-01-16": false, ... }
+```
+
+#### `getDaySlots`
+
+Get available time slots for a specific day.
+
+```typescript
+const slots = await ctx.runQuery(api.booking.getDaySlots, {
+  resourceId: "studio-a",
+  date: "2025-01-15",
+  eventLength: 60,
+  slotInterval: 60,
+  scheduleId: "business-hours", // optional
+  timezone: "Europe/Berlin",    // optional
+});
+// Returns: [{ slot: "2025-01-15T09:00:00.000Z", formatted: "9:00 AM" }, ...]
+```
+
+#### `getDatePresence`
+
+Get active presence holds for a date (used for real-time slot locking).
+
+```typescript
+const presence = await ctx.runQuery(api.booking.getDatePresence, {
+  resourceId: "studio-a",
+  date: "2025-01-15",
+});
+// Returns: [{ slot: "2025-01-15T10:00:00.000Z", user: "session-123" }, ...]
+```
+
+### Resource Queries
+
+#### `listResources`
+
+```typescript
+const resources = await ctx.runQuery(api.booking.listResources, {
+  organizationId: "org-1",  // optional
+  activeOnly: true,         // optional
+});
+```
+
+#### `getResource`
+
+```typescript
+const resource = await ctx.runQuery(api.booking.getResource, {
+  resourceId: "studio-a",
+});
+```
+
+### Event Type Queries
+
+#### `listEventTypes`
+
+```typescript
+const eventTypes = await ctx.runQuery(api.booking.listEventTypes, {
+  organizationId: "org-1",  // optional
+  activeOnly: true,         // optional
+});
+```
+
+#### `getEventType`
+
+```typescript
+const eventType = await ctx.runQuery(api.booking.getEventType, {
+  eventTypeId: "studio-session",
+});
+```
+
+## Mutations
+
+### Booking Mutations
+
+#### `createBooking`
+
+Create a new booking.
+
+```typescript
+const booking = await ctx.runMutation(api.booking.createBooking, {
+  resourceId: "studio-a",
+  eventTypeId: "studio-session",
+  start: 1705312800000,  // Unix timestamp
+  end: 1705316400000,    // Unix timestamp
+  timezone: "Europe/Berlin",
+  attendee: {
+    name: "John Doe",
+    email: "john@example.com",
+  },
+  notes: "Looking forward to it!",  // optional
+});
+```
+
+#### `cancelBooking`
+
+```typescript
+await ctx.runMutation(api.booking.cancelBooking, {
+  bookingId: "booking-123",
+});
+```
+
+### Resource Mutations
+
+#### `createResource`
+
+```typescript
+await ctx.runMutation(api.booking.createResource, {
+  id: "studio-b",
+  name: "Studio B",
+  type: "room",
+  timezone: "Europe/Berlin",
+  organizationId: "org-1",
+});
+```
+
+#### `updateResource`
+
+```typescript
+await ctx.runMutation(api.booking.updateResource, {
+  id: "studio-b",
+  name: "Studio B (Large)",
+  isActive: true,
+});
+```
+
+## Frontend Hooks
+
+### `useSlotHold`
+
+Manages real-time presence for slot locking. Automatically sends heartbeats while a slot is selected.
+
+```typescript
+import { useSlotHold } from "@/lib/hooks/use-slot-hold";
+
+const { isHolding, error } = useSlotHold({
+  resourceId: "studio-a",
+  slot: selectedSlot,      // ISO timestamp string
+  duration: 60,            // minutes
+  slotInterval: 60,        // minutes
+  enabled: !!selectedSlot, // only hold when slot is selected
+});
+```
+
+### `useConvexSlots`
+
+Fetches and processes time slots with presence awareness.
+
+```typescript
+import { useConvexSlots } from "@/lib/hooks/use-convex-slots";
+
+const {
+  availableSlots,  // Slots not held by others
+  reservedSlots,   // Slots held by others (shown as "Reserved")
+  isLoading,
+} = useConvexSlots({
+  resourceId: "studio-a",
+  eventTypeId: "studio-session",
+  date: selectedDate,
+  duration: 60,
+  slotInterval: 60,
+  timezone: "Europe/Berlin",
+});
+```
+
+### `useBookingValidation`
+
+Validates that the selected resource and event type still exist and are active.
+
+```typescript
+import { useBookingValidation } from "@/lib/hooks/use-booking-validation";
+
+const validation = useBookingValidation({
+  resourceId: "studio-a",
+  eventTypeId: "studio-session",
+});
+
+if (validation.status === "error") {
+  // Show error dialog with validation.error
+}
+```
+
+</DocPage>

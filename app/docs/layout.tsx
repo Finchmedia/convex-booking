@@ -18,8 +18,8 @@ export default function DocsLayout({
   return (
     <SidebarProvider>
       <DocsSidebar />
-      <SidebarInset>
-        <header className="bg-background sticky top-0 flex h-16 shrink-0 items-center gap-2 border-b px-4">
+      <SidebarInset className="flex flex-col h-screen">
+        <header className="bg-background sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <nav className="flex items-center gap-6 text-sm">
@@ -51,10 +51,10 @@ export default function DocsLayout({
           <div className="flex-1" />
           <ThemeToggle />
         </header>
-        <div className="flex flex-1 flex-col p-6">
-          <article className="prose prose-neutral dark:prose-invert max-w-3xl mx-auto w-full">
+        <div className="flex-1 overflow-auto" data-docs-scroll-container>
+          <div className="max-w-5xl mx-auto p-6">
             {children}
-          </article>
+          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>

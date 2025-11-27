@@ -1,0 +1,230 @@
+<DocPage toc={[
+  { title: "Basic Booking Flow", url: "#basic-booking-flow", depth: 2 },
+  { title: "Multi-Duration Bookings", url: "#multi-duration-bookings", depth: 2 },
+  { title: "Configuring Durations", url: "#configuring-durations", depth: 3 },
+  { title: "Duration Locking", url: "#duration-locking", depth: 3 },
+  { title: "Multi-Resource Booking", url: "#multi-resource-booking", depth: 2 },
+  { title: "Timezone Handling", url: "#timezone-handling", depth: 2 },
+  { title: "Resource Timezones", url: "#resource-timezones", depth: 3 },
+  { title: "User Timezone Selection", url: "#user-timezone-selection", depth: 3 },
+]}>
+
+# Guides
+
+Practical patterns and recipes for common booking scenarios.
+
+## Basic Booking Flow
+
+The simplest setup: one resource, one event type, fixed duration.
+
+### 1. Create a Resource
+
+```typescript title="convex/seed.ts"
+await ctx.runMutation(api.booking.createResource, {
+  id: "meeting-room",
+  name: "Meeting Room",
+  type: "room",
+  timezone: "America/New_York",
+  organizationId: "my-org",
+});
+```
+
+### 2. Create a Schedule
+
+```typescript
+await ctx.runMutation(api.booking.createSchedule, {
+  id: "business-hours",
+  name: "Business Hours",
+  timezone: "America/New_York",
+  organizationId: "my-org",
+  isDefault: true,
+  weeklyHours: [
+    { dayOfWeek: 1, startTime: "09:00", endTime: "17:00" },
+    { dayOfWeek: 2, startTime: "09:00", endTime: "17:00" },
+    { dayOfWeek: 3, startTime: "09:00", endTime: "17:00" },
+    { dayOfWeek: 4, startTime: "09:00", endTime: "17:00" },
+    { dayOfWeek: 5, startTime: "09:00", endTime: "17:00" },
+  ],
+});
+```
+
+### 3. Create an Event Type
+
+```typescript
+await ctx.runMutation(api.booking.createEventType, {
+  id: "quick-meeting",
+  slug: "quick-meeting",
+  title: "Quick Meeting",
+  lengthInMinutes: 30,
+  slotInterval: 30,
+  timezone: "America/New_York",
+  organizationId: "my-org",
+  scheduleId: "business-hours",
+});
+```
+
+### 4. Add the Booker
+
+```tsx title="app/book/page.tsx"
+import { Booker } from "@/components/booker/booker";
+
+export default function BookingPage() {
+  return (
+    <Booker
+      eventTypeId="quick-meeting"
+      resourceId="meeting-room"
+      title="Book a Meeting"
+    />
+  );
+}
+```
+
+## Multi-Duration Bookings
+
+Allow users to choose from multiple booking lengths (e.g., 30min, 1h, 2h).
+
+### Configuring Durations
+
+Set `lengthInMinutesOptions` on your event type:
+
+```typescript
+await ctx.runMutation(api.booking.createEventType, {
+  id: "studio-session",
+  slug: "studio-session",
+  title: "Studio Session",
+  lengthInMinutes: 60,              // Default duration
+  lengthInMinutesOptions: [60, 120, 300],  // 1h, 2h, 5h options
+  slotInterval: 60,                 // Start times every hour
+  timezone: "Europe/Berlin",
+  organizationId: "my-org",
+  scheduleId: "business-hours",
+});
+```
+
+The Booker automatically shows a duration selector when `lengthInMinutesOptions` has multiple values.
+
+### Duration Locking
+
+**Important behavior:** Once a user selects a time slot, their duration is locked. This is intentional:
+
+1. User selects duration (e.g., 5h)
+2. User selects slot (e.g., 10:00 AM)
+3. System holds slots 10:00-15:00 via presence
+4. Duration selector becomes disabled
+5. To change duration: user must click "Back" and reselect
+
+**Why?** The presence system holds multiple slots for longer durations. Allowing duration changes mid-selection would require releasing and re-acquiring holds, creating race conditions.
+
+## Multi-Resource Booking
+
+Link event types to multiple resources so users can book any available one.
+
+### Setup
+
+1. Create multiple resources:
+
+```typescript
+await ctx.runMutation(api.booking.createResource, {
+  id: "studio-a",
+  name: "Studio A",
+  type: "room",
+  timezone: "Europe/Berlin",
+  organizationId: "my-org",
+});
+
+await ctx.runMutation(api.booking.createResource, {
+  id: "studio-b",
+  name: "Studio B",
+  type: "room",
+  timezone: "Europe/Berlin",
+  organizationId: "my-org",
+});
+```
+
+2. Link resources to event type in Admin UI (`/admin/event-types`)
+
+3. Create a resource selection page:
+
+```tsx title="app/book/page.tsx"
+"use client";
+
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import Link from "next/link";
+
+export default function SelectResourcePage() {
+  const resources = useQuery(api.booking.listResources, {
+    organizationId: "my-org",
+    activeOnly: true,
+  });
+
+  if (!resources) return <div>Loading...</div>;
+
+  return (
+    <div className="grid gap-4">
+      <h1>Select a Studio</h1>
+      {resources.map((resource) => (
+        <Link
+          key={resource.id}
+          href={`/book/${resource.id}`}
+          className="p-4 border rounded hover:bg-gray-50"
+        >
+          {resource.name}
+        </Link>
+      ))}
+    </div>
+  );
+}
+```
+
+### Resource Isolation
+
+Each resource has independent availability. When User A holds a slot on Studio A, it does NOT affect Studio B's availability. The presence system uses compound keys (`resourceId` + `slot`) to ensure isolation.
+
+## Timezone Handling
+
+ConvexBooking handles timezones at multiple levels.
+
+### Resource Timezones
+
+Each resource has a `timezone` field that determines:
+- How schedules are interpreted (9 AM in which timezone?)
+- How availability is calculated
+
+```typescript
+await ctx.runMutation(api.booking.createResource, {
+  id: "tokyo-office",
+  name: "Tokyo Conference Room",
+  timezone: "Asia/Tokyo",  // Schedule interpreted in JST
+  // ...
+});
+```
+
+### User Timezone Selection
+
+The Booker includes a timezone selector that lets users view slots in their local time. This is purely a display concern—the booking is always stored in UTC.
+
+```
+User in New York views Tokyo room:
+├─ Resource schedule: 9 AM - 5 PM JST
+├─ User sees: 8 PM - 4 AM EST (previous day)
+├─ User selects: 10 PM EST
+├─ Stored as: UTC timestamp
+└─ Confirmation shows: 10 PM EST (user's TZ) / 12 PM JST (resource's TZ)
+```
+
+**Best practice:** Always store and query using UTC timestamps. Let the frontend handle display conversion.
+
+```typescript
+// Creating a booking - use Unix timestamps (UTC)
+await ctx.runMutation(api.booking.createBooking, {
+  resourceId: "tokyo-office",
+  eventTypeId: "meeting",
+  start: 1705312800000,  // Unix ms - always UTC
+  end: 1705316400000,
+  timezone: "America/New_York",  // User's display timezone
+  attendee: { name: "John", email: "john@example.com" },
+});
+```
+
+</DocPage>

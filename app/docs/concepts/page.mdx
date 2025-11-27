@@ -1,0 +1,206 @@
+<DocPage toc={[
+  { title: "Architecture", url: "#architecture", depth: 2 },
+  { title: "The Scan Limit Problem", url: "#the-scan-limit-problem", depth: 3 },
+  { title: "Discrete Time Buckets", url: "#discrete-time-buckets", depth: 3 },
+  { title: "Resources", url: "#resources", depth: 2 },
+  { title: "Schedules", url: "#schedules", depth: 2 },
+  { title: "Event Types", url: "#event-types", depth: 2 },
+  { title: "Presence System", url: "#presence-system", depth: 2 },
+  { title: "How Presence Works", url: "#how-presence-works", depth: 3 },
+  { title: "Multi-Slot Batching", url: "#multi-slot-batching", depth: 3 },
+  { title: "Data Flow", url: "#data-flow", depth: 2 },
+]}>
+
+# Core Concepts
+
+Understanding the architecture and data model behind ConvexBooking.
+
+## Architecture
+
+ConvexBooking uses a **discrete time bucket** pattern that enables O(1) availability queries regardless of how many historical bookings exist. This is fundamentally different from traditional booking systems.
+
+### The Scan Limit Problem
+
+Traditional booking systems use range queries to check availability:
+
+```sql
+SELECT * FROM bookings
+WHERE start < end_date AND end > start_date
+```
+
+**The problem with Convex:** With 50,000 past bookings, this would scan ALL documents just to find the 3 currently active ones. Convex has a 16k document scan limit per query — this approach would crash.
+
+### Discrete Time Buckets
+
+Instead of querying bookings directly, we **pre-compute and store** availability in discrete 15-minute buckets:
+
+```typescript
+// Daily availability document
+{
+  resourceId: "studio-a",
+  date: "2025-01-15",
+  busySlots: [32, 33, 34, 35]  // Occupied 15-min slot indices (0-95)
+}
+```
+
+**The 96-Slot System:**
+- Each day has 96 slots (24 hours × 4 quarters)
+- `00:00` → Slot 0
+- `14:00` → Slot 56
+- `23:45` → Slot 95
+
+**O(1) Availability Check:**
+1. Fetch ONE document for the date
+2. Check if required slots are in `busySlots` array
+3. Cost: 1 database read. Always. Even with 10 million historical bookings.
+
+**ACID Booking Transaction:**
+
+When a booking is created:
+1. Fetch availability documents for the date range
+2. Check: Are any required slots already busy?
+3. If conflict: Throw error → Transaction aborts
+4. If clear: Update `busySlots` + Insert booking record
+5. Transaction commits atomically
+
+## Resources
+
+A **Resource** is anything that can be booked — a room, a piece of equipment, a person, etc.
+
+```typescript
+// Creating a resource
+await ctx.runMutation(api.booking.createResource, {
+  id: "studio-a",
+  organizationId: "org-1",
+  name: "Studio A",
+  type: "room",
+  timezone: "Europe/Berlin",
+});
+```
+
+**Key fields:**
+- `id` - Unique identifier (you control this)
+- `name` - Display name
+- `type` - Category for filtering (`room`, `equipment`, `person`)
+- `timezone` - Resource's local timezone for schedule calculations
+- `isActive` - Soft delete flag
+
+Resources can also be **add-ons** that are bundled with a primary resource.
+
+## Schedules
+
+A **Schedule** defines when a resource is available for booking.
+
+```typescript
+await ctx.runMutation(api.booking.createSchedule, {
+  id: "business-hours",
+  organizationId: "org-1",
+  name: "Business Hours",
+  timezone: "Europe/Berlin",
+  isDefault: true,
+  weeklyHours: [
+    { dayOfWeek: 1, startTime: "09:00", endTime: "17:00" }, // Monday
+    { dayOfWeek: 2, startTime: "09:00", endTime: "17:00" }, // Tuesday
+    { dayOfWeek: 3, startTime: "09:00", endTime: "17:00" }, // Wednesday
+    { dayOfWeek: 4, startTime: "09:00", endTime: "17:00" }, // Thursday
+    { dayOfWeek: 5, startTime: "09:00", endTime: "17:00" }, // Friday
+  ],
+});
+```
+
+Schedules support:
+- **Weekly hours** - Regular availability per day of week
+- **Date overrides** - Special hours for specific dates
+- **Default schedule** - Fallback when a resource doesn't have a specific schedule
+
+## Event Types
+
+An **Event Type** is a booking template that connects resources and schedules with booking rules.
+
+```typescript
+await ctx.runMutation(api.booking.createEventType, {
+  id: "studio-session",
+  slug: "studio-session",
+  title: "Studio Session",
+  lengthInMinutes: 60,
+  lengthInMinutesOptions: [60, 120, 300], // 1h, 2h, or 5h options
+  slotInterval: 60, // Start times every hour
+  timezone: "Europe/Berlin",
+  organizationId: "org-1",
+  scheduleId: "business-hours",
+});
+```
+
+**Key fields:**
+- `lengthInMinutes` - Default duration
+- `lengthInMinutesOptions` - Available duration choices
+- `slotInterval` - How often slots appear (e.g., every 30min, every hour)
+- `bufferBefore` / `bufferAfter` - Gap between bookings
+
+Event types are linked to resources via a many-to-many relationship. One event type can be booked on multiple resources.
+
+## Presence System
+
+The **Presence System** provides real-time slot locking to prevent double bookings while users are selecting time slots.
+
+### How Presence Works
+
+```
+User selects slot → Immediate hold (heartbeat every 5s)
+├─ Frontend: useSlotHold hook sends heartbeat
+├─ Backend: presence.heartbeat mutation records hold
+├─ Cleanup: Scheduled job removes stale holds after 10s
+└─ Release: Explicit on navigation OR timeout
+```
+
+When User A is viewing a time slot:
+1. Their browser sends a heartbeat every 5 seconds
+2. Other users (User B) see that slot marked as "Reserved"
+3. If User A navigates away or their browser closes, the hold expires after 10 seconds
+4. User B then sees the slot become available again
+
+### Multi-Slot Batching
+
+For longer bookings (e.g., 5 hours), multiple slot intervals need to be held:
+
+```typescript
+// 5h booking starting at 10:00 with 60min slot intervals
+// Holds: 10:00, 11:00, 12:00, 13:00, 14:00
+heartbeat({
+  resourceId: "studio-a",
+  slots: ["10:00", "11:00", "12:00", "13:00", "14:00"],
+  user: sessionId
+});
+```
+
+This is handled automatically by the `useSlotHold` hook.
+
+## Data Flow
+
+Here's how data flows through the system:
+
+```
+1. User opens booking page
+   ↓
+2. getMonthAvailability() → Calendar dots (which days have slots)
+   ↓
+3. User selects a date
+   ↓
+4. getDaySlots() → Available time slots for that day
+   ↓
+5. getDatePresence() → Which slots are currently held by others
+   ↓
+6. Frontend merges: available slots - held slots = bookable slots
+   ↓
+7. User selects a slot → useSlotHold starts heartbeat
+   ↓
+8. User submits booking form → createBooking mutation
+   ↓
+9. Backend: Validate → Update busySlots → Create booking record
+   ↓
+10. Success! Other users see the slot disappear (real-time)
+```
+
+**Key insight:** Steps 4 and 5 are separate queries. `getDaySlots` rarely changes (only when bookings are made). `getDatePresence` changes every 5 seconds (heartbeats). Keeping them separate means the heavy slot calculation is cached while presence updates are lightweight.
+
+</DocPage>

@@ -1,0 +1,150 @@
+<DocPage toc={[
+  { title: "Booker", url: "#booker", depth: 2 },
+  { title: "Booker Props", url: "#booker-props", depth: 3 },
+  { title: "Booker Flow", url: "#booker-flow", depth: 3 },
+  { title: "Calendar", url: "#calendar", depth: 2 },
+  { title: "Admin UI", url: "#admin-ui", depth: 2 },
+  { title: "Resources Admin", url: "#resources-admin", depth: 3 },
+  { title: "Schedules Admin", url: "#schedules-admin", depth: 3 },
+  { title: "Event Types Admin", url: "#event-types-admin", depth: 3 },
+  { title: "Bookings Admin", url: "#bookings-admin", depth: 3 },
+]}>
+
+# Components
+
+ConvexBooking includes ready-to-use React components for both the public booking flow and admin management.
+
+## Booker
+
+The `<Booker />` component is the main booking interface for your users. It handles the full booking flow: calendar display, time slot selection, form submission, and confirmation.
+
+```tsx title="app/book/page.tsx"
+import { Booker } from "@/components/booker/booker";
+
+export default function BookingPage() {
+  return (
+    <Booker
+      eventTypeId="studio-session"
+      resourceId="studio-a"
+      title="Book Studio A"
+      description="Select a time for your session"
+      onBookingComplete={(booking) => {
+        console.log("Booking created:", booking);
+      }}
+    />
+  );
+}
+```
+
+### Booker Props
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| `eventTypeId` | `string` | Yes | The event type to book |
+| `resourceId` | `string` | Yes | The resource to book |
+| `title` | `string` | No | Header title |
+| `description` | `string` | No | Header description |
+| `showHeader` | `boolean` | No | Show/hide header (default: true) |
+| `organizerName` | `string` | No | Display name for the organizer |
+| `organizerAvatar` | `string` | No | Avatar URL for the organizer |
+| `onBookingComplete` | `(booking) => void` | No | Callback when booking succeeds |
+| `onEventTypeReset` | `() => void` | No | Callback when user wants to change event type |
+
+### Booker Flow
+
+The Booker has three steps:
+
+1. **Event Meta** - Calendar + time slot selection
+   - Shows monthly calendar with availability dots
+   - Displays time slots for the selected date
+   - Handles duration selection (if multiple options)
+   - Manages real-time presence (slot locking)
+
+2. **Booking Form** - User details
+   - Collects name and email
+   - Optionally collects notes
+   - Validates input before submission
+
+3. **Success** - Confirmation
+   - Shows booking details
+   - Option to add to calendar
+   - Back button to book another
+
+## Calendar
+
+The calendar component is used internally by Booker but can also be used standalone:
+
+```tsx
+import { Calendar } from "@/components/booking-calendar/calendar";
+
+<Calendar
+  resourceId="studio-a"
+  eventTypeId="studio-session"
+  duration={60}
+  slotInterval={60}
+  timezone="Europe/Berlin"
+  onSlotSelect={({ slot, duration }) => {
+    console.log("Selected:", slot, duration);
+  }}
+/>
+```
+
+The calendar includes:
+- **Monthly grid** with availability dots
+- **Time slots panel** for the selected date
+- **Duration selector** (if event type has options)
+- **Timezone selector**
+- **Real-time presence** showing reserved slots
+
+## Admin UI
+
+The admin dashboard (`/admin`) provides a complete interface for managing your booking system.
+
+### Resources Admin
+
+Manage bookable resources at `/admin/resources`:
+
+- Create new resources (rooms, equipment, people)
+- Edit resource details and settings
+- Activate/deactivate resources
+- Set resource timezone
+
+### Schedules Admin
+
+Manage availability schedules at `/admin/schedules`:
+
+- Create named schedules (e.g., "Business Hours", "Weekend Hours")
+- Define weekly availability per day
+- Set a default schedule
+- Configure timezone
+
+### Event Types Admin
+
+Manage booking templates at `/admin/event-types`:
+
+- Create event types with title and description
+- Set duration and duration options
+- Configure slot intervals
+- Link to resources (which resources can this event be booked on)
+- Set buffer times before/after bookings
+
+### Bookings Admin
+
+View and manage bookings at `/admin/bookings`:
+
+- List all bookings with filters
+- View booking details
+- Cancel bookings
+- See booking history
+
+## Customization
+
+All components use Tailwind CSS and shadcn/ui primitives. To customize:
+
+1. **Styles** - Modify component files directly or override with Tailwind classes
+2. **Behavior** - Fork the component and modify the logic
+3. **Fields** - Add custom fields to the booking form schema
+
+Since you're working with the source code (not an npm package), you have full control over every aspect of the components.
+
+</DocPage>

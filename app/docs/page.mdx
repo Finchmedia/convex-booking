@@ -1,10 +1,45 @@
+<DocPage toc={[
+  { title: "Current State", url: "#current-state", depth: 2 },
+  { title: "Features", url: "#features", depth: 2 },
+  { title: "How It Works", url: "#how-it-works", depth: 2 },
+  { title: "Architecture Overview", url: "#architecture-overview", depth: 2 },
+  { title: "Quick Example", url: "#quick-example", depth: 2 },
+  { title: "Next Steps", url: "#next-steps", depth: 2 },
+]}>
+
 # Introduction
 
 ConvexBooking is an open-source, real-time booking system built as a [Convex component](https://docs.convex.dev/components). It provides everything you need to add booking functionality to your application.
 
-<Callout type="info">
-  This documentation is a work in progress. If you spot issues or have suggestions, please reach out!
+<Callout type="warning">
+  **Early Stage Open Source Project**
+
+  This is a learning-in-public project by a solo developer with a full-time job.
+  No npm package yet — fork the repo and customize. Issues and PRs are welcome,
+  but response times may vary. Thanks for your patience!
 </Callout>
+
+## Current State
+
+**What works:**
+- Real-time booking flow with presence-based slot locking
+- Admin UI for managing resources, schedules, and event types
+- Multi-duration support (30min, 1h, 2h, 5h)
+- Multi-resource booking with add-ons
+- O(1) availability queries that scale
+
+**Not ready yet:**
+- npm package (fork the repo instead)
+- CLI scaffolding tool
+- Comprehensive test coverage
+
+**How to use today:**
+1. Fork the [GitHub repo](https://github.com/yourname/convex-booking)
+2. Run `npx convex dev` (creates your own Convex project)
+3. Run `npm run dev` for the Next.js frontend
+4. Optionally remove `/app/docs` and landing page if you don't need them
+
+See the [Quick Start](/docs/getting-started) for detailed instructions.
 
 ## Features
 
@@ -19,12 +54,12 @@ ConvexBooking is an open-source, real-time booking system built as a [Convex com
 
 ConvexBooking uses a **discrete time bucket** architecture where availability is pre-computed and stored in 15-minute intervals (called "quanta"). This enables O(1) availability checks regardless of how many historical bookings exist.
 
-```typescript title="convex/availability.ts"
-// Check if a slot is available
-const isAvailable = await ctx.runQuery(api.booking.getAvailability, {
+```typescript title="convex/booking.ts"
+// Check availability - always O(1), even with millions of bookings
+const slots = await ctx.runQuery(api.booking.getDaySlots, {
   resourceId: "studio-a",
-  start: Date.now(),
-  end: Date.now() + 60 * 60 * 1000, // 1 hour later
+  date: "2025-01-15",
+  duration: 60, // minutes
 });
 ```
 
@@ -32,36 +67,32 @@ The real-time presence system uses heartbeats to temporarily hold slots while us
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    Your App                          │
-├─────────────────────────────────────────────────────┤
-│  <Booker />          │  Admin Dashboard             │
-│  - Calendar          │  - Resource Management       │
-│  - Time Slots        │  - Schedule Configuration    │
-│  - Booking Form      │  - Booking Management        │
-├─────────────────────────────────────────────────────┤
-│              ConvexBooking Component                 │
-│  ┌─────────────┐ ┌──────────────┐ ┌──────────────┐ │
-│  │  Resources  │ │   Schedules  │ │  Bookings    │ │
-│  └─────────────┘ └──────────────┘ └──────────────┘ │
-│  ┌─────────────┐ ┌──────────────┐ ┌──────────────┐ │
-│  │ Event Types │ │   Presence   │ │ Availability │ │
-│  └─────────────┘ └──────────────┘ └──────────────┘ │
-├─────────────────────────────────────────────────────┤
-│                    Convex                            │
-└─────────────────────────────────────────────────────┘
-```
+The system is organized in three layers:
+
+**Your App** — The frontend you build
+- `<Booker />` component (calendar, time slots, booking form)
+- Admin Dashboard (resource management, schedule configuration, booking management)
+
+**ConvexBooking Component** — The reusable booking logic
+- **Resources** — Bookable entities (rooms, equipment, people)
+- **Schedules** — Availability windows and business hours
+- **Event Types** — Booking templates with durations and rules
+- **Bookings** — Confirmed reservations
+- **Presence** — Real-time slot locking via heartbeats
+- **Availability** — Pre-computed time buckets for O(1) queries
+
+**Convex** — The backend platform
+- Real-time subscriptions, ACID transactions, serverless functions
 
 ## Quick Example
 
-```tsx
+```tsx title="app/book/page.tsx"
 import { Booker } from "@/components/booker/booker";
 
 export default function BookingPage() {
   return (
     <Booker
-      eventTypeId="30-min-consultation"
+      eventTypeId="studio-session"
       resourceId="studio-a"
       title="Book a Session"
       description="Select a time that works for you"
@@ -72,6 +103,9 @@ export default function BookingPage() {
 
 ## Next Steps
 
-- [Quick Start](/docs/getting-started) - Get ConvexBooking running in 5 minutes
-- [Core Concepts](/docs/concepts/architecture) - Understand the architecture
-- [API Reference](/docs/api/queries) - Full API documentation
+- [Quick Start](/docs/getting-started) - Get ConvexBooking running in minutes
+- [Core Concepts](/docs/concepts) - Understand the architecture and data model
+- [Components](/docs/components) - Learn about the Booker and Admin UI
+- [API Reference](/docs/api) - Full API documentation
+
+</DocPage>

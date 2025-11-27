@@ -2,6 +2,7 @@ import type { MDXComponents } from "mdx/types";
 import React from "react";
 import { Callout } from "@/components/docs/callout";
 import { CodeBlock } from "@/components/docs/code-block";
+import { DocPage } from "@/components/docs/doc-page";
 
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
@@ -132,6 +133,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     // Custom components
     Callout,
+    DocPage,
     ...components,
   };
 }

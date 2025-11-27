@@ -1,154 +1,122 @@
+<DocPage toc={[
+  { title: "Fork the Repository", url: "#1-fork-the-repository", depth: 2 },
+  { title: "Install Dependencies", url: "#2-install-dependencies", depth: 2 },
+  { title: "Set Up Convex", url: "#3-set-up-convex", depth: 2 },
+  { title: "Start the Dev Server", url: "#4-start-the-dev-server", depth: 2 },
+  { title: "Explore the Demo", url: "#5-explore-the-demo", depth: 2 },
+  { title: "Customize for Your Project", url: "#customize-for-your-project", depth: 2 },
+  { title: "Stripping the Docs", url: "#stripping-the-docs-optional", depth: 3 },
+  { title: "Next Steps", url: "#next-steps", depth: 2 },
+]}>
+
 # Quick Start
 
-Get ConvexBooking running in your project in a few minutes.
+Get ConvexBooking running in your own Convex project in about 5 minutes.
 
 <Callout type="info">
-  This guide assumes you already have a Convex project set up. If not, run `npx convex dev` to get started.
+  There's no npm package yet. The current way to use ConvexBooking is to **fork the repository** and customize it for your needs.
 </Callout>
 
-## 1. Install the Component
+## 1. Fork the Repository
+
+Fork or clone the repository to get started:
 
 ```bash
-npm install convex-booking
+# Clone the repo
+git clone https://github.com/yourname/convex-booking my-booking-app
+cd my-booking-app
 ```
 
-## 2. Add to Your Convex Config
+## 2. Install Dependencies
 
-Update your `convex/convex.config.ts` to include the booking component:
-
-```typescript title="convex/convex.config.ts"
-import { defineApp } from "convex/server";
-import booking from "convex-booking/convex.config";
-
-const app = defineApp();
-app.use(booking);
-
-export default app;
+```bash
+npm install
 ```
 
-## 3. Create the Booking API
+## 3. Set Up Convex
 
-Create a file at `convex/booking.ts` to expose the component API:
+Run the Convex dev command. If you don't have a Convex project yet, it will prompt you to create one:
 
-```typescript title="convex/booking.ts"
-import { components } from "./_generated/api";
-import { makeBookingAPI } from "convex-booking";
-
-export const {
-  // Resources
-  createResource,
-  updateResource,
-  deleteResource,
-  listResources,
-
-  // Schedules
-  createSchedule,
-  updateSchedule,
-  deleteSchedule,
-  listSchedules,
-
-  // Event Types
-  createEventType,
-  updateEventType,
-  deleteEventType,
-  listEventTypes,
-
-  // Availability
-  getMonthAvailability,
-  getDaySlots,
-
-  // Bookings
-  createBooking,
-  cancelBooking,
-  listBookings,
-
-  // Presence (real-time slot locking)
-  heartbeat,
-  leave,
-  getDatePresence,
-} = makeBookingAPI(components.booking);
+```bash
+npx convex dev
 ```
 
-## 4. Create Your First Resource
+This will:
+- Prompt you to log in to Convex (if needed)
+- Create a new Convex project (or connect to an existing one)
+- Generate a `.env.local` file with your Convex URL
+- Start watching for changes
 
-A resource is anything that can be booked (a room, equipment, or person).
+Keep this terminal running.
 
-```typescript
-// In your admin setup or seed script
-await ctx.runMutation(api.booking.createResource, {
-  id: "studio-a",
-  organizationId: "org-1",
-  name: "Studio A",
-  type: "room",
-  timezone: "Europe/Berlin",
-});
+## 4. Start the Dev Server
+
+In a new terminal, start the Next.js development server:
+
+```bash
+npm run dev
 ```
 
-## 5. Create a Schedule
+Open [http://localhost:3000](http://localhost:3000) to see the landing page.
 
-Schedules define when resources are available:
+## 5. Explore the Demo
 
-```typescript
-await ctx.runMutation(api.booking.createSchedule, {
-  id: "business-hours",
-  organizationId: "org-1",
-  name: "Business Hours",
-  timezone: "Europe/Berlin",
-  isDefault: true,
-  weeklyHours: [
-    { dayOfWeek: 1, startTime: "09:00", endTime: "17:00" }, // Monday
-    { dayOfWeek: 2, startTime: "09:00", endTime: "17:00" }, // Tuesday
-    { dayOfWeek: 3, startTime: "09:00", endTime: "17:00" }, // Wednesday
-    { dayOfWeek: 4, startTime: "09:00", endTime: "17:00" }, // Thursday
-    { dayOfWeek: 5, startTime: "09:00", endTime: "17:00" }, // Friday
-  ],
-});
+The project includes a complete demo setup:
+
+- **Landing Page** (`/`) - Marketing page with features overview
+- **Documentation** (`/docs`) - You're reading it!
+- **Admin Dashboard** (`/admin`) - Manage resources, schedules, event types, and bookings
+- **Public Booking** (`/book`) - The booking flow your users will see
+
+Try creating a resource and event type in the Admin, then book a slot in the public booking flow.
+
+## Customize for Your Project
+
+Once you have it running, you can customize:
+
+1. **Remove what you don't need** - Delete the landing page, docs, or demo data
+2. **Modify the Booker component** - Customize styles, add fields, change the flow
+3. **Update the schema** - Add custom fields to bookings, resources, etc.
+4. **Connect your auth** - Integrate with your existing authentication
+
+### Stripping the Docs (Optional)
+
+If you're using this as a starting point and don't need the documentation site:
+
+```bash
+# Remove docs-related files
+rm -rf app/docs
+rm -rf components/docs
+
+# Remove landing page (optional)
+rm app/page.tsx
+rm -rf app/(marketing)  # if it exists
 ```
 
-## 6. Create an Event Type
+Then remove these dependencies from `package.json`:
+- `@next/mdx`
+- `rehype-pretty-code`
+- `shiki`
 
-Event types are booking templates that connect resources and schedules:
+Replace `next.config.mjs` with a simple config:
 
-```typescript
-await ctx.runMutation(api.booking.createEventType, {
-  id: "studio-session",
-  slug: "studio-session",
-  title: "Studio Session",
-  lengthInMinutes: 60,
-  lengthInMinutesOptions: [60, 120, 300], // 1h, 2h, or 5h
-  slotInterval: 60,
-  timezone: "Europe/Berlin",
-  organizationId: "org-1",
-  scheduleId: "business-hours",
-});
+```javascript title="next.config.mjs"
+/** @type {import('next').NextConfig} */
+const nextConfig = {};
+export default nextConfig;
 ```
 
-## 7. Add the Booker Component
+Finally, remove `--webpack` from your dev scripts in `package.json` to use Turbopack:
 
-Now you can add the booking UI to your app:
-
-```tsx
-import { Booker } from "@/components/booker/booker";
-
-export default function BookingPage() {
-  return (
-    <div className="max-w-4xl mx-auto p-6">
-      <Booker
-        eventTypeId="studio-session"
-        resourceId="studio-a"
-        title="Book Studio A"
-        description="Select a time for your session"
-        onBookingComplete={(booking) => {
-          console.log("Booking created:", booking);
-        }}
-      />
-    </div>
-  );
-}
+```json
+"dev": "next dev",
 ```
 
 ## Next Steps
 
-- [Installation Guide](/docs/installation) - Detailed setup instructions
-- [Core Concepts](/docs/concepts/architecture) - Understand how it works
-- [Booker Component](/docs/components/booker) - All props and customization options
+- [Core Concepts](/docs/concepts) - Understand the architecture
+- [Components](/docs/components) - Learn about Booker and Admin UI
+- [API Reference](/docs/api) - Full API documentation
+- [Guides](/docs/guides) - Common patterns and recipes
+
+</DocPage>

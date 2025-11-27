@@ -34,53 +34,15 @@ const navigation: NavItem[] = [
     items: [
       { title: "Introduction", href: "/docs" },
       { title: "Quick Start", href: "/docs/getting-started" },
-      { title: "Installation", href: "/docs/installation" },
     ],
   },
   {
-    title: "Core Concepts",
+    title: "Reference",
     items: [
-      { title: "Architecture", href: "/docs/concepts/architecture" },
-      { title: "Resources", href: "/docs/concepts/resources" },
-      { title: "Schedules", href: "/docs/concepts/schedules" },
-      { title: "Event Types", href: "/docs/concepts/event-types" },
-      { title: "Presence System", href: "/docs/concepts/presence" },
-    ],
-  },
-  {
-    title: "Guides",
-    items: [
-      { title: "Basic Booking", href: "/docs/guides/basic-booking" },
-      { title: "Multi-Duration", href: "/docs/guides/multi-duration" },
-      { title: "Multi-Resource", href: "/docs/guides/multi-resource" },
-      { title: "Add-on Resources", href: "/docs/guides/addons" },
-      { title: "Timezones", href: "/docs/guides/timezones" },
-      { title: "Webhooks", href: "/docs/guides/webhooks" },
-    ],
-  },
-  {
-    title: "API Reference",
-    items: [
-      { title: "Queries", href: "/docs/api/queries" },
-      { title: "Mutations", href: "/docs/api/mutations" },
-      { title: "Frontend Hooks", href: "/docs/api/hooks" },
-    ],
-  },
-  {
-    title: "Components",
-    items: [
-      { title: "Booker", href: "/docs/components/booker" },
-      { title: "Calendar", href: "/docs/components/calendar" },
-      { title: "Booking Form", href: "/docs/components/booking-form" },
-      { title: "Admin UI", href: "/docs/components/admin" },
-    ],
-  },
-  {
-    title: "Advanced",
-    items: [
-      { title: "Performance", href: "/docs/advanced/performance" },
-      { title: "Customization", href: "/docs/advanced/customization" },
-      { title: "Schema Reference", href: "/docs/advanced/schema" },
+      { title: "Core Concepts", href: "/docs/concepts" },
+      { title: "Guides", href: "/docs/guides" },
+      { title: "API Reference", href: "/docs/api" },
+      { title: "Components", href: "/docs/components" },
     ],
   },
 ];
