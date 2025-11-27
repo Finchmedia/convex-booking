@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +15,7 @@ import type { ValidationError } from "@/lib/hooks/use-booking-validation";
 interface BookingErrorDialogProps {
   error: ValidationError;
   onReset?: () => void; // Called for duration_invalid case
+  onEventTypeReset?: () => void; // Called for event_deleted/deactivated/unlinked (state-based navigation)
 }
 
 /**
@@ -29,18 +30,8 @@ interface BookingErrorDialogProps {
 export function BookingErrorDialog({
   error,
   onReset,
+  onEventTypeReset,
 }: BookingErrorDialogProps) {
-  const router = useRouter();
-
-  const handleAction = () => {
-    if (error.recoveryPath === "reset") {
-      // Special case: Reset calendar state without navigation
-      onReset?.();
-    } else {
-      // Navigate to recovery path
-      router.push(error.recoveryPath);
-    }
-  };
 
   const getActionLabel = () => {
     switch (error.type) {
@@ -58,6 +49,16 @@ export function BookingErrorDialog({
     }
   };
 
+  // Determine action type:
+  // - duration_invalid: Reset calendar state
+  // - event_deleted/deactivated/unlinked: Reset to event selection (state-based, no navigation)
+  // - resource_deleted/deactivated: Navigate to /book (different page)
+  const isResetAction = error.recoveryPath === "reset";
+  const isEventTypeAction =
+    error.type === "event_deleted" ||
+    error.type === "event_deactivated" ||
+    error.type === "resource_unlinked";
+
   return (
     <AlertDialog open={true}>
       <AlertDialogContent>
@@ -66,9 +67,19 @@ export function BookingErrorDialog({
           <AlertDialogDescription>{error.message}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogAction onClick={handleAction}>
-            {getActionLabel()}
-          </AlertDialogAction>
+          {isResetAction ? (
+            <AlertDialogAction onClick={onReset}>
+              {getActionLabel()}
+            </AlertDialogAction>
+          ) : isEventTypeAction && onEventTypeReset ? (
+            <AlertDialogAction onClick={onEventTypeReset}>
+              {getActionLabel()}
+            </AlertDialogAction>
+          ) : (
+            <AlertDialogAction asChild>
+              <Link href={error.recoveryPath}>{getActionLabel()}</Link>
+            </AlertDialogAction>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -104,6 +104,7 @@ export default function ResourceBookingPage() {
             onBookingComplete={(booking) => {
               console.log("Booking completed:", booking);
             }}
+            onEventTypeReset={() => setSelectedEventType(null)}
           />
 
           {/* Real-time presence demo */}

@@ -30,6 +30,8 @@ export interface BookerProps {
   organizerAvatar?: string;
   /** Callback when booking is successfully created */
   onBookingComplete?: (booking: Booking) => void;
+  /** Callback to reset event type selection (for embedded Booker) */
+  onEventTypeReset?: () => void;
 }
 
 export function Booker({
@@ -41,6 +43,7 @@ export function Booker({
   organizerName,
   organizerAvatar,
   onBookingComplete,
+  onEventTypeReset,
 }: BookerProps) {
   // Step state
   const [bookingStep, setBookingStep] = useState<BookingStep>("event-meta");
@@ -173,7 +176,11 @@ export function Booker({
     <>
       {/* Error Dialog (blocking) */}
       {validation.status === "error" && validation.error && (
-        <BookingErrorDialog error={validation.error} onReset={handleReset} />
+        <BookingErrorDialog
+          error={validation.error}
+          onReset={handleReset}
+          onEventTypeReset={onEventTypeReset}
+        />
       )}
 
       {/* Optional Header */}

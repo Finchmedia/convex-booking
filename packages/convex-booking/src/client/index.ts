@@ -644,6 +644,7 @@ export function makeBookingAPI(component: ComponentApi) {
         resourceId: v.string(),
         slots: v.array(v.string()),
         user: v.string(),
+        eventTypeId: v.optional(v.string()),
         data: v.optional(v.any()),
       },
       handler: async (ctx, args) => {
