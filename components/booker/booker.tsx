@@ -73,7 +73,7 @@ export function Booker({
   );
 
   // Real-time Hold: Automatically reserve all affected slots (quantum coverage)
-  useSlotHold(resourceId, selectedSlot, selectedDuration);
+  useSlotHold(resourceId, selectedSlot, selectedDuration, eventTypeId);
 
   // Reactive validation: Monitor event type, resource, and link state
   const validation = useBookingValidation(

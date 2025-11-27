@@ -10,6 +10,7 @@ import { getSessionId } from "../booking/session";
  * @param resourceId - The resource ID (e.g. "studio-a")
  * @param slotId - The ID of the selected slot (e.g. "2024-05-20T10:00:00.000Z")
  * @param durationMinutes - Duration of the booking in minutes (LOCKED at slot selection)
+ * @param eventTypeId - Optional event type ID for admin presence awareness
  *
  * NOTE: durationMinutes is intentionally NOT in the useEffect dependency array.
  * Per UX design, once a user selects a slot, the duration is LOCKED and cannot change.
@@ -18,7 +19,8 @@ import { getSessionId } from "../booking/session";
 export function useSlotHold(
   resourceId: string,
   slotId: string | null,
-  durationMinutes: number = 60
+  durationMinutes: number = 60,
+  eventTypeId?: string
 ) {
   const heartbeat = useMutation(api.booking.heartbeat);
   const leave = useMutation(api.booking.leave);
@@ -44,11 +46,11 @@ export function useSlotHold(
     }
 
     // 1. Immediate heartbeat when slot is selected (batched API - single call!)
-    heartbeat({ resourceId, slots: affectedSlots, user: userId });
+    heartbeat({ resourceId, slots: affectedSlots, user: userId, eventTypeId });
 
     // 2. Periodic heartbeat every 5 seconds
     const interval = setInterval(() => {
-      heartbeat({ resourceId, slots: affectedSlots, user: userId });
+      heartbeat({ resourceId, slots: affectedSlots, user: userId, eventTypeId });
     }, 5000);
 
     // 3. Cleanup: Explicitly leave when unmounting or changing slots
@@ -56,7 +58,7 @@ export function useSlotHold(
       clearInterval(interval);
       leave({ resourceId, slots: affectedSlots, user: userId });
     };
-  }, [resourceId, slotId, userId, heartbeat, leave]);
+  }, [resourceId, slotId, userId, eventTypeId, heartbeat, leave]);
   // NOTE: durationMinutes intentionally NOT in deps - it's locked at selection time
 
   return userId;

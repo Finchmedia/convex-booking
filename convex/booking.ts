@@ -94,4 +94,5 @@ export const {
   leave,
   getPresence,
   getDatePresence,
+  getActivePresenceCount,
 } = makeBookingAPI(components.booking);

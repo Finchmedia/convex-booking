@@ -135,6 +135,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      getActivePresenceCount: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId?: string; resourceId?: string },
+        any,
+        Name
+      >;
       getDatePresence: FunctionReference<
         "query",
         "internal",
@@ -145,7 +152,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       heartbeat: FunctionReference<
         "mutation",
         "internal",
-        { data?: any; resourceId: string; slots: Array<string>; user: string },
+        {
+          data?: any;
+          eventTypeId?: string;
+          resourceId: string;
+          slots: Array<string>;
+          user: string;
+        },
         any,
         Name
       >;

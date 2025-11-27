@@ -7,6 +7,16 @@ import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -52,6 +62,7 @@ const RESOURCE_TYPES = [
 export default function ResourcesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingResource, setEditingResource] = useState<any>(null);
+  const [pendingToggle, setPendingToggle] = useState<{ id: string; isActive: boolean } | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     type: "room",
@@ -154,18 +165,31 @@ export default function ResourcesPage() {
     }
   };
 
-  const handleToggleActive = async (id: string, isActive: boolean) => {
+  const handleToggleActive = (id: string, isActive: boolean) => {
+    // Set pending toggle to trigger the query and show the dialog if needed
+    setPendingToggle({ id, isActive });
+  };
+
+  const confirmToggleActive = async (id: string, isActive: boolean) => {
     try {
       await toggleActive({ id, isActive });
       toast.success(isActive ? "Resource activated" : "Resource deactivated");
+      setPendingToggle(null);
     } catch (error: any) {
       toast.error(error.message || "Failed to update resource");
+      setPendingToggle(null);
     }
   };
 
   const getTypeLabel = (type: string) => {
     return RESOURCE_TYPES.find((t) => t.value === type)?.label ?? type;
   };
+
+  // Query presence count for pending toggle
+  const presenceCount = useQuery(
+    api.booking.getActivePresenceCount,
+    pendingToggle ? { resourceId: pendingToggle.id } : "skip"
+  );
 
   return (
     <div className="space-y-6">
@@ -432,6 +456,51 @@ export default function ResourcesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Presence Warning Dialog */}
+      {pendingToggle && presenceCount !== undefined && (
+        <AlertDialog
+          open={presenceCount.count > 0}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingToggle(null);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Users Currently Booking</AlertDialogTitle>
+              <AlertDialogDescription>
+                {presenceCount.count} user{presenceCount.count !== 1 ? "s are" : " is"} currently
+                booking this resource. {pendingToggle.isActive ? "Activating" : "Deactivating"} it
+                may interrupt their booking process.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingToggle(null)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() =>
+                  pendingToggle &&
+                  confirmToggleActive(pendingToggle.id, pendingToggle.isActive)
+                }
+              >
+                {pendingToggle.isActive ? "Activate" : "Deactivate"} Anyway
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {/* Auto-confirm if no presence */}
+      {pendingToggle &&
+        presenceCount !== undefined &&
+        presenceCount.count === 0 &&
+        (() => {
+          confirmToggleActive(pendingToggle.id, pendingToggle.isActive);
+          return null;
+        })()}
     </div>
   );
 }

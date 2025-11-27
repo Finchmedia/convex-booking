@@ -564,12 +564,36 @@ export const toggleEventTypeActive = mutation({
       throw new Error(`Event type "${args.id}" not found`);
     }
 
+    // Check for active presence (final safety guard)
+    const TIMEOUT_MS = 10_000;
+    const now = Date.now();
+
+    const presenceRecords = await ctx.db
+      .query("presence")
+      .withIndex("by_event_type", (q) => q.eq("eventTypeId", args.id))
+      .collect();
+
+    const activePresence = presenceRecords.filter(
+      (p) => now - p.updated <= TIMEOUT_MS
+    );
+
+    const uniqueUsers = [...new Set(activePresence.map((p) => p.user))];
+    const affectedUsers = uniqueUsers.length;
+
+    if (affectedUsers > 0) {
+      console.warn(
+        `[toggleEventTypeActive] Warning: ${affectedUsers} user(s) currently booking event type "${args.id}". ` +
+        `Toggling status to ${args.isActive ? "active" : "inactive"} anyway. ` +
+        `Users: ${uniqueUsers.join(", ")}`
+      );
+    }
+
     await ctx.db.patch(eventType._id, {
       isActive: args.isActive,
       updatedAt: Date.now(),
     });
 
-    return eventType._id;
+    return { success: true, affectedUsers };
   },
 });
 

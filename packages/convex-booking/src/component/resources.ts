@@ -192,12 +192,38 @@ export const toggleResourceActive = mutation({
       throw new Error(`Resource "${args.id}" not found`);
     }
 
+    // Check for active presence (final safety guard)
+    const TIMEOUT_MS = 10_000;
+    const now = Date.now();
+
+    const presenceRecords = await ctx.db
+      .query("presence")
+      .withIndex("by_resource_slot_updated", (q) =>
+        q.eq("resourceId", args.id)
+      )
+      .collect();
+
+    const activePresence = presenceRecords.filter(
+      (p) => now - p.updated <= TIMEOUT_MS
+    );
+
+    const uniqueUsers = [...new Set(activePresence.map((p) => p.user))];
+    const affectedUsers = uniqueUsers.length;
+
+    if (affectedUsers > 0) {
+      console.warn(
+        `[toggleResourceActive] Warning: ${affectedUsers} user(s) currently booking resource "${args.id}". ` +
+        `Toggling status to ${args.isActive ? "active" : "inactive"} anyway. ` +
+        `Users: ${uniqueUsers.join(", ")}`
+      );
+    }
+
     await ctx.db.patch(resource._id, {
       isActive: args.isActive,
       updatedAt: Date.now(),
     });
 
-    return resource._id;
+    return { success: true, affectedUsers };
   },
 });
 

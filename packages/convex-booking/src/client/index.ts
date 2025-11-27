@@ -681,5 +681,15 @@ export function makeBookingAPI(component: ComponentApi) {
         return await ctx.runQuery(component.presence.getDatePresence, args);
       },
     }),
+
+    getActivePresenceCount: query({
+      args: {
+        resourceId: v.optional(v.string()),
+        eventTypeId: v.optional(v.string()),
+      },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.presence.getActivePresenceCount, args);
+      },
+    }),
   };
 }

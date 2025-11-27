@@ -13,6 +13,7 @@ export const heartbeat = mutation({
     resourceId: v.string(),
     slots: v.array(v.string()),
     user: v.string(),
+    eventTypeId: v.optional(v.string()),
     data: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -31,6 +32,7 @@ export const heartbeat = mutation({
       if (existingPresence) {
         await ctx.db.patch(existingPresence._id, {
           updated: now,
+          eventTypeId: args.eventTypeId,
           data: args.data ?? existingPresence.data,
         });
       } else {
@@ -38,6 +40,7 @@ export const heartbeat = mutation({
           resourceId: args.resourceId,
           user: args.user,
           slot: slot,
+          eventTypeId: args.eventTypeId,
           updated: now,
           data: args.data,
         });
@@ -181,6 +184,58 @@ export const getDatePresence = query({
       user: p.user,
       updated: p.updated,
     }));
+  },
+});
+
+/**
+ * Returns count of unique users with active presence for a resource or event type.
+ * Used by admin UI to warn before deactivating resources/event types.
+ *
+ * @param resourceId - Optional resource ID to filter by
+ * @param eventTypeId - Optional event type ID to filter by
+ * @returns Object with count and array of unique user IDs
+ */
+export const getActivePresenceCount = query({
+  args: {
+    resourceId: v.optional(v.string()),
+    eventTypeId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    let presenceRecords;
+
+    // Query based on what's provided
+    if (args.resourceId) {
+      // Get all presence for this resource
+      presenceRecords = await ctx.db
+        .query("presence")
+        .withIndex("by_resource_slot_updated", (q) =>
+          q.eq("resourceId", args.resourceId)
+        )
+        .collect();
+    } else if (args.eventTypeId) {
+      // Get all presence for this event type
+      presenceRecords = await ctx.db
+        .query("presence")
+        .withIndex("by_event_type", (q) => q.eq("eventTypeId", args.eventTypeId))
+        .collect();
+    } else {
+      // No filter provided
+      return { count: 0, users: [] };
+    }
+
+    // Filter to only active presence (within timeout window)
+    const activePresence = presenceRecords.filter(
+      (p) => now - p.updated <= TIMEOUT_MS
+    );
+
+    // Deduplicate by user (multi-slot bookings = 1 user, not N records)
+    const uniqueUsers = [...new Set(activePresence.map((p) => p.user))];
+
+    return {
+      count: uniqueUsers.length,
+      users: uniqueUsers,
+    };
   },
 });
 

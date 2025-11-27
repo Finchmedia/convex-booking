@@ -213,11 +213,13 @@ export default defineSchema({
     resourceId: v.string(),
     user: v.string(),
     slot: v.string(), // ISO timestamp
+    eventTypeId: v.optional(v.string()), // Track which event type being booked
     updated: v.number(),
     data: v.optional(v.any()),
   })
     .index("by_resource_slot_updated", ["resourceId", "slot", "updated"])
-    .index("by_user_slot", ["user", "slot"]),
+    .index("by_user_slot", ["user", "slot"])
+    .index("by_event_type", ["eventTypeId"]),
 
   presence_heartbeats: defineTable({
     resourceId: v.string(),

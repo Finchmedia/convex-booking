@@ -1,10 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -28,16 +39,25 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 export default function EventTypesPage() {
+  const [pendingToggle, setPendingToggle] = useState<{ id: string; isActive: boolean } | null>(null);
+
   const eventTypes = useQuery(api.booking.listEventTypes, {});
   const toggleActive = useMutation(api.booking.toggleEventTypeActive);
   const deleteEventType = useMutation(api.booking.deleteEventType);
 
-  const handleToggleActive = async (id: string, isActive: boolean) => {
+  const handleToggleActive = (id: string, isActive: boolean) => {
+    // Set pending toggle to trigger the query and show the dialog if needed
+    setPendingToggle({ id, isActive });
+  };
+
+  const confirmToggleActive = async (id: string, isActive: boolean) => {
     try {
       await toggleActive({ id, isActive });
       toast.success(isActive ? "Event type activated" : "Event type deactivated");
-    } catch (error) {
-      toast.error("Failed to update event type");
+      setPendingToggle(null);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update event type");
+      setPendingToggle(null);
     }
   };
 
@@ -63,6 +83,12 @@ export default function EventTypesPage() {
     const mins = minutes % 60;
     return mins ? `${hours}h ${mins}m` : `${hours}h`;
   };
+
+  // Query presence count for pending toggle
+  const presenceCount = useQuery(
+    api.booking.getActivePresenceCount,
+    pendingToggle ? { eventTypeId: pendingToggle.id } : "skip"
+  );
 
   return (
     <div className="space-y-6">
@@ -217,6 +243,51 @@ export default function EventTypesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Presence Warning Dialog */}
+      {pendingToggle && presenceCount !== undefined && (
+        <AlertDialog
+          open={presenceCount.count > 0}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingToggle(null);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Users Currently Booking</AlertDialogTitle>
+              <AlertDialogDescription>
+                {presenceCount.count} user{presenceCount.count !== 1 ? "s are" : " is"} currently
+                booking with this event type. {pendingToggle.isActive ? "Activating" : "Deactivating"} it
+                may interrupt their booking process.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingToggle(null)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() =>
+                  pendingToggle &&
+                  confirmToggleActive(pendingToggle.id, pendingToggle.isActive)
+                }
+              >
+                {pendingToggle.isActive ? "Activate" : "Deactivate"} Anyway
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {/* Auto-confirm if no presence */}
+      {pendingToggle &&
+        presenceCount !== undefined &&
+        presenceCount.count === 0 &&
+        (() => {
+          confirmToggleActive(pendingToggle.id, pendingToggle.isActive);
+          return null;
+        })()}
     </div>
   );
 }

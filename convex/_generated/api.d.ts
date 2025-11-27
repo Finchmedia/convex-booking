@@ -145,6 +145,12 @@ export declare const components: {
         { resourceId: string; slot: string; user: string },
         any
       >;
+      getActivePresenceCount: FunctionReference<
+        "query",
+        "internal",
+        { eventTypeId?: string; resourceId?: string },
+        any
+      >;
       getDatePresence: FunctionReference<
         "query",
         "internal",
@@ -154,7 +160,13 @@ export declare const components: {
       heartbeat: FunctionReference<
         "mutation",
         "internal",
-        { data?: any; resourceId: string; slots: Array<string>; user: string },
+        {
+          data?: any;
+          eventTypeId?: string;
+          resourceId: string;
+          slots: Array<string>;
+          user: string;
+        },
         any
       >;
       leave: FunctionReference<
