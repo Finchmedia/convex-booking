@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
+import type { Resource } from "@mrfinch/booking/react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,7 @@ export default function BookPage() {
   });
 
   // Filter to standalone resources only (can be booked directly)
-  const standaloneResources = resources?.filter((r) => r.isStandalone !== false);
+  const standaloneResources = resources?.filter((r: Resource) => r.isStandalone !== false);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -82,7 +83,7 @@ export default function BookPage() {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2">
-            {standaloneResources?.map((resource) => (
+            {standaloneResources?.map((resource: Resource) => (
               <Link key={resource._id} href={`/book/${resource.id}`}>
                 <Card className="h-full bg-card/50 border-border hover:border-border hover:bg-card/80 transition-all cursor-pointer group">
                   <CardHeader>

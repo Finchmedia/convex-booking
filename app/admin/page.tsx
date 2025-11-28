@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
+import type { Booking } from "@mrfinch/booking/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,14 +30,14 @@ export default function DemoDashboard() {
     },
     {
       title: "Upcoming",
-      value: bookings?.filter((b) => b.start > Date.now() && b.status === "confirmed").length ?? 0,
+      value: bookings?.filter((b: Booking) => b.start > Date.now() && b.status === "confirmed").length ?? 0,
       icon: Clock,
       href: "/admin/bookings?status=confirmed",
       description: "Confirmed upcoming",
     },
     {
       title: "Pending",
-      value: bookings?.filter((b) => b.status === "pending").length ?? 0,
+      value: bookings?.filter((b: Booking) => b.status === "pending").length ?? 0,
       icon: Users,
       href: "/admin/bookings?status=pending",
       description: "Awaiting confirmation",
@@ -100,7 +101,7 @@ export default function DemoDashboard() {
               </p>
             ) : (
               <div className="space-y-4">
-                {recentBookings.map((booking) => (
+                {recentBookings.map((booking: Booking) => (
                   <div
                     key={booking._id}
                     className="flex items-center justify-between p-3 rounded-lg border"

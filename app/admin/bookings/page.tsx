@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Booking } from "@mrfinch/booking/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -47,7 +48,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 
 export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
   const bookings = useQuery(api.booking.listBookings, {
@@ -92,7 +93,7 @@ export default function BookingsPage() {
     }
   };
 
-  const openDetail = (booking: any) => {
+  const openDetail = (booking: Booking) => {
     setSelectedBooking(booking);
     setShowDetailModal(true);
   };
@@ -192,7 +193,7 @@ export default function BookingsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bookings.map((booking) => {
+                {bookings.map((booking: Booking) => {
                   const { date, time } = formatDateTime(booking.start);
                   const isPast = booking.start < Date.now();
                   return (

@@ -5,7 +5,7 @@ import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Booker } from "@/components/booker";
+import { Booker, type EventType } from "@mrfinch/booking/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,7 @@ export default function ResourceBookingPage() {
   const resourceId = params.resourceId as string;
 
   // State: selected event type
-  const [selectedEventType, setSelectedEventType] = useState<any>(null);
+  const [selectedEventType, setSelectedEventType] = useState<EventType | null>(null);
 
   // Fetch resource details
   const resource = useQuery(api.booking.getResource, { id: resourceId });
@@ -191,7 +191,7 @@ export default function ResourceBookingPage() {
             </Card>
           ) : (
             <div className="space-y-4">
-              {eventTypes.map((eventType) => (
+              {eventTypes.map((eventType: EventType) => (
                 <Card
                   key={eventType._id}
                   className="bg-card/50 border-border hover:border-border hover:bg-card/80 transition-all cursor-pointer group"
@@ -217,7 +217,7 @@ export default function ResourceBookingPage() {
                       {/* Duration Options */}
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-muted-foreground" />
-                        {eventType.lengthInMinutesOptions?.length > 0 ? (
+                        {eventType.lengthInMinutesOptions && eventType.lengthInMinutesOptions.length > 0 ? (
                           <div className="flex gap-2">
                             {eventType.lengthInMinutesOptions.map((duration: number) => (
                               <Badge

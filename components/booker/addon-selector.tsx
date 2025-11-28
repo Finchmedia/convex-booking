@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
+import type { Resource } from "@mrfinch/booking/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,7 @@ export function AddonSelector({
   });
 
   // Filter to non-standalone resources (add-ons only)
-  const addons = resources?.filter((r) => r.isStandalone === false);
+  const addons = resources?.filter((r: Resource) => r.isStandalone === false);
 
   // Loading state
   if (resources === undefined) {
@@ -116,7 +117,7 @@ export function AddonSelector({
           <p className="text-muted-foreground text-sm">No add-ons available</p>
         ) : (
           <div className="space-y-4">
-            {addons.map((addon) => {
+            {addons.map((addon: Resource) => {
               const selected = isSelected(addon.id);
               const selectedAddon = getSelectedAddon(addon.id);
               const maxQuantity = addon.quantity ?? 1;

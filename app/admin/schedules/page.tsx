@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Schedule } from "@mrfinch/booking/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -64,7 +65,7 @@ interface WeeklyHour {
 
 export default function SchedulesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingSchedule, setEditingSchedule] = useState<any>(null);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -98,7 +99,7 @@ export default function SchedulesPage() {
     setShowCreateModal(true);
   };
 
-  const openEditModal = (schedule: any) => {
+  const openEditModal = (schedule: Schedule) => {
     setFormData({
       name: schedule.name,
       timezone: schedule.timezone,
@@ -240,7 +241,7 @@ export default function SchedulesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {schedules.map((schedule) => (
+                {schedules.map((schedule: Schedule) => (
                   <TableRow key={schedule._id}>
                     <TableCell>
                       <div className="flex items-center gap-2">

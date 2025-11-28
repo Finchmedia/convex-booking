@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { EventType } from "@mrfinch/booking/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -147,7 +148,7 @@ export default function EventTypesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {eventTypes.map((eventType) => (
+                {eventTypes.map((eventType: EventType) => (
                   <TableRow key={eventType._id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -163,7 +164,7 @@ export default function EventTypesPage() {
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {eventType.lengthInMinutesOptions?.length ? (
-                          eventType.lengthInMinutesOptions.map((duration) => (
+                          eventType.lengthInMinutesOptions.map((duration: number) => (
                             <Badge key={duration} variant="outline">
                               {formatDuration(duration)}
                             </Badge>
@@ -176,7 +177,7 @@ export default function EventTypesPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {eventType.locations?.length > 0 ? (
+                      {eventType.locations && eventType.locations.length > 0 ? (
                         <Badge variant="secondary">
                           {eventType.locations[0].type}
                           {eventType.locations.length > 1 &&

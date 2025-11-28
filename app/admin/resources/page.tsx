@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Resource } from "@mrfinch/booking/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -61,7 +62,7 @@ const RESOURCE_TYPES = [
 
 export default function ResourcesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingResource, setEditingResource] = useState<any>(null);
+  const [editingResource, setEditingResource] = useState<Resource | null>(null);
   const [pendingToggle, setPendingToggle] = useState<{ id: string; isActive: boolean } | null>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -99,7 +100,7 @@ export default function ResourcesPage() {
     setShowCreateModal(true);
   };
 
-  const openEditModal = (resource: any) => {
+  const openEditModal = (resource: Resource) => {
     setFormData({
       name: resource.name,
       type: resource.type,
@@ -244,7 +245,7 @@ export default function ResourcesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {resources.map((resource) => (
+                {resources.map((resource: Resource) => (
                   <TableRow key={resource._id}>
                     <TableCell>
                       <div>
