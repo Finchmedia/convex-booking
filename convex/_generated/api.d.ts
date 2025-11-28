@@ -137,12 +137,6 @@ export declare const components: {
       >;
     };
     presence: {
-      cleanup: FunctionReference<
-        "mutation",
-        "internal",
-        { resourceId: string; slot: string; user: string },
-        any
-      >;
       getActivePresenceCount: FunctionReference<
         "query",
         "internal",

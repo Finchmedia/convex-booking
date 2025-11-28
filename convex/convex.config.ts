@@ -1,5 +1,5 @@
 import { defineApp } from "convex/server";
-import booking from "../packages/convex-booking/src/component/convex.config";
+import booking from "@mrfinch/booking/convex.config";
 
 const app = defineApp();
 app.use(booking);

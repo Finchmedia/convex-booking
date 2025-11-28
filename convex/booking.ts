@@ -1,5 +1,5 @@
 import { components } from "./_generated/api";
-import { makeBookingAPI } from "../packages/convex-booking/src/client";
+import { makeBookingAPI } from "@mrfinch/booking";
 
 // The destructure pattern works because makeBookingAPI uses direct queryGeneric/mutationGeneric
 // (following the ProseMirror sync component pattern)
