@@ -11,12 +11,10 @@
 
 ConvexBooking is an open-source, real-time booking system built as a [Convex component](https://docs.convex.dev/components). It provides everything you need to add booking functionality to your application.
 
-<Callout type="warning">
-  **Early Stage Open Source Project**
+<Callout type="info">
+  **Now Available on npm!**
 
-  This is a learning-in-public project by a solo developer with a full-time job.
-  No npm package yet — fork the repo and customize. Issues and PRs are welcome,
-  but response times may vary. Thanks for your patience!
+  Install with `npm install @mrfinch/booking` and add real-time booking to your Convex app in minutes.
 </Callout>
 
 ## Current State
@@ -27,17 +25,19 @@ ConvexBooking is an open-source, real-time booking system built as a [Convex com
 - Multi-duration support (30min, 1h, 2h, 5h)
 - Multi-resource booking with add-ons
 - O(1) availability queries that scale
+- npm package for easy installation
 
 **Not ready yet:**
-- npm package (fork the repo instead)
 - CLI scaffolding tool
 - Comprehensive test coverage
 
-**How to use today:**
-1. Fork the [GitHub repo](https://github.com/yourname/convex-booking)
-2. Run `npx convex dev` (creates your own Convex project)
-3. Run `npm run dev` for the Next.js frontend
-4. Optionally remove `/app/docs` and landing page if you don't need them
+**How to use:**
+1. Install: `npm install @mrfinch/booking`
+2. Configure `convex.config.ts` to use the component
+3. Create `convex/booking.ts` with API exports
+4. Use the `<Booker />` component in your app
+
+Or [fork the demo repo](https://github.com/Finchmedia/convex-booking) for full customization with Admin UI included.
 
 See the [Quick Start](/docs/getting-started) for detailed instructions.
 
@@ -87,7 +87,7 @@ The system is organized in three layers:
 ## Quick Example
 
 ```tsx title="app/book/page.tsx"
-import { Booker } from "@/components/booker/booker";
+import { Booker } from "@mrfinch/booking/react";
 
 export default function BookingPage() {
   return (

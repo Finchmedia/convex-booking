@@ -1,39 +1,132 @@
 <DocPage toc={[
-  { title: "Fork the Repository", url: "#1-fork-the-repository", depth: 2 },
-  { title: "Install Dependencies", url: "#2-install-dependencies", depth: 2 },
-  { title: "Set Up Convex", url: "#3-set-up-convex", depth: 2 },
-  { title: "Start the Dev Server", url: "#4-start-the-dev-server", depth: 2 },
-  { title: "Explore the Demo", url: "#5-explore-the-demo", depth: 2 },
+  { title: "Option A: Add to Existing App", url: "#option-a-add-to-existing-app-recommended", depth: 2 },
+  { title: "Install the Package", url: "#1-install-the-package", depth: 3 },
+  { title: "Configure Convex", url: "#2-configure-convex", depth: 3 },
+  { title: "Export the API", url: "#3-export-the-api", depth: 3 },
+  { title: "Use the Components", url: "#4-use-the-components", depth: 3 },
+  { title: "Option B: Fork the Demo", url: "#option-b-fork-the-demo", depth: 2 },
+  { title: "Clone the Repository", url: "#1-clone-the-repository", depth: 3 },
+  { title: "Install Dependencies", url: "#2-install-dependencies", depth: 3 },
+  { title: "Set Up Convex", url: "#3-set-up-convex", depth: 3 },
+  { title: "Start the Dev Server", url: "#4-start-the-dev-server", depth: 3 },
+  { title: "Explore the Demo", url: "#5-explore-the-demo", depth: 3 },
   { title: "Customize for Your Project", url: "#customize-for-your-project", depth: 2 },
-  { title: "Stripping the Docs", url: "#stripping-the-docs-optional", depth: 3 },
   { title: "Next Steps", url: "#next-steps", depth: 2 },
 ]}>
 
 # Quick Start
 
-Get ConvexBooking running in your own Convex project in about 5 minutes.
+There are two ways to get started with ConvexBooking:
 
-<Callout type="info">
-  There's no npm package yet. The current way to use ConvexBooking is to **fork the repository** and customize it for your needs.
-</Callout>
+- **Option A:** Install the npm package into your existing Convex app (recommended)
+- **Option B:** Fork the demo repo for a complete starter with Admin UI
 
-## 1. Fork the Repository
+## Option A: Add to Existing App (Recommended)
 
-Fork or clone the repository to get started:
+If you already have a Convex project, add ConvexBooking in just a few steps.
+
+### 1. Install the Package
 
 ```bash
-# Clone the repo
-git clone https://github.com/yourname/convex-booking my-booking-app
+npm install @mrfinch/booking
+```
+
+### 2. Configure Convex
+
+Create or update your `convex/convex.config.ts` to use the booking component:
+
+```typescript title="convex/convex.config.ts"
+import { defineApp } from "convex/server";
+import booking from "@mrfinch/booking/convex.config";
+
+const app = defineApp();
+app.use(booking);
+
+export default app;
+```
+
+### 3. Export the API
+
+Create a `convex/booking.ts` file to expose the component's functions:
+
+```typescript title="convex/booking.ts"
+import { components } from "./_generated/api";
+import { makeBookingAPI } from "@mrfinch/booking";
+
+export const {
+  // Queries
+  listResources,
+  getResource,
+  listSchedules,
+  getSchedule,
+  listEventTypes,
+  getEventType,
+  getMonthAvailability,
+  getDaySlots,
+  getDatePresence,
+  listBookings,
+  getBooking,
+  // Mutations
+  createResource,
+  updateResource,
+  deleteResource,
+  createSchedule,
+  updateSchedule,
+  deleteSchedule,
+  createEventType,
+  updateEventType,
+  deleteEventType,
+  createBooking,
+  cancelBooking,
+  // Presence
+  heartbeat,
+  leave,
+} = makeBookingAPI(components.booking);
+```
+
+### 4. Use the Components
+
+Import and use the Booker component in your app:
+
+```tsx title="app/book/page.tsx"
+import { Booker } from "@mrfinch/booking/react";
+
+export default function BookingPage() {
+  return (
+    <Booker
+      eventTypeId="your-event-type-id"
+      resourceId="your-resource-id"
+      title="Book a Session"
+      description="Select a time that works for you"
+    />
+  );
+}
+```
+
+<Callout type="info">
+  You'll need to create resources, schedules, and event types first. See the [API Reference](/docs/api) for how to create these, or fork the demo for a ready-made Admin UI.
+</Callout>
+
+---
+
+## Option B: Fork the Demo
+
+Want a complete starter with Admin UI, landing page, and documentation? Fork the demo repository.
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Finchmedia/convex-booking my-booking-app
 cd my-booking-app
 ```
 
-## 2. Install Dependencies
+### 2. Install Dependencies
 
 ```bash
 npm install
 ```
 
-## 3. Set Up Convex
+### 3. Set Up Convex
 
 Run the Convex dev command. If you don't have a Convex project yet, it will prompt you to create one:
 
@@ -49,7 +142,7 @@ This will:
 
 Keep this terminal running.
 
-## 4. Start the Dev Server
+### 4. Start the Dev Server
 
 In a new terminal, start the Next.js development server:
 
@@ -59,7 +152,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) to see the landing page.
 
-## 5. Explore the Demo
+### 5. Explore the Demo
 
 The project includes a complete demo setup:
 
@@ -69,6 +162,8 @@ The project includes a complete demo setup:
 - **Public Booking** (`/book`) - The booking flow your users will see
 
 Try creating a resource and event type in the Admin, then book a slot in the public booking flow.
+
+---
 
 ## Customize for Your Project
 
@@ -81,7 +176,7 @@ Once you have it running, you can customize:
 
 ### Stripping the Docs (Optional)
 
-If you're using this as a starting point and don't need the documentation site:
+If you're using the demo as a starting point and don't need the documentation site:
 
 ```bash
 # Remove docs-related files
@@ -90,27 +185,12 @@ rm -rf components/docs
 
 # Remove landing page (optional)
 rm app/page.tsx
-rm -rf app/(marketing)  # if it exists
 ```
 
 Then remove these dependencies from `package.json`:
 - `@next/mdx`
 - `rehype-pretty-code`
 - `shiki`
-
-Replace `next.config.mjs` with a simple config:
-
-```javascript title="next.config.mjs"
-/** @type {import('next').NextConfig} */
-const nextConfig = {};
-export default nextConfig;
-```
-
-Finally, remove `--webpack` from your dev scripts in `package.json` to use Turbopack:
-
-```json
-"dev": "next dev",
-```
 
 ## Next Steps
 
