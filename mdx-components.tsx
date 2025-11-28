@@ -4,6 +4,14 @@ import { Callout } from "@/components/docs/callout";
 import { CodeBlock } from "@/components/docs/code-block";
 import { DocPage } from "@/components/docs/doc-page";
 
+interface RehypePrettyCodeProps {
+  children?: React.ReactNode;
+  "data-rehype-pretty-code-title"?: string;
+  "data-language"?: string;
+  "data-title"?: string;
+  [key: string]: unknown;
+}
+
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
     // Handle figure elements from rehype-pretty-code (extracts title from figcaption)
@@ -16,7 +24,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
       // Extract title from figcaption
       let title: string | undefined;
       React.Children.forEach(children, (child) => {
-        if (React.isValidElement(child) && child.type === "figcaption") {
+        if (React.isValidElement<RehypePrettyCodeProps>(child) && child.type === "figcaption") {
           const figcaptionChildren = child.props.children;
           if (typeof figcaptionChildren === "string") {
             title = figcaptionChildren;
@@ -26,12 +34,12 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
 
       // Filter out figcaption, pass title to pre/CodeBlock
       const processed = React.Children.map(children, (child) => {
-        if (!React.isValidElement(child)) return child;
+        if (!React.isValidElement<RehypePrettyCodeProps>(child)) return child;
         // Remove figcaption (already extracted title)
-        if (child.props?.["data-rehype-pretty-code-title"] !== undefined) return null;
+        if (child.props["data-rehype-pretty-code-title"] !== undefined) return null;
         // Pass title to element with data-language (the code block)
-        if (child.props?.["data-language"] && title) {
-          return React.cloneElement(child, { "data-title": title } as React.Attributes);
+        if (child.props["data-language"] && title) {
+          return React.cloneElement(child, { "data-title": title } as Partial<RehypePrettyCodeProps>);
         }
         return child;
       });
