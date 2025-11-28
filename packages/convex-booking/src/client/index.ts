@@ -1,10 +1,13 @@
-import { queryGeneric as query, mutationGeneric as mutation } from "convex/server";
+import { queryGeneric, mutationGeneric } from "convex/server";
 import { v } from "convex/values";
 import { type ComponentApi } from "../component/_generated/component";
 
 /**
  * Creates a client API for the booking component.
  * This allows the main app to easily mount the component's functionality.
+ *
+ * Uses queryGeneric/mutationGeneric directly (not via parameters) so that
+ * Convex codegen can properly extract FunctionReference types.
  *
  * @param component - The component API object (from components.booking)
  * @returns An object containing the public queries and mutations
@@ -14,21 +17,21 @@ export function makeBookingAPI(component: ComponentApi) {
     // ============================================
     // EVENT TYPES
     // ============================================
-    getEventType: query({
+    getEventType: queryGeneric({
       args: { eventTypeId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.public.getEventType, args);
       },
     }),
 
-    getEventTypeBySlug: query({
+    getEventTypeBySlug: queryGeneric({
       args: { slug: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.public.getEventTypeBySlug, args);
       },
     }),
 
-    listEventTypes: query({
+    listEventTypes: queryGeneric({
       args: {
         organizationId: v.optional(v.string()),
         activeOnly: v.optional(v.boolean()),
@@ -38,7 +41,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    createEventType: mutation({
+    createEventType: mutationGeneric({
       args: {
         id: v.string(),
         slug: v.string(),
@@ -70,7 +73,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    updateEventType: mutation({
+    updateEventType: mutationGeneric({
       args: {
         id: v.string(),
         title: v.optional(v.string()),
@@ -103,14 +106,14 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    deleteEventType: mutation({
+    deleteEventType: mutationGeneric({
       args: { id: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.public.deleteEventType, args);
       },
     }),
 
-    toggleEventTypeActive: mutation({
+    toggleEventTypeActive: mutationGeneric({
       args: { id: v.string(), isActive: v.boolean() },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.public.toggleEventTypeActive, args);
@@ -120,7 +123,7 @@ export function makeBookingAPI(component: ComponentApi) {
     // ============================================
     // AVAILABILITY
     // ============================================
-    getAvailability: query({
+    getAvailability: queryGeneric({
       args: {
         resourceId: v.string(),
         start: v.number(),
@@ -131,7 +134,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    getMonthAvailability: query({
+    getMonthAvailability: queryGeneric({
       args: {
         resourceId: v.string(),
         dateFrom: v.string(),
@@ -144,7 +147,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    getDaySlots: query({
+    getDaySlots: queryGeneric({
       args: {
         resourceId: v.string(),
         date: v.string(),
@@ -159,7 +162,7 @@ export function makeBookingAPI(component: ComponentApi) {
     // ============================================
     // BOOKINGS
     // ============================================
-    createReservation: mutation({
+    createReservation: mutationGeneric({
       args: {
         resourceId: v.string(),
         actorId: v.string(),
@@ -171,7 +174,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    createBooking: mutation({
+    createBooking: mutationGeneric({
       args: {
         eventTypeId: v.string(),
         resourceId: v.string(),
@@ -194,7 +197,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    getBooking: query({
+    getBooking: queryGeneric({
       args: { bookingId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.public.getBooking, {
@@ -203,14 +206,14 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    getBookingByUid: query({
+    getBookingByUid: queryGeneric({
       args: { uid: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.public.getBookingByUid, args);
       },
     }),
 
-    listBookings: query({
+    listBookings: queryGeneric({
       args: {
         organizationId: v.optional(v.string()),
         resourceId: v.optional(v.string()),
@@ -225,7 +228,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    cancelReservation: mutation({
+    cancelReservation: mutationGeneric({
       args: { reservationId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.public.cancelReservation, {
@@ -237,14 +240,14 @@ export function makeBookingAPI(component: ComponentApi) {
     // ============================================
     // RESOURCES
     // ============================================
-    getResource: query({
+    getResource: queryGeneric({
       args: { id: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.resources.getResource, args);
       },
     }),
 
-    listResources: query({
+    listResources: queryGeneric({
       args: {
         organizationId: v.string(),
         type: v.optional(v.string()),
@@ -255,7 +258,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    createResource: mutation({
+    createResource: mutationGeneric({
       args: {
         id: v.string(),
         organizationId: v.string(),
@@ -273,7 +276,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    updateResource: mutation({
+    updateResource: mutationGeneric({
       args: {
         id: v.string(),
         name: v.optional(v.string()),
@@ -290,14 +293,14 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    deleteResource: mutation({
+    deleteResource: mutationGeneric({
       args: { id: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.resources.deleteResource, args);
       },
     }),
 
-    toggleResourceActive: mutation({
+    toggleResourceActive: mutationGeneric({
       args: { id: v.string(), isActive: v.boolean() },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.resources.toggleResourceActive, args);
@@ -307,35 +310,35 @@ export function makeBookingAPI(component: ComponentApi) {
     // ============================================
     // RESOURCE ↔ EVENT TYPE MAPPING
     // ============================================
-    getEventTypesForResource: query({
+    getEventTypesForResource: queryGeneric({
       args: { resourceId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.resource_event_types.getEventTypesForResource, args);
       },
     }),
 
-    getResourcesForEventType: query({
+    getResourcesForEventType: queryGeneric({
       args: { eventTypeId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.resource_event_types.getResourcesForEventType, args);
       },
     }),
 
-    getResourceIdsForEventType: query({
+    getResourceIdsForEventType: queryGeneric({
       args: { eventTypeId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.resource_event_types.getResourceIdsForEventType, args);
       },
     }),
 
-    getEventTypeIdsForResource: query({
+    getEventTypeIdsForResource: queryGeneric({
       args: { resourceId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.resource_event_types.getEventTypeIdsForResource, args);
       },
     }),
 
-    hasResourceEventTypeLink: query({
+    hasResourceEventTypeLink: queryGeneric({
       args: {
         resourceId: v.string(),
         eventTypeId: v.string(),
@@ -345,7 +348,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    linkResourceToEventType: mutation({
+    linkResourceToEventType: mutationGeneric({
       args: {
         resourceId: v.string(),
         eventTypeId: v.string(),
@@ -355,7 +358,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    unlinkResourceFromEventType: mutation({
+    unlinkResourceFromEventType: mutationGeneric({
       args: {
         resourceId: v.string(),
         eventTypeId: v.string(),
@@ -365,7 +368,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    setResourcesForEventType: mutation({
+    setResourcesForEventType: mutationGeneric({
       args: {
         eventTypeId: v.string(),
         resourceIds: v.array(v.string()),
@@ -375,7 +378,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    setEventTypesForResource: mutation({
+    setEventTypesForResource: mutationGeneric({
       args: {
         resourceId: v.string(),
         eventTypeIds: v.array(v.string()),
@@ -388,28 +391,28 @@ export function makeBookingAPI(component: ComponentApi) {
     // ============================================
     // SCHEDULES
     // ============================================
-    getSchedule: query({
+    getSchedule: queryGeneric({
       args: { id: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.schedules.getSchedule, args);
       },
     }),
 
-    listSchedules: query({
+    listSchedules: queryGeneric({
       args: { organizationId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.schedules.listSchedules, args);
       },
     }),
 
-    getDefaultSchedule: query({
+    getDefaultSchedule: queryGeneric({
       args: { organizationId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.schedules.getDefaultSchedule, args);
       },
     }),
 
-    createSchedule: mutation({
+    createSchedule: mutationGeneric({
       args: {
         id: v.string(),
         organizationId: v.string(),
@@ -429,7 +432,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    updateSchedule: mutation({
+    updateSchedule: mutationGeneric({
       args: {
         id: v.string(),
         name: v.optional(v.string()),
@@ -450,14 +453,14 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    deleteSchedule: mutation({
+    deleteSchedule: mutationGeneric({
       args: { id: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.schedules.deleteSchedule, args);
       },
     }),
 
-    getEffectiveAvailability: query({
+    getEffectiveAvailability: queryGeneric({
       args: { scheduleId: v.string(), date: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.schedules.getEffectiveAvailability, args);
@@ -465,7 +468,7 @@ export function makeBookingAPI(component: ComponentApi) {
     }),
 
     // Date Overrides
-    listDateOverrides: query({
+    listDateOverrides: queryGeneric({
       args: {
         scheduleId: v.string(),
         dateFrom: v.optional(v.string()),
@@ -480,7 +483,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    createDateOverride: mutation({
+    createDateOverride: mutationGeneric({
       args: {
         scheduleId: v.string(),
         date: v.string(),
@@ -504,7 +507,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    deleteDateOverride: mutation({
+    deleteDateOverride: mutationGeneric({
       args: { overrideId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.schedules.deleteDateOverride, {
@@ -516,7 +519,7 @@ export function makeBookingAPI(component: ComponentApi) {
     // ============================================
     // MULTI-RESOURCE BOOKING
     // ============================================
-    checkMultiResourceAvailability: query({
+    checkMultiResourceAvailability: queryGeneric({
       args: {
         resources: v.array(
           v.object({
@@ -532,7 +535,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    createMultiResourceBooking: mutation({
+    createMultiResourceBooking: mutationGeneric({
       args: {
         eventTypeId: v.string(),
         organizationId: v.optional(v.string()),
@@ -563,7 +566,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    getBookingWithItems: query({
+    getBookingWithItems: queryGeneric({
       args: { bookingId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.multi_resource.getBookingWithItems, {
@@ -572,7 +575,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    cancelMultiResourceBooking: mutation({
+    cancelMultiResourceBooking: mutationGeneric({
       args: {
         bookingId: v.string(),
         reason: v.optional(v.string()),
@@ -590,7 +593,7 @@ export function makeBookingAPI(component: ComponentApi) {
     // ============================================
     // HOOKS
     // ============================================
-    registerHook: mutation({
+    registerHook: mutationGeneric({
       args: {
         eventType: v.string(),
         functionHandle: v.string(),
@@ -601,7 +604,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    unregisterHook: mutation({
+    unregisterHook: mutationGeneric({
       args: { hookId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runMutation(component.hooks.unregisterHook, {
@@ -610,7 +613,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    transitionBookingState: mutation({
+    transitionBookingState: mutationGeneric({
       args: {
         bookingId: v.string(),
         toStatus: v.string(),
@@ -627,7 +630,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    getBookingHistory: query({
+    getBookingHistory: queryGeneric({
       args: { bookingId: v.string() },
       handler: async (ctx, args) => {
         return await ctx.runQuery(component.hooks.getBookingHistory, {
@@ -639,7 +642,7 @@ export function makeBookingAPI(component: ComponentApi) {
     // ============================================
     // PRESENCE (Real-time slot locking)
     // ============================================
-    heartbeat: mutation({
+    heartbeat: mutationGeneric({
       args: {
         resourceId: v.string(),
         slots: v.array(v.string()),
@@ -652,7 +655,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    leave: mutation({
+    leave: mutationGeneric({
       args: {
         resourceId: v.string(),
         slots: v.array(v.string()),
@@ -663,7 +666,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    getPresence: query({
+    getPresence: queryGeneric({
       args: {
         resourceId: v.string(),
         slot: v.string(),
@@ -673,7 +676,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    getDatePresence: query({
+    getDatePresence: queryGeneric({
       args: {
         resourceId: v.string(),
         date: v.string(),
@@ -683,7 +686,7 @@ export function makeBookingAPI(component: ComponentApi) {
       },
     }),
 
-    getActivePresenceCount: query({
+    getActivePresenceCount: queryGeneric({
       args: {
         resourceId: v.optional(v.string()),
         eventTypeId: v.optional(v.string()),

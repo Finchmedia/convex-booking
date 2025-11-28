@@ -1,6 +1,8 @@
 import { components } from "./_generated/api";
 import { makeBookingAPI } from "../packages/convex-booking/src/client";
 
+// The destructure pattern works because makeBookingAPI uses direct queryGeneric/mutationGeneric
+// (following the ProseMirror sync component pattern)
 export const {
   // ============================================
   // EVENT TYPES
@@ -62,6 +64,7 @@ export const {
   createSchedule,
   updateSchedule,
   deleteSchedule,
+  getEffectiveAvailability,
 
   // ============================================
   // DATE OVERRIDES
@@ -69,7 +72,6 @@ export const {
   listDateOverrides,
   createDateOverride,
   deleteDateOverride,
-  getEffectiveAvailability,
 
   // ============================================
   // MULTI-RESOURCE BOOKING

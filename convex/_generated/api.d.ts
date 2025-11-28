@@ -9,7 +9,6 @@
  */
 
 import type * as booking from "../booking.js";
-import type * as seed from "../seed.js";
 
 import type {
   ApiFromModules,
@@ -19,7 +18,6 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   booking: typeof booking;
-  seed: typeof seed;
 }>;
 
 /**

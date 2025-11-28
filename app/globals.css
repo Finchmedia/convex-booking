@@ -204,15 +204,15 @@ pre [data-highlighted-chars] {
 /* rehype-pretty-code outputs data-theme with space-separated theme names */
 
 /* Light mode (default) */
-code[data-theme*=" "],
-code[data-theme*=" "] span {
+code[data-theme],
+code[data-theme] span {
   color: var(--shiki-light);
   background-color: transparent;
 }
 
 /* Dark mode */
-.dark code[data-theme*=" "],
-.dark code[data-theme*=" "] span {
+.dark code[data-theme],
+.dark code[data-theme] span {
   color: var(--shiki-dark);
   background-color: transparent;
 }
