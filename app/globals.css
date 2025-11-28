@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Include npm package in Tailwind's content scanning */
+@source "../node_modules/@mrfinch/booking";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

@@ -5,7 +5,7 @@ import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Booker, type EventType } from "@mrfinch/booking/react";
+import { Booker, BookingProvider, type EventType } from "@mrfinch/booking/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -95,17 +95,21 @@ export default function ResourceBookingPage() {
           </button>
 
           {/* Booker Component */}
-          <Booker
-            eventTypeId={selectedEventType.id}
-            resourceId={resourceId}
-            title={resource.name}
-            description={selectedEventType.description || resource.description}
-            organizerName="Studio Team"
-            onBookingComplete={(booking) => {
-              console.log("Booking completed:", booking);
-            }}
-            onEventTypeReset={() => setSelectedEventType(null)}
-          />
+          <div className="container max-w-5xl mx-auto">
+            <BookingProvider api={api.booking}>
+              <Booker
+                eventTypeId={selectedEventType.id}
+                resourceId={resourceId}
+                title={resource.name}
+                description={selectedEventType.description || resource.description}
+                organizerName="Studio Team"
+                onBookingComplete={(booking) => {
+                  console.log("Booking completed:", booking);
+                }}
+                onEventTypeReset={() => setSelectedEventType(null)}
+              />
+            </BookingProvider>
+          </div>
 
           {/* Real-time presence demo */}
           <div className="mt-8 text-center">

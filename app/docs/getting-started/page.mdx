@@ -3,7 +3,8 @@
   { title: "Install the Package", url: "#1-install-the-package", depth: 3 },
   { title: "Configure Convex", url: "#2-configure-convex", depth: 3 },
   { title: "Export the API", url: "#3-export-the-api", depth: 3 },
-  { title: "Use the Components", url: "#4-use-the-components", depth: 3 },
+  { title: "Add Query Cache Provider", url: "#4-add-query-cache-provider", depth: 3 },
+  { title: "Use the Components", url: "#5-use-the-components", depth: 3 },
   { title: "Option B: Fork the Demo", url: "#option-b-fork-the-demo", depth: 2 },
   { title: "Clone the Repository", url: "#1-clone-the-repository", depth: 3 },
   { title: "Install Dependencies", url: "#2-install-dependencies", depth: 3 },
@@ -28,7 +29,7 @@ If you already have a Convex project, add ConvexBooking in just a few steps.
 ### 1. Install the Package
 
 ```bash
-npm install @mrfinch/booking
+npm install @mrfinch/booking convex-helpers
 ```
 
 ### 2. Configure Convex
@@ -84,7 +85,28 @@ export const {
 } = makeBookingAPI(components.booking);
 ```
 
-### 4. Use the Components
+### 4. Add Query Cache Provider
+
+Wrap your Convex provider with `ConvexQueryCacheProvider` for optimal caching:
+
+```tsx title="components/ConvexClientProvider.tsx"
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexQueryCacheProvider } from "convex-helpers/react/cache/provider";
+
+const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+export default function ConvexClientProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <ConvexProvider client={convex}>
+      <ConvexQueryCacheProvider>
+        {children}
+      </ConvexQueryCacheProvider>
+    </ConvexProvider>
+  );
+}
+```
+
+### 5. Use the Components
 
 Import and use the Booker component in your app:
 
