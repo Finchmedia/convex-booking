@@ -2,7 +2,7 @@
 
 An open-source, real-time booking system built as a [Convex component](https://docs.convex.dev/components). Handle room bookings, equipment reservations, or appointment scheduling with real-time availability and conflict prevention.
 
-> **Early Stage Project** - This is a learning-in-public project. No npm package yet — fork the repo and customize. Issues and PRs welcome!
+[![npm version](https://img.shields.io/npm/v/@mrfinch/booking.svg)](https://www.npmjs.com/package/@mrfinch/booking)
 
 ## Features
 
@@ -13,68 +13,85 @@ An open-source, real-time booking system built as a [Convex component](https://d
 - **Multi-Resource Booking** - Book rooms, equipment, or people. Resources can be bundled or standalone.
 - **Flexible Schedules** - Define availability windows, date overrides, and buffer times.
 
+## Installation
+
+```bash
+npm install @mrfinch/booking convex-helpers
+```
+
+**Peer Dependencies:**
+- `convex` >= 1.21.0
+- `convex-helpers` >= 0.1.0
+- `react` >= 18.0.0
+
 ## Quick Start
 
-### 1. Fork/Clone the Repository
+### 1. Install the Convex Component
 
-```bash
-git clone https://github.com/yourname/convex-booking my-booking-app
-cd my-booking-app
+Add to your `convex/convex.config.ts`:
+
+```typescript
+import booking from "@mrfinch/booking/convex.config";
+import { defineApp } from "convex/server";
+
+const app = defineApp();
+app.use(booking);
+
+export default app;
 ```
 
-### 2. Install Dependencies
+### 2. Set Up the Booking API
 
-```bash
-npm install
+Create `convex/booking.ts`:
+
+```typescript
+import { components } from "./_generated/api";
+import { makeBookingAPI } from "@mrfinch/booking";
+
+export const {
+  getMonthAvailability,
+  getDaySlots,
+  createBooking,
+  cancelBooking,
+  getDatePresence,
+  heartbeat,
+  leave,
+  // ... more exports
+} = makeBookingAPI(components.booking);
 ```
 
-### 3. Set Up Convex
-
-```bash
-npx convex dev
-```
-
-This will prompt you to create a Convex project and generate your `.env.local`.
-
-### 4. Start the Dev Server
-
-In a new terminal:
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to see the app.
-
-## Project Structure
-
-```
-├── app/
-│   ├── docs/           # Documentation site
-│   ├── admin/          # Admin dashboard
-│   └── book/           # Public booking pages
-├── components/
-│   ├── booker/         # Main booking flow component
-│   ├── booking-calendar/  # Calendar and time slots
-│   └── ui/             # shadcn/ui components
-├── convex/             # Convex backend
-│   └── booking.ts      # Booking API exports
-└── packages/
-    └── convex-booking/ # The booking component
-```
-
-## Usage
-
-### Basic Booker Component
+### 3. Wrap Your App with Providers
 
 ```tsx
-import { Booker } from "@/components/booker/booker";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexQueryCacheProvider } from "convex-helpers/react/cache";
+import { BookingProvider } from "@mrfinch/booking/react";
+
+const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+export default function App({ children }) {
+  return (
+    <ConvexProvider client={convex}>
+      <ConvexQueryCacheProvider>
+        <BookingProvider>
+          {children}
+        </BookingProvider>
+      </ConvexQueryCacheProvider>
+    </ConvexProvider>
+  );
+}
+```
+
+### 4. Use the Booker Component
+
+```tsx
+import { Booker } from "@mrfinch/booking/react";
 
 export default function BookingPage() {
   return (
     <Booker
-      eventTypeId="studio-session"
-      resourceId="studio-a"
+      eventTypeId={eventTypeId}
+      resourceId={resourceId}
       title="Book a Session"
       description="Select a time that works for you"
     />
@@ -82,32 +99,61 @@ export default function BookingPage() {
 }
 ```
 
-### API Setup
+## Components
 
-```typescript
-// convex/booking.ts
-import { components } from "./_generated/api";
-import { makeBookingAPI } from "convex-booking";
+### Booker
 
-export const {
-  getMonthAvailability,
-  getDaySlots,
-  createBooking,
-  cancelBooking,
-  // ... more exports
-} = makeBookingAPI(components.booking);
+The main booking flow component with 3 steps: calendar selection, form input, and confirmation.
+
+```tsx
+import { Booker } from "@mrfinch/booking/react";
+
+<Booker
+  eventTypeId={eventTypeId}
+  resourceId={resourceId}
+  title="Studio Session"
+  description="Book your recording time"
+  onBookingComplete={(booking) => console.log("Booked!", booking)}
+/>
 ```
 
-## Documentation
+### Calendar
 
-Visit `/docs` in your running app or check the `app/docs/` folder for:
+Use individual calendar components for custom layouts:
 
-- [Introduction](/docs) - Overview and current state
-- [Quick Start](/docs/getting-started) - Setup instructions
-- [Core Concepts](/docs/concepts) - Architecture and data model
-- [Components](/docs/components) - Booker, Calendar, Admin UI
-- [API Reference](/docs/api) - Queries, mutations, hooks
-- [Guides](/docs/guides) - Common patterns and recipes
+```tsx
+import {
+  Calendar,
+  CalendarGrid,
+  CalendarNavigation,
+  TimeSlotsPanel,
+  EventMetaPanel,
+} from "@mrfinch/booking/react";
+```
+
+### Hooks
+
+```tsx
+import {
+  useConvexSlots,
+  useSlotHold,
+  useSlotPresence,
+  useBookingValidation,
+} from "@mrfinch/booking/react";
+```
+
+### Utilities
+
+```tsx
+import {
+  formatDate,
+  formatTime,
+  formatDuration,
+  getSessionId,
+  DAYS,
+  MONTHS,
+} from "@mrfinch/booking/react";
+```
 
 ## Architecture
 
@@ -118,33 +164,37 @@ ConvexBooking uses a **discrete time bucket** pattern for O(1) availability quer
 - Real-time presence via heartbeat system (10-second timeout)
 - ACID transactions prevent race conditions
 
-## Customization
+## Documentation
 
-Since you're working with the source code (not an npm package), you have full control:
+Full documentation available at [convexbooking.com/docs](https://convexbooking.com/docs):
 
-1. **Styles** - Modify components directly or override with Tailwind
-2. **Behavior** - Fork components and modify logic
-3. **Schema** - Add custom fields to bookings, resources, etc.
-4. **Auth** - Integrate with your existing authentication
+- [Introduction](/docs) - Overview and current state
+- [Quick Start](/docs/getting-started) - Setup instructions
+- [Core Concepts](/docs/concepts) - Architecture and data model
+- [Components](/docs/components) - Booker, Calendar, Admin UI
+- [API Reference](/docs/api) - Queries, mutations, hooks
 
-### Stripping the Docs (Optional)
+## Demo App
 
-If you don't need the documentation site:
+This repository contains both the npm package (`booking-component/`) and a demo Next.js app (`convexbooking/`).
+
+To run the demo:
 
 ```bash
-rm -rf app/docs components/docs
+git clone https://github.com/Finchmedia/convex-booking
+cd convex-booking/convexbooking
+npm install
+npx convex dev  # In one terminal
+npm run dev     # In another terminal
 ```
 
-Then:
-1. Remove from `package.json`: `@next/mdx`, `rehype-pretty-code`, `shiki`
-2. Replace `next.config.mjs` with a simple `export default {}`
-3. Remove `--webpack` from dev scripts to use Turbopack again
+Open [http://localhost:3000](http://localhost:3000) to see the demo.
 
 ## Tech Stack
 
 - [Convex](https://convex.dev/) - Backend (database, real-time, serverless functions)
-- [Next.js 15](https://nextjs.org/) - React framework
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
+- [Next.js 15](https://nextjs.org/) - React framework (demo app)
+- [Tailwind CSS v4](https://tailwindcss.com/) - Styling
 - [shadcn/ui](https://ui.shadcn.com/) - UI components
 - [TypeScript](https://www.typescriptlang.org/) - Type safety
 
