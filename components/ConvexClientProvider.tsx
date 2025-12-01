@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useCallback, useState } from 'react';
+import { ReactNode, useCallback, useRef, useState } from 'react';
 import { ConvexReactClient } from 'convex/react';
 import { ConvexProviderWithAuth } from 'convex/react';
 import { ConvexQueryCacheProvider } from 'convex-helpers/react/cache/provider';
@@ -28,22 +28,30 @@ export default function ConvexClientProvider({
 
 function useAuthFromAuthKit() {
   const { user, loading: isLoading } = useAuth();
-  const { getAccessToken, refresh } = useAccessToken();
+  const { accessToken, loading: tokenLoading, error: tokenError } = useAccessToken();
 
-  const isAuthenticated = !!user;
+  // Combine loading states from both user and token
+  const loading = (isLoading ?? false) || (tokenLoading ?? false);
 
-  const fetchAccessToken = useCallback(
-    async ({ forceRefreshToken }: { forceRefreshToken?: boolean } = {}): Promise<string | null> => {
-      if (!user) return null;
-      try {
-        return forceRefreshToken ? (await refresh()) ?? null : (await getAccessToken()) ?? null;
-      } catch (error) {
-        console.error('Failed to get access token:', error);
-        return null;
-      }
-    },
-    [user, refresh, getAccessToken],
-  );
+  // Only authenticated when we have BOTH user AND token AND not loading
+  const authenticated = !!user && !!accessToken && !loading;
 
-  return { isLoading, isAuthenticated, fetchAccessToken };
+  // Use ref for stable token reference to avoid unnecessary re-renders
+  const stableAccessToken = useRef<string | null>(null);
+  if (accessToken && !tokenError) {
+    stableAccessToken.current = accessToken;
+  }
+
+  const fetchAccessToken = useCallback(async () => {
+    if (stableAccessToken.current && !tokenError) {
+      return stableAccessToken.current;
+    }
+    return null;
+  }, [tokenError]);
+
+  return {
+    isLoading: loading,
+    isAuthenticated: authenticated,
+    fetchAccessToken,
+  };
 }
