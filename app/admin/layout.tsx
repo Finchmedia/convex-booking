@@ -3,6 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
+import type { User } from "@workos-inc/node";
 import {
   Calendar,
   CalendarDays,
@@ -12,6 +14,7 @@ import {
   Users,
   ChevronLeft,
   BookOpen,
+  LogOut,
 } from "lucide-react";
 import {
   Sidebar,
@@ -147,6 +150,27 @@ function AppSidebar() {
   );
 }
 
+function UserMenu() {
+  const { user, signOut } = useAuth();
+
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm text-muted-foreground">{user.email}</span>
+      <button
+        onClick={() => signOut()}
+        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm hover:bg-muted"
+        title="Sign out"
+      >
+        <LogOut className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 export default function DemoLayout({
   children,
 }: {
@@ -160,6 +184,7 @@ export default function DemoLayout({
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex-1" />
+          <UserMenu />
           <ThemeToggle />
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4">

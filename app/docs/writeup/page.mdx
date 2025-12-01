@@ -1,0 +1,134 @@
+<DocPage toc={[
+  { title: "Some Context", url: "#some-context", depth: 2 },
+  { title: "What Happened", url: "#what-happened", depth: 2 },
+  { title: "The Type Alias Thing", url: "#the-type-alias-thing", depth: 2 },
+  { title: "The Sibling vs NPM Confusion", url: "#the-sibling-vs-npm-confusion", depth: 2 },
+  { title: "Finding the Template", url: "#finding-the-template", depth: 2 },
+  { title: "What Might Be Useful to Know", url: "#what-might-be-useful-to-know", depth: 2 },
+]}>
+
+# Notes on Building a Convex Component
+
+So I've been building this booking system for recording studios with Convex, and I figured I'd write up what happened because honestly some of it might be useful for you to know — or maybe it's all obvious stuff I just didn't see. Either way.
+
+I'm sharing this mainly for the Convex team but also anyone else who ends up in a similar situation. Fair warning: I'm semi-technical at best, and a lot of the concepts here might be basic knowledge for people who've done this before. I hadn't. So take this for what it is.
+
+## Some Context
+
+I'm building a booking platform for recording studios. Cal.com and similar tools are built for scheduling appointments with people — therapists, consultants, whatever. What I needed was more like inventory management. Booking *rooms* and *equipment* that need multi-hour holds, conflict detection, that sort of thing.
+
+So I decided to build something custom with Convex. And at some point I thought: maybe I should make this a reusable component instead of just app-specific code. Could be useful to others, could be useful to me later. That's where things got complicated.
+
+## What Happened
+
+I started with what seemed obvious — a monorepo structure:
+
+```
+convexbooking/
+├── packages/
+│   └── convex-booking/
+│       ├── src/component/
+│       ├── src/client/
+│       └── package.json
+├── convex/
+│   ├── convex.config.ts
+│   └── booking.ts
+└── package.json
+```
+
+The component lived in `packages/convex-booking/` as a local package. Development worked fine. `npm run dev`, everything showing up, presence system working, the whole thing.
+
+Then I tried to deploy and got this:
+
+```
+Property 'booking' does not exist on type '{}'.
+Type '{}' is not assignable to type 'FilterApi<...>'
+```
+
+So `api.booking.*` was typed as `{}`. Empty. Which was weird because it all worked in dev mode.
+
+I spent... a while on this. Probably longer than I should have. Had a whole debugging session with various AI tools — Claude Code, ChatGPT, Gemini, a few others. They were helpful as sparring partners, really good at explaining concepts and reasoning through things. But they also suggested some approaches that turned out to be completely wrong for Convex specifically.
+
+## The Type Alias Thing
+
+One thing I tried early on was aliasing imports to make the code cleaner:
+
+```typescript
+import { queryGeneric as query, mutationGeneric as mutation } from "convex/server";
+
+export function makeBookingAPI(component: ComponentApi) {
+  return {
+    getEventType: query({  // this breaks everything
+      args: { eventTypeId: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.public.getEventType, args);
+      },
+    }),
+  };
+}
+```
+
+Seems reasonable right? But it completely broke type inference.
+
+Turns out Convex's codegen does static analysis looking for the *literal* names `queryGeneric` and `mutationGeneric`. If you alias them, it can't find them. The code runs fine but the types don't get extracted properly.
+
+I only figured this out after looking at the [ProseMirror sync component](https://github.com/convex-dev/prosemirror-sync) and noticing they use direct imports. Once I switched to that, the types worked:
+
+```typescript
+import { queryGeneric, mutationGeneric } from "convex/server";
+
+export function makeBookingAPI(component: ComponentApi) {
+  return {
+    getEventType: queryGeneric({  // this works
+      args: { eventTypeId: v.string() },
+      handler: async (ctx, args) => {
+        return await ctx.runQuery(component.public.getEventType, args);
+      },
+    }),
+  };
+}
+```
+
+The AI tools also suggested dependency injection — passing `query` and `mutation` as parameters. Architecturally that sounds elegant but it has the same problem. Convex's static analysis can't see where `queryGeneric` is being used if it's hidden in a function parameter. Plus I got TypeScript errors about `QueryBuilder<{}, "public">` not matching `QueryBuilder<any, "public">` or something like that.
+
+## The Sibling vs NPM Confusion
+
+Even after fixing the type alias issue, something still felt off. I think the deeper problem was that I'd mixed up two mental models.
+
+I'd forked/copied component code into my monorepo and was treating it like a local package (easy to modify, instant feedback) while also wanting it to act like an npm package (reusable, versioned, publishable). This created weird issues — which `convex/server` version was my component actually using? Why weren't type changes always reflected in the main app?
+
+Honestly I think the real blocker was that I'd never built an npm package before. So there was this hesitation — "maybe I should just keep it local" — that kept me from doing the thing that would've actually worked.
+
+## Finding the Template
+
+At some point I discovered `npm create convex@latest -- --component`
+
+This was the breakthrough. It creates a proper component structure:
+
+```
+├── src/component/        # Backend logic
+├── src/client/           # Client API wrapper
+├── src/react/            # React components
+├── example/              # Test application
+└── dist/                 # Built output
+```
+
+Once I migrated to this structure and published to npm as `@mrfinch/booking`, everything just worked. Types resolved correctly, builds passed, deployments succeeded.
+
+Looking back, if I'd started with this template from the beginning — or if I'd known about it earlier — I probably would've avoided most of the confusion. But I also might not have learned as much, so.
+
+## What Might Be Useful to Know
+
+I'm not sure how common my experience is, but here's what tripped me up in case it's helpful:
+
+**The type alias thing**: Maybe worth mentioning somewhere that aliasing `queryGeneric`/`mutationGeneric` breaks codegen? I couldn't find this documented anywhere but maybe I missed it.
+
+**Sibling packages vs npm packages**: I didn't have a clear mental model for when to use which. The component template exists but I didn't find it until I was already deep in the weeds. For someone like me who hasn't built npm packages before, some kind of "if you want to build a reusable component, start here" pointer early in the docs might help.
+
+**The static analysis behavior**: Understanding that Convex scans for literal function names (not aliases, not injected dependencies) would've saved me time. Maybe there's a way to surface this in error messages? Though I don't know if that's feasible.
+
+Anyway that's basically it. The component works now. It's probably not perfect — there's likely stuff in there that's inefficient or not idiomatic. But it does what I need it to do and I learned a lot building it.
+
+If any of this is useful feedback, cool. If it's all stuff that's already known or obvious, that's fine too. Just figured I'd write it down while it was fresh.
+
+</DocPage>

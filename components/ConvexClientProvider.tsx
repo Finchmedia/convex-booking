@@ -1,21 +1,49 @@
-"use client";
+'use client';
 
-import { ReactNode } from "react";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { ConvexQueryCacheProvider } from "convex-helpers/react/cache/provider";
-
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+import { ReactNode, useCallback, useState } from 'react';
+import { ConvexReactClient } from 'convex/react';
+import { ConvexProviderWithAuth } from 'convex/react';
+import { ConvexQueryCacheProvider } from 'convex-helpers/react/cache/provider';
+import { AuthKitProvider, useAuth, useAccessToken } from '@workos-inc/authkit-nextjs/components';
 
 export default function ConvexClientProvider({
   children,
 }: {
   children: ReactNode;
 }) {
+  const [convex] = useState(() => {
+    return new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+  });
+
   return (
-    <ConvexProvider client={convex}>
-      <ConvexQueryCacheProvider>
-        {children}
-      </ConvexQueryCacheProvider>
-    </ConvexProvider>
+    <AuthKitProvider>
+      <ConvexProviderWithAuth client={convex} useAuth={useAuthFromAuthKit}>
+        <ConvexQueryCacheProvider>
+          {children}
+        </ConvexQueryCacheProvider>
+      </ConvexProviderWithAuth>
+    </AuthKitProvider>
   );
+}
+
+function useAuthFromAuthKit() {
+  const { user, loading: isLoading } = useAuth();
+  const { getAccessToken, refresh } = useAccessToken();
+
+  const isAuthenticated = !!user;
+
+  const fetchAccessToken = useCallback(
+    async ({ forceRefreshToken }: { forceRefreshToken?: boolean } = {}): Promise<string | null> => {
+      if (!user) return null;
+      try {
+        return forceRefreshToken ? (await refresh()) ?? null : (await getAccessToken()) ?? null;
+      } catch (error) {
+        console.error('Failed to get access token:', error);
+        return null;
+      }
+    },
+    [user, refresh, getAccessToken],
+  );
+
+  return { isLoading, isAuthenticated, fetchAccessToken };
 }
