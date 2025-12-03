@@ -1,0 +1,1 @@
+- when trying if the component builds we first need to run codegen

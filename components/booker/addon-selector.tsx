@@ -37,9 +37,8 @@ export function AddonSelector({
   hideIfEmpty = true,
 }: AddonSelectorProps) {
   // Query all active resources
-  const resources = useQuery(api.booking.listResources, {
+  const resources = useQuery(api.public.listResources, {
     organizationId: DEMO_ORG_ID,
-    activeOnly: true,
   });
 
   // Filter to non-standalone resources (add-ons only)

@@ -32,10 +32,12 @@ ConvexBooking is an open-source, real-time booking system built as a [Convex com
 - Comprehensive test coverage
 
 **How to use:**
-1. Install: `npm install @mrfinch/booking`
-2. Configure `convex.config.ts` to use the component
-3. Create `convex/booking.ts` with API exports
-4. Use the `<Booker />` component in your app
+1. **Install packages:** `npm install @mrfinch/booking @convex-dev/workos-authkit`
+2. **Configure components:** Mount both components in `convex/convex.config.ts`
+3. **Set up authentication:** Create `convex/authClient.ts`, `convex/http.ts`, and `convex/functions.ts`
+4. **Create API gateways:** Define trust zones in `convex/public.ts` and `convex/admin.ts`
+5. **Configure environment:** Set WorkOS and Resend API keys
+6. **Use components:** Add `<Booker />` to your frontend with `AuthKitProvider`
 
 Or [fork the demo repo](https://github.com/Finchmedia/convex-booking) for full customization with Admin UI included.
 
@@ -67,11 +69,18 @@ The real-time presence system uses heartbeats to temporarily hold slots while us
 
 ## Architecture Overview
 
-The system is organized in three layers:
+The system is organized in four layers:
 
 **Your App** — The frontend you build
 - `<Booker />` component (calendar, time slots, booking form)
 - Admin Dashboard (resource management, schedule configuration, booking management)
+- `AuthKitProvider` for authentication
+
+**API Gateways** — Authorization layer with trust zones
+- `convex/public.ts` — Public booking functions (unauthenticated)
+- `convex/admin.ts` — Admin functions (requires authentication)
+- `convex/functions.ts` — Helper utilities for auth checks
+- Pattern: Each gateway wraps component functions with appropriate authorization logic
 
 **ConvexBooking Component** — The reusable booking logic
 - **Resources** — Bookable entities (rooms, equipment, people)
@@ -80,9 +89,11 @@ The system is organized in three layers:
 - **Bookings** — Confirmed reservations
 - **Presence** — Real-time slot locking via heartbeats
 - **Availability** — Pre-computed time buckets for O(1) queries
+- **Resend (nested)** — Email notifications via component hooks
 
 **Convex** — The backend platform
 - Real-time subscriptions, ACID transactions, serverless functions
+- WorkOS AuthKit component for authentication and webhooks
 
 ## Quick Example
 

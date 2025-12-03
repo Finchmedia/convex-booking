@@ -1,7 +1,7 @@
 # ConvexBooking: Real-Time Booking System Documentation
 
 > **Project Status**: Production-Ready Core Component
-> **Last Major Update**: November 26, 2025 (Form Architecture & Schema Simplification)
+> **Last Major Update**: December 3, 2025 (Documentation: Auth, API Patterns, & Email Integration)
 > **Philosophy**: Deep-diving beyond "hello world" into production-grade, scalable systems
 
 ---
@@ -334,11 +334,32 @@ booker.tsx             - 3-step booking flow
                          - Triggers useSlotHold for selected slot
 ```
 
-### Mounting (`convex/`)
+### App Configuration & API Layers (`convex/`)
 ```
-booking.ts             - Exports component API to main app
-                         - makeBookingAPI(components.booking)
-                         - Export: getDatePresence, heartbeat, leave, etc.
+convex.config.ts       - App-level component mounting
+                         - Mounts workOSAuthKit (auth)
+                         - Mounts booking component
+
+functions.ts           - ⭐ Custom function builders
+                         - publicQuery, publicMutation
+                         - adminQuery, adminMutation
+                         - Auth helpers: getUserIdentity, requireAuth, getUserRole
+
+authClient.ts          - ⭐ WorkOS AuthKit wrapper
+                         - AuthKit instance with component.workOSAuthKit
+
+http.ts                - ⭐ Webhook routes
+                         - Registers WorkOS auth routes
+
+public.ts              - ⭐ Public API wrapper layer
+                         - Wraps component.booking.* functions
+                         - Enforces public auth rules
+                         - Injects resendOptions from env vars
+
+admin.ts               - ⭐ Admin API wrapper layer
+                         - Wraps component.booking.* functions
+                         - Enforces admin + role checks
+                         - Tracks audit trails (changedBy)
 ```
 
 ### Admin UI (`app/demo/`)
@@ -494,6 +515,29 @@ SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
 **Why:** Convex queries return new references → useEffect loops → infinite renders
 **Rule:** Forms are "dumb" components that receive initial data as props
 
+### 9. Components Can't Access process.env
+**Problem:** Convex components (in `packages/convex-booking/src/component/`) are isolated sandboxes
+**Symptom:** `process.env.RESEND_API_KEY` returns `undefined` inside component functions
+**Solution:** Dependency injection via function arguments from the app wrapper
+**Example:** `convex/public.ts` reads env vars and passes `resendOptions` to component
+**Code:** See Pattern 7 "Environment Variable Injection"
+
+### 10. Auth Must Be Enforced in Wrapper Layer
+**Anti-pattern:** Putting auth checks inside component functions
+**Pattern:** Auth in wrapper (`convex/public.ts`, `convex/admin.ts`), component is trusted zone
+**Why:** Separation of concerns - component can be reused, app defines authorization rules
+**Implication:** If someone bypasses the wrapper, component logic is still vulnerable
+**Solution:** Defense-in-depth (frontend hiding + wrapper enforcement + component trust)
+
+### 11. Email Sending Requires API Key Configuration
+**Symptom:** Bookings created successfully but no emails received
+**Common causes:**
+1. `RESEND_API_KEY` not set in Convex Dashboard environment
+2. `RESEND_FROM_EMAIL` missing (defaults to "bookings@example.com")
+3. Typo in env var name (check Convex dashboard settings)
+**Debug:** Check Convex Dashboard → Functions → View logs for "Email sent" or "Resend API key not configured"
+**Fallback:** If API key missing, booking succeeds anyway (graceful degradation)
+
 ---
 
 ## 🎓 Key Learnings & Patterns
@@ -581,6 +625,446 @@ function Form({ initialData, relatedItems }) {
 - No infinite loop risk
 - Clear separation of concerns
 - Form only mounts when data is ready
+
+---
+
+## 🔐 Pattern 6: Authentication & Authorization Architecture
+
+### Overview
+The system uses a **3-tier auth architecture**: Frontend auth provider → App wrapper with custom builders → Component logic (trusted zone).
+
+### Tier 1: WorkOS AuthKit Integration (Frontend & App)
+
+**Frontend Setup:**
+```typescript
+// components/ConvexClientProvider.tsx (APP LAYER)
+<AuthKitProvider>
+  <ConvexProviderWithAuth client={convex} useAuth={useAuthFromAuthKit}>
+    {children}
+  </ConvexProviderWithAuth>
+</AuthKitProvider>
+```
+
+**Backend Setup:**
+```typescript
+// convex/convex.config.ts (APP LAYER)
+import workOSAuthKit from "@convex-dev/workos-authkit/convex.config";
+const app = defineApp();
+app.use(workOSAuthKit);
+export default app;
+```
+
+**Webhook Routes:**
+```typescript
+// convex/http.ts (APP LAYER)
+import { authKit } from "./authClient";
+const http = httpRouter();
+authKit.registerRoutes(http);
+export default http;
+```
+
+### Tier 2: Custom Function Builders Pattern
+
+**File:** `convex/functions.ts` (APP LAYER)
+
+| Builder | Auth Required | Use Case |
+|---------|--------------|----------|
+| `publicQuery` | No | Anonymous availability browsing |
+| `publicMutation` | YES | Authenticated booking creation |
+| `adminQuery` | YES | Admin dashboard reads |
+| `adminMutation` | YES | Admin CRUD operations |
+
+**Example: publicMutation with user auto-fill**
+```typescript
+export const publicMutation = customMutation(
+  mutation,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);  // Throws if not authenticated
+    return { user };
+  })
+);
+
+// Usage in convex/public.ts
+export const createBooking = publicMutation({
+  handler: async (ctx, args) => {
+    const { user } = ctx;  // Injected by builder
+    const booker = args.booker ?? {
+      name: user.name ?? user.email.split("@")[0],
+      email: user.email,
+    };
+    // Can't forge booker email - comes from WorkOS JWT
+    return await ctx.runMutation(
+      components.booking.public.createBooking,
+      { ...args, booker }
+    );
+  },
+});
+```
+
+### Tier 3: Auth Helpers
+
+**File:** `convex/functions.ts` (APP LAYER)
+
+```typescript
+// Extract identity from WorkOS JWT
+async function getUserIdentity(ctx): Promise<UserIdentity | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return {
+    userId: identity.subject,
+    email: identity.email,
+    name: identity.name,
+    organizationId: identity.org_id,
+  };
+}
+
+// Enforce authentication (throws if missing)
+async function requireAuth(ctx): Promise<UserIdentity> {
+  const user = await getUserIdentity(ctx);
+  if (!user) throw new ConvexError({ code: "UNAUTHENTICATED" });
+  return user;
+}
+
+// Get user role (Phase 1: all auth users are admin)
+async function getUserRole(ctx, userId, orgId): Promise<Role> {
+  // TODO: Phase 2 - Query users table for actual role
+  return "admin";
+}
+```
+
+### Frontend Auth Flow
+
+**File:** `components/ConvexClientProvider.tsx` (APP LAYER)
+
+The `useAuthFromAuthKit` hook provides stable token reference to prevent unnecessary re-renders:
+
+```typescript
+const useAuthFromAuthKit = () => {
+  const { isLoading, user } = useAuth();
+  const tokenRef = useRef<string | null>(null);
+
+  const fetchAccessToken = useCallback(async () => {
+    const { accessToken } = await getAccessToken();
+    tokenRef.current = accessToken;
+    return { token: accessToken };
+  }, []);
+
+  return {
+    isLoading,
+    isAuthenticated: !isLoading && !!user && tokenRef.current !== null,
+    fetchAccessToken,
+  };
+};
+```
+
+**Progressive Auth UX:**
+1. **Browse:** Anonymous users view resources/availability via `public` queries
+2. **Select:** User picks slot → needs to sign in for booking
+3. **Redirect:** `handleAuthRequired` redirects to `/sign-in?returnTo=...` with state encoded
+4. **Sign-In:** WorkOS auth completes, redirects back to return URL
+5. **Resume:** Booking page auto-selects event type, user completes booking
+
+### Auth Architecture Summary
+
+```
+User Request
+  ↓
+Frontend (AuthKitProvider + useAuthFromAuthKit)
+  ↓
+API Wrapper (convex/public.ts or admin.ts)  [APP LAYER]
+  ↓
+Custom Builder (publicMutation, etc) - Enforces auth
+  ↓
+Component Function (trusted zone)  [COMPONENT LAYER]
+  ↓
+Database
+```
+
+**Key Insight:** Auth enforcement happens in the wrapper layer (APP), not in the component. This allows the component to be reusable while the app defines authorization rules.
+
+---
+
+## 🏗️ Pattern 7: API Architecture - Wrapper Pattern
+
+### Three-Layer Architecture
+
+**Layer 1: Component (Trusted Zone)**
+Location: `packages/convex-booking/src/component/` - COMPONENT LAYER
+- Pure business logic (availability, booking creation, resource CRUD)
+- NO auth checks (assumes caller is authorized)
+- Files: `public.ts`, `resources.ts`, `schedules.ts`, `hooks.ts`
+- Example: `createBooking` just validates, creates booking, triggers hooks
+
+**Layer 2: App Wrapper (Auth Enforcement & Filtering)**
+Location: `convex/public.ts` and `convex/admin.ts` - APP LAYER
+- Wraps component functions via `ctx.runQuery/runMutation`
+- Enforces authorization via custom builders
+- Injects environment variables (e.g., `resendOptions`)
+- Applies forced filtering for public API (e.g., `activeOnly: true`)
+
+**Layer 3: Custom Builders (Auth Logic)**
+Location: `convex/functions.ts` - APP LAYER
+- Defines four builders: `publicQuery`, `publicMutation`, `adminQuery`, `adminMutation`
+- Extracts user identity from JWT
+- Checks roles and permissions
+- Injects `ctx.user` into wrapper functions
+
+### Public API vs Admin API
+
+**Public API Pattern** (`convex/public.ts` - APP LAYER)
+
+Anonymous queries - no auth:
+```typescript
+export const listResources = publicQuery({
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.booking.resources.listResources,
+      { ...args, activeOnly: true }  // FORCED - can't override
+    );
+  },
+});
+
+export const getDaySlots = publicQuery({
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.booking.public.getDaySlots,
+      args
+    );
+  },
+});
+```
+
+Authenticated mutation - auto-fills from user:
+```typescript
+export const createBooking = publicMutation({
+  handler: async (ctx, args) => {
+    const { user } = ctx;  // From publicMutation builder
+    const booker = args.booker ?? {
+      name: user.name ?? user.email.split("@")[0],
+      email: user.email,
+      // Add resendOptions if API key configured
+      resendOptions: process.env.RESEND_API_KEY ? {
+        apiKey: process.env.RESEND_API_KEY,
+        fromEmail: process.env.RESEND_FROM_EMAIL,
+      } : undefined,
+    };
+    return await ctx.runMutation(
+      components.booking.public.createBooking,
+      { ...args, booker, resendOptions }
+    );
+  },
+});
+```
+
+**Admin API Pattern** (`convex/admin.ts` - APP LAYER)
+
+All operations require auth + admin role:
+```typescript
+export const listResources = adminQuery({
+  handler: async (ctx, args) => {
+    // adminQuery builder already checked auth + role
+    // No activeOnly filtering - admins see everything
+    return await ctx.runQuery(
+      components.booking.resources.listResources,
+      args
+    );
+  },
+});
+
+// Audit trail: track who made changes
+export const transitionBookingState = adminMutation({
+  handler: async (ctx, args) => {
+    const { user } = ctx;
+    return await ctx.runMutation(
+      components.booking.hooks.transitionBookingState,
+      {
+        ...args,
+        changedBy: user.userId,  // Audit trail
+      }
+    );
+  },
+});
+```
+
+### Defense-in-Depth Strategy
+
+| Layer | Purpose | Example |
+|-------|---------|---------|
+| Frontend | Hide admin UI, show auth gates | Admin sidebar hidden unless authenticated |
+| Wrapper | Enforce auth via builders | `publicMutation` requires `requireAuth` |
+| Component | Trusted business logic | No auth checks (assumes authorized) |
+
+If frontend is compromised, API still requires auth. If API wrapper is bypassed, component is still trusted.
+
+### Environment Variable Injection
+
+**Problem:** Convex components are isolated and can't access `process.env`
+
+**Solution:** Dependency injection via function arguments
+
+```typescript
+// APP LAYER (convex/public.ts) - can access process.env
+resendOptions: process.env.RESEND_API_KEY ? {
+  apiKey: process.env.RESEND_API_KEY,
+  fromEmail: process.env.RESEND_FROM_EMAIL,
+} : undefined
+
+// COMPONENT LAYER (packages/convex-booking/src/component/public.ts) - receives it as arg
+handler: async (ctx, args) => {
+  if (args.resendOptions) {
+    const resend = new Resend(components.resend, {
+      apiKey: args.resendOptions.apiKey,
+    });
+    // Send email...
+  }
+}
+```
+
+### Special Case: Presence System
+
+Presence uses **session IDs**, not authenticated user IDs:
+- Anonymous users can hold slots while browsing (before signing in)
+- Uses temporary 10-second timeout → low security risk
+- Enables flexible booking UX (hold → sign-in → confirm)
+
+```typescript
+export const heartbeat = mutation({  // No auth required!
+  args: {
+    resourceId: string,
+    slots: Array<string>,
+    user: string,  // Client-generated session ID (NOT userId)
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.booking.presence.heartbeat,
+      args
+    );
+  },
+});
+```
+
+---
+
+## 📧 Pattern 8: Email Integration via Resend
+
+### Nested Component Architecture
+
+**File:** `packages/convex-booking/src/component/convex.config.ts` (COMPONENT LAYER)
+
+```typescript
+import { defineComponent } from "convex/server";
+import resend from "@convex-dev/resend/convex.config.js";
+
+const component = defineComponent("booking");
+component.use(resend);  // Resend is nested inside booking!
+export default component;
+```
+
+**Nesting Hierarchy:**
+```
+App Level
+├─ workOSAuthKit (NPM component)
+└─ booking (NPM component)
+   └─ resend (nested inside booking)
+```
+
+This creates "componentception" - a component within a component, each with isolated tables.
+
+### Hooks System: Triggering Emails
+
+**File:** `packages/convex-booking/src/component/hooks.ts` (COMPONENT LAYER)
+
+Available lifecycle events:
+- `booking.created` → Sends confirmation email
+- `booking.cancelled` → Sends cancellation email
+- `booking.confirmed`, `booking.completed` → No emails (yet)
+- `presence.timeout` → No email
+
+**Flow:**
+```
+User creates booking
+  ↓
+createBooking mutation calls triggerHooks with event: "booking.created"
+  ↓
+triggerHooks: BUILT-IN emails sent (if resendOptions provided)
+  ↓
+triggerHooks: CUSTOM hooks executed (user-registered webhooks)
+```
+
+**Built-in email trigger:**
+```typescript
+// In triggerHooks mutation
+if (args.eventType === "booking.created" && payload.bookerEmail) {
+  await ctx.scheduler.runAfter(0, internal.emails.sendBookingConfirmation, {
+    to: payload.bookerEmail,
+    bookerName: payload.bookerName,
+    eventTitle: payload.eventTitle,
+    start: payload.start,
+    end: payload.end,
+    timezone: payload.timezone,
+    resendApiKey: args.resendOptions?.apiKey,
+    resendFromEmail: args.resendOptions?.fromEmail,
+  });
+}
+```
+
+### Email Templates
+
+**File:** `packages/convex-booking/src/component/emails.ts` (COMPONENT LAYER)
+
+| Email Type | Accent | Icon | Content |
+|------------|--------|------|---------|
+| **Confirmation** | Green | ✓ | Booker name, event title, start/end time in timezone, resource location |
+| **Cancellation** | Red | ✗ | Same as above, plus optional cancellation reason |
+
+Features:
+- Responsive dark/light mode HTML
+- Timezone-aware time formatting (e.g., "Monday, November 26, 2025, 2:00 PM PST")
+- Professional card-based layout with gradient accents
+
+### Configuration & Setup
+
+**Environment Variables** (APP LAYER)
+
+Set in Convex Dashboard or local `.env.local`:
+```bash
+RESEND_API_KEY=re_your_api_key_here
+RESEND_FROM_EMAIL=bookings@yourdomain.com
+```
+
+**Passing API key from app to component:**
+
+```typescript
+// convex/public.ts or convex/admin.ts (APP LAYER)
+export const createBooking = publicMutation({
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.booking.public.createBooking,
+      {
+        ...args,
+        resendOptions: process.env.RESEND_API_KEY ? {
+          apiKey: process.env.RESEND_API_KEY,
+          fromEmail: process.env.RESEND_FROM_EMAIL ?? "bookings@example.com",
+        } : undefined,
+      }
+    );
+  },
+});
+```
+
+**Graceful Fallback:**
+
+If `RESEND_API_KEY` is not set:
+- Booking succeeds normally
+- Warning logged: "Resend API key not configured, skipping email"
+- No crashes, no errors to user
+
+### Testing Email Integration
+
+1. **Set API key:** Add `RESEND_API_KEY` to Convex Dashboard environment
+2. **Create booking:** Use dashboard or app to create a test booking
+3. **Check logs:** Convex Dashboard → Functions → View logs for "Email sent"
+4. **Verify receipt:** Check test email inbox for booking confirmation
 
 ---
 
@@ -738,6 +1222,20 @@ npm run dev
 # View Convex dashboard
 https://dashboard.convex.dev
 ```
+
+### Environment Variables
+
+**Required for email notifications** (set in Convex Dashboard):
+```bash
+# Resend Email Service - for booking confirmation/cancellation emails
+RESEND_API_KEY=re_your_api_key_here
+RESEND_FROM_EMAIL=bookings@yourdomain.com
+```
+
+If not configured:
+- Bookings still succeed (graceful degradation)
+- Warning logged: "Resend API key not configured, skipping email"
+- No crashes or errors to users
 
 ### Debugging Tips
 1. **Check presence records:** Convex Dashboard → `presence` table → filter by `resourceId`

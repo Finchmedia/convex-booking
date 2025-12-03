@@ -1,5 +1,6 @@
 <DocPage toc={[
   { title: "Booker", url: "#booker", depth: 2 },
+  { title: "Authentication Behavior", url: "#authentication-behavior", depth: 3 },
   { title: "Booker Props", url: "#booker-props", depth: 3 },
   { title: "Booker Flow", url: "#booker-flow", depth: 3 },
   { title: "Calendar", url: "#calendar", depth: 2 },
@@ -16,7 +17,29 @@ ConvexBooking includes ready-to-use React components for both the public booking
 
 ## Booker
 
+<Callout type="warning">
+  **Authentication Required**: Users must be signed in to complete a booking. The Booker component automatically prompts for sign-in via WorkOS AuthKit when users attempt to confirm their booking.
+</Callout>
+
 The `<Booker />` component is the main booking interface for your users. It handles the full booking flow: calendar display, time slot selection, form submission, and confirmation.
+
+### Authentication Behavior
+
+The Booker follows a **progressive disclosure** pattern that balances user experience with security:
+
+- **Anonymous browsing**: Users can view resources and check availability without signing in
+- **Slot selection**: Selecting a time slot is allowed without authentication
+- **Authentication gate**: When users click "Confirm Booking", the component checks authentication status
+- **Automatic sign-in prompt**: If not authenticated, WorkOS AuthKit modal appears automatically
+- **Auto-fill user data**: After sign-in, name and email from the JWT token auto-populate the form
+
+**Why authentication is required:**
+- Prevents anonymous booking fraud and spam
+- Ensures data integrity (verified email addresses)
+- Enables booking management (users can view/cancel their bookings)
+- Links bookings to user accounts for reporting and analytics
+
+For detailed authentication architecture, see the [Authentication](/docs/authentication) documentation.
 
 ```tsx title="app/book/page.tsx"
 import { Booker } from "@/components/booker/booker";
@@ -29,6 +52,7 @@ export default function BookingPage() {
       title="Book Studio A"
       description="Select a time for your session"
       onBookingComplete={(booking) => {
+        // User must be signed in to reach this callback
         console.log("Booking created:", booking);
       }}
     />
@@ -97,6 +121,10 @@ The calendar includes:
 - **Real-time presence** showing reserved slots
 
 ## Admin UI
+
+<Callout type="warning">
+  **Admin Authentication Required**: All admin functions require authentication plus the `admin` role. See [Authentication](/docs/authentication) for role-based access control configuration.
+</Callout>
 
 The admin dashboard (`/admin`) provides a complete interface for managing your booking system.
 

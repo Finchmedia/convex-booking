@@ -229,6 +229,17 @@ export declare const components: {
       >;
     };
     public: {
+      cancelBookingByToken: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          reason?: string;
+          resendOptions?: { apiKey: string; fromEmail?: string };
+          token: string;
+          uid: string;
+        },
+        any
+      >;
       cancelReservation: FunctionReference<
         "mutation",
         "internal",
@@ -317,6 +328,12 @@ export declare const components: {
         { bookingId: string },
         any
       >;
+      getBookingByToken: FunctionReference<
+        "query",
+        "internal",
+        { token: string; uid: string },
+        any
+      >;
       getBookingByUid: FunctionReference<
         "query",
         "internal",
@@ -379,6 +396,30 @@ export declare const components: {
         "query",
         "internal",
         { activeOnly?: boolean; organizationId?: string },
+        any
+      >;
+      rescheduleBooking: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          bookingId: string;
+          newEnd: number;
+          newStart: number;
+          reason?: string;
+          resendOptions?: { apiKey: string; fromEmail?: string };
+        },
+        any
+      >;
+      rescheduleBookingByToken: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          newEnd: number;
+          newStart: number;
+          resendOptions?: { apiKey: string; fromEmail?: string };
+          token: string;
+          uid: string;
+        },
         any
       >;
       toggleEventTypeActive: FunctionReference<

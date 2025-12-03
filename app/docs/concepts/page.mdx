@@ -9,6 +9,11 @@
   { title: "How Presence Works", url: "#how-presence-works", depth: 3 },
   { title: "Multi-Slot Batching", url: "#multi-slot-batching", depth: 3 },
   { title: "Data Flow", url: "#data-flow", depth: 2 },
+  { title: "Authentication & Authorization", url: "#authentication--authorization", depth: 2 },
+  { title: "Trust Zones Overview", url: "#trust-zones-overview", depth: 3 },
+  { title: "Why Split APIs", url: "#why-split-apis", depth: 3 },
+  { title: "Gateway Pattern", url: "#gateway-pattern", depth: 3 },
+  { title: "Frontend vs Backend Auth", url: "#frontend-vs-backend-auth", depth: 3 },
 ]}>
 
 # Core Concepts
@@ -202,5 +207,168 @@ Here's how data flows through the system:
 ```
 
 **Key insight:** Steps 4 and 5 are separate queries. `getDaySlots` rarely changes (only when bookings are made). `getDatePresence` changes every 5 seconds (heartbeats). Keeping them separate means the heavy slot calculation is cached while presence updates are lightweight.
+
+## Authentication & Authorization
+
+ConvexBooking implements a **three-zone trust model** that separates public operations, authenticated user actions, and administrative functions.
+
+### Trust Zones Overview
+
+The system divides operations into three security zones:
+
+**🟢 Green Zone (Public - No Authentication Required):**
+- Browsing available resources
+- Checking availability (month/day slots)
+- Viewing event types
+- Holding time slots (presence system uses session-based auth)
+
+**🟡 Yellow Zone (Authenticated - Sign-in Required):**
+- Creating bookings
+- Viewing own bookings
+- Cancelling bookings
+- Any operation that involves user identity
+
+**🔴 Red Zone (Admin - Admin Role Required):**
+- Creating/editing resources
+- Managing event types
+- Configuring schedules
+- Viewing all bookings
+- System configuration
+
+### Why Split APIs
+
+A single API endpoint cannot enforce different authentication rules for different operations. By separating functionality into distinct files, we make security boundaries explicit:
+
+```typescript
+// public.ts - Green Zone (no auth)
+export const listResources = publicQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    // No ctx.auth check needed
+    return await ctx.runQuery(internal.resources.listResources, args);
+  }
+});
+
+// admin.ts - Red Zone (admin required)
+export const createResource = adminMutation({
+  args: { /* ... */ },
+  handler: async (ctx, args) => {
+    // Auth already enforced by adminMutation builder
+    // Only admins can reach this code
+    return await ctx.runMutation(internal.resources.createResource, args);
+  }
+});
+```
+
+**Benefits:**
+- Frontend can show/hide UI based on user role (`useAuthFromAuthKit()`)
+- Backend enforces authorization regardless of frontend state
+- Security review is easier (audit `admin.ts` for sensitive operations)
+- API boundaries match product features (public booking vs admin dashboard)
+
+### Gateway Pattern
+
+Authentication is enforced in **wrapper functions**, not inside the component itself:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      App Layer                          │
+│                                                         │
+│  public.ts                      admin.ts                │
+│  ├─ publicQuery                 ├─ adminQuery           │
+│  ├─ publicMutation              ├─ adminMutation        │
+│  │  (no auth check)             │  (requires admin)     │
+│  │         ↓                    │         ↓             │
+│  └─────────┼────────────────────┴─────────┼─────────────┤
+│            │                               │             │
+│            └───────────┬───────────────────┘             │
+│                        ↓                                 │
+│              ┌─────────────────────┐                     │
+│              │  Booking Component  │                     │
+│              │   (Trusted Zone)    │                     │
+│              │                     │                     │
+│              │  Assumes valid      │                     │
+│              │  input from caller  │                     │
+│              └─────────────────────┘                     │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Custom function builders** handle the authentication logic:
+
+```typescript
+// convex/lib/functionBuilders.ts
+export const publicQuery = customQuery(query, {
+  args: {},
+  input: async (ctx, args) => {
+    // No authentication check - anyone can call
+    return { ctx, args };
+  }
+});
+
+export const adminMutation = customMutation(mutation, {
+  args: {},
+  input: async (ctx, args) => {
+    // Extract and verify admin role
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const role = identity.role as string | undefined;
+    if (role !== "admin") {
+      throw new Error("Admin access required");
+    }
+
+    return { ctx: { ...ctx, userId: identity.subject }, args };
+  }
+});
+```
+
+**Special Case - Presence System:**
+
+The presence system uses **session-based authentication** instead of JWT tokens:
+
+- Users get a random `sessionId` on page load (no sign-in required)
+- Heartbeats are tied to the session, not a user account
+- This allows anonymous users to "reserve" slots temporarily
+- Real booking creation still requires full authentication
+
+### Frontend vs Backend Auth
+
+**Frontend Authentication (UX Only):**
+```typescript
+// app/demo/layout.tsx
+const { isLoading, isAuthenticated } = useAuthFromAuthKit();
+
+if (isAuthenticated) {
+  return <AdminDashboard />;  // Show admin UI
+} else {
+  return <SignInPrompt />;    // Redirect to login
+}
+```
+
+**Backend Authentication (Security Enforcement):**
+```typescript
+// convex/admin.ts
+export const createResource = adminMutation({
+  handler: async (ctx, args) => {
+    // ctx.userId is guaranteed to exist here
+    // adminMutation builder already verified admin role
+    // Frontend checks were just for UX
+    return await ctx.runMutation(internal.resources.create, args);
+  }
+});
+```
+
+**Critical Rule:** Never trust frontend authentication for security decisions. Frontend checks improve UX (hide buttons users can't use), but the backend must independently verify every operation.
+
+**Example attack scenario:**
+1. User opens DevTools, finds admin API endpoint
+2. User manually calls `ctx.runMutation(api.admin.deleteResource, { id: "studio-a" })`
+3. Backend checks authentication → No valid admin role → Request rejected
+
+Even if the frontend accidentally showed an admin button, the backend would still block unauthorized access.
+
+For detailed information on implementing authentication, managing user roles, and integrating with WorkOS AuthKit, see [Authentication](/docs/authentication).
 
 </DocPage>

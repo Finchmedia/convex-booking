@@ -316,6 +316,69 @@ export const getBookingByUid = publicQuery({
   },
 });
 
+/**
+ * Get booking by token (for public management)
+ * Requires both UID and management token for access
+ */
+export const getBookingByToken = publicQuery({
+  args: { uid: v.string(), token: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.public.getBookingByToken, args);
+  },
+});
+
+/**
+ * Cancel booking by token (for public management)
+ * Allows booker to cancel their booking via email link
+ */
+export const cancelBookingByToken = publicMutation({
+  args: {
+    uid: v.string(),
+    token: v.string(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(components.booking.public.cancelBookingByToken, {
+      uid: args.uid,
+      token: args.token,
+      reason: args.reason,
+      resendOptions: process.env.RESEND_API_KEY
+        ? {
+            apiKey: process.env.RESEND_API_KEY,
+            fromEmail: process.env.RESEND_FROM_EMAIL,
+          }
+        : undefined,
+    });
+  },
+});
+
+/**
+ * Reschedule booking by token (for public management)
+ * Allows booker to reschedule their booking to a new time
+ */
+export const rescheduleBookingByToken = publicMutation({
+  args: {
+    uid: v.string(),
+    token: v.string(),
+    newStart: v.number(),
+    newEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(components.booking.public.rescheduleBookingByToken, {
+      uid: args.uid,
+      token: args.token,
+      newStart: args.newStart,
+      newEnd: args.newEnd,
+      resendOptions: process.env.RESEND_API_KEY
+        ? {
+            apiKey: process.env.RESEND_API_KEY,
+            fromEmail: process.env.RESEND_FROM_EMAIL,
+          }
+        : undefined,
+    });
+  },
+});
+
 // ============================================
 // SCHEDULES (Public Read - for availability display)
 // ============================================

@@ -559,6 +559,68 @@ export const transitionBookingState = adminMutation({
         toStatus: args.toStatus,
         reason: args.reason,
         changedBy: user.userId, // Track who made the change
+        resendOptions: process.env.RESEND_API_KEY
+          ? {
+              apiKey: process.env.RESEND_API_KEY,
+              fromEmail: process.env.RESEND_FROM_EMAIL,
+            }
+          : undefined,
+      }
+    );
+  },
+});
+
+/**
+ * Confirm a pending booking (admin approves the request)
+ */
+export const confirmBooking = adminMutation({
+  args: {
+    bookingId: v.string(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { user } = ctx;
+    return await ctx.runMutation(
+      components.booking.hooks.transitionBookingState,
+      {
+        bookingId: args.bookingId as any,
+        toStatus: "confirmed",
+        reason: args.reason,
+        changedBy: user.userId,
+        resendOptions: process.env.RESEND_API_KEY
+          ? {
+              apiKey: process.env.RESEND_API_KEY,
+              fromEmail: process.env.RESEND_FROM_EMAIL,
+            }
+          : undefined,
+      }
+    );
+  },
+});
+
+/**
+ * Decline a pending booking (admin rejects the request)
+ */
+export const declineBooking = adminMutation({
+  args: {
+    bookingId: v.string(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { user } = ctx;
+    return await ctx.runMutation(
+      components.booking.hooks.transitionBookingState,
+      {
+        bookingId: args.bookingId as any,
+        toStatus: "declined",
+        reason: args.reason,
+        changedBy: user.userId,
+        resendOptions: process.env.RESEND_API_KEY
+          ? {
+              apiKey: process.env.RESEND_API_KEY,
+              fromEmail: process.env.RESEND_FROM_EMAIL,
+            }
+          : undefined,
       }
     );
   },
@@ -572,7 +634,42 @@ export const cancelReservation = adminMutation({
   handler: async (ctx, args) => {
     return await ctx.runMutation(components.booking.public.cancelReservation, {
       reservationId: args.reservationId as any,
+      resendOptions: process.env.RESEND_API_KEY
+        ? {
+            apiKey: process.env.RESEND_API_KEY,
+            fromEmail: process.env.RESEND_FROM_EMAIL,
+          }
+        : undefined,
     });
+  },
+});
+
+/**
+ * Reschedule a booking to a new time
+ */
+export const rescheduleBooking = adminMutation({
+  args: {
+    bookingId: v.string(),
+    newStart: v.number(),
+    newEnd: v.number(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.booking.public.rescheduleBooking,
+      {
+        bookingId: args.bookingId as any,
+        newStart: args.newStart,
+        newEnd: args.newEnd,
+        reason: args.reason,
+        resendOptions: process.env.RESEND_API_KEY
+          ? {
+              apiKey: process.env.RESEND_API_KEY,
+              fromEmail: process.env.RESEND_FROM_EMAIL,
+            }
+          : undefined,
+      }
+    );
   },
 });
 
@@ -659,6 +756,12 @@ export const cancelMultiResourceBooking = adminMutation({
         bookingId: args.bookingId as any,
         reason: args.reason,
         cancelledBy: user.userId,
+        resendOptions: process.env.RESEND_API_KEY
+          ? {
+              apiKey: process.env.RESEND_API_KEY,
+              fromEmail: process.env.RESEND_FROM_EMAIL,
+            }
+          : undefined,
       }
     );
   },

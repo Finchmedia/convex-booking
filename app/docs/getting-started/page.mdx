@@ -2,9 +2,12 @@
   { title: "Option A: Add to Existing App", url: "#option-a-add-to-existing-app-recommended", depth: 2 },
   { title: "Install the Package", url: "#1-install-the-package", depth: 3 },
   { title: "Configure Convex", url: "#2-configure-convex", depth: 3 },
-  { title: "Export the API", url: "#3-export-the-api", depth: 3 },
-  { title: "Add Query Cache Provider", url: "#4-add-query-cache-provider", depth: 3 },
-  { title: "Use the Components", url: "#5-use-the-components", depth: 3 },
+  { title: "Set Up Authentication", url: "#3-set-up-authentication", depth: 3 },
+  { title: "Create API Gateways", url: "#4-create-api-gateways", depth: 3 },
+  { title: "Configure Environment Variables", url: "#5-configure-environment-variables", depth: 3 },
+  { title: "Set Up WorkOS Dashboard", url: "#6-set-up-workos-dashboard", depth: 3 },
+  { title: "Add Query Cache Provider", url: "#7-add-query-cache-provider", depth: 3 },
+  { title: "Use the Booker Component", url: "#8-use-the-booker-component", depth: 3 },
   { title: "Option B: Fork the Demo", url: "#option-b-fork-the-demo", depth: 2 },
   { title: "Clone the Repository", url: "#1-clone-the-repository", depth: 3 },
   { title: "Install Dependencies", url: "#2-install-dependencies", depth: 3 },
@@ -34,58 +37,329 @@ npm install @mrfinch/booking convex-helpers
 
 ### 2. Configure Convex
 
-Create or update your `convex/convex.config.ts` to use the booking component:
+Create or update your `convex/convex.config.ts` to mount both the WorkOS AuthKit and Booking components:
 
 ```typescript title="convex/convex.config.ts"
 import { defineApp } from "convex/server";
+import workOSAuthKit from "@convex-dev/workos-authkit/convex.config";
 import booking from "@mrfinch/booking/convex.config";
 
 const app = defineApp();
-app.use(booking);
+app.use(workOSAuthKit);  // Authentication component
+app.use(booking);         // Booking component
 
 export default app;
 ```
 
-### 3. Export the API
+### 3. Set Up Authentication
 
-Create a `convex/booking.ts` file to expose the component's functions:
+ConvexBooking requires WorkOS AuthKit for authentication. Install the dependencies:
 
-```typescript title="convex/booking.ts"
-import { components } from "./_generated/api";
-import { makeBookingAPI } from "@mrfinch/booking";
-
-export const {
-  // Queries
-  listResources,
-  getResource,
-  listSchedules,
-  getSchedule,
-  listEventTypes,
-  getEventType,
-  getMonthAvailability,
-  getDaySlots,
-  getDatePresence,
-  listBookings,
-  getBooking,
-  // Mutations
-  createResource,
-  updateResource,
-  deleteResource,
-  createSchedule,
-  updateSchedule,
-  deleteSchedule,
-  createEventType,
-  updateEventType,
-  deleteEventType,
-  createBooking,
-  cancelBooking,
-  // Presence
-  heartbeat,
-  leave,
-} = makeBookingAPI(components.booking);
+```bash
+npm install @convex-dev/workos-authkit convex-helpers
 ```
 
-### 4. Add Query Cache Provider
+#### Create Auth Client
+
+Create `convex/authClient.ts` to wrap the WorkOS component:
+
+```typescript title="convex/authClient.ts"
+import { AuthKit } from "@convex-dev/workos-authkit";
+import { components } from "./_generated/api";
+
+export const authKit = new AuthKit(components.workOSAuthKit);
+```
+
+#### Register Webhook Routes
+
+Create `convex/http.ts` for WorkOS webhook endpoints:
+
+```typescript title="convex/http.ts"
+import { httpRouter } from "convex/server";
+import { authKit } from "./authClient";
+
+const http = httpRouter();
+authKit.registerRoutes(http);  // Registers /workos/webhook
+
+export default http;
+```
+
+#### Create Custom Function Builders
+
+Create `convex/functions.ts` to define trust zones (public, authenticated, admin):
+
+```typescript title="convex/functions.ts"
+import { customQuery, customMutation, customCtx } from "convex-helpers/server/customFunctions";
+import { query, mutation } from "./_generated/server";
+
+// Helper: Get user from JWT
+async function getUserIdentity(ctx: any) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return {
+    userId: identity.subject,
+    email: identity.email,
+    name: identity.name,
+  };
+}
+
+// Helper: Require authentication
+async function requireAuth(ctx: any) {
+  const user = await getUserIdentity(ctx);
+  if (!user) throw new Error("Authentication required");
+  return user;
+}
+
+// Public query - no auth required (anonymous browsing)
+export const publicQuery = customQuery(
+  query,
+  customCtx(async (ctx) => {
+    const user = await getUserIdentity(ctx);
+    return { user };
+  })
+);
+
+// Public mutation - auth required (booking creation)
+export const publicMutation = customMutation(
+  mutation,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    return { user };
+  })
+);
+
+// Admin query - auth + admin role required
+export const adminQuery = customQuery(
+  query,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    return { user, role: "admin" };
+  })
+);
+
+// Admin mutation - auth + admin role required
+export const adminMutation = customMutation(
+  mutation,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    return { user, role: "admin" };
+  })
+);
+```
+
+### 4. Create API Gateways
+
+ConvexBooking uses a **gateway pattern** to separate public (anonymous + authenticated) from admin operations.
+
+#### Public API Gateway
+
+Create `convex/public.ts` for public-facing booking operations:
+
+```typescript title="convex/public.ts"
+import { v } from "convex/values";
+import { components } from "./_generated/api";
+import { publicQuery, publicMutation } from "./functions";
+
+// Anonymous browsing - no auth required
+export const listResources = publicQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.resources.listResources, {
+      organizationId: args.organizationId,
+      activeOnly: true,  // Public users only see active resources
+    });
+  },
+});
+
+export const getDaySlots = publicQuery({
+  args: {
+    resourceId: v.string(),
+    date: v.string(),
+    duration: v.number(),
+    slotInterval: v.optional(v.number()),
+    timezone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.public.getDaySlots, args);
+  },
+});
+
+export const getMonthAvailability = publicQuery({
+  args: {
+    resourceId: v.string(),
+    dateFrom: v.string(),
+    dateTo: v.string(),
+    duration: v.number(),
+    timezone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.public.getMonthAvailability, args);
+  },
+});
+
+export const getDatePresence = publicQuery({
+  args: {
+    resourceId: v.string(),
+    date: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.presence.getDatePresence, args);
+  },
+});
+
+// Authenticated booking - auth required, user auto-filled
+export const createBooking = publicMutation({
+  args: {
+    resourceId: v.string(),
+    start: v.string(),
+    end: v.string(),
+    booker: v.optional(
+      v.object({
+        name: v.string(),
+        email: v.string(),
+        phone: v.optional(v.string()),
+      })
+    ),
+    organizationId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { user } = ctx;  // Auto-populated from JWT by publicMutation
+
+    // Auto-fill booker from authenticated user
+    const booker = args.booker ?? {
+      name: user.name ?? user.email.split("@")[0],
+      email: user.email,
+    };
+
+    return await ctx.runMutation(components.booking.public.createBooking, {
+      ...args,
+      booker,
+      resendOptions: process.env.RESEND_API_KEY
+        ? {
+            apiKey: process.env.RESEND_API_KEY,
+            fromEmail: process.env.RESEND_FROM_EMAIL ?? "bookings@yourdomain.com",
+          }
+        : undefined,
+    });
+  },
+});
+
+// Presence system - no auth required (anonymous slot holds)
+export const heartbeat = publicQuery({
+  args: {
+    resourceId: v.string(),
+    slot: v.string(),
+    user: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(components.booking.presence.heartbeat, args);
+  },
+});
+
+export const leave = publicQuery({
+  args: {
+    resourceId: v.string(),
+    slot: v.string(),
+    user: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(components.booking.presence.leave, args);
+  },
+});
+```
+
+<Callout type="warning">
+  **Authentication Required**: `createBooking` requires users to be signed in. The mutation automatically fills user information from the JWT token.
+</Callout>
+
+#### Admin API Gateway
+
+Create `convex/admin.ts` for admin-only management operations:
+
+```typescript title="convex/admin.ts"
+import { v } from "convex/values";
+import { components } from "./_generated/api";
+import { adminQuery, adminMutation } from "./functions";
+
+// All operations require authentication + admin role
+
+export const listResources = adminQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.resources.listResources, args);
+  },
+});
+
+export const createResource = adminMutation({
+  args: {
+    name: v.string(),
+    organizationId: v.string(),
+    location: v.optional(v.string()),
+    capacity: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(components.booking.resources.createResource, args);
+  },
+});
+
+export const updateResource = adminMutation({
+  args: {
+    resourceId: v.id("resources"),
+    name: v.optional(v.string()),
+    location: v.optional(v.string()),
+    capacity: v.optional(v.number()),
+    active: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(components.booking.resources.updateResource, args);
+  },
+});
+
+export const deleteResource = adminMutation({
+  args: { resourceId: v.id("resources") },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(components.booking.resources.deleteResource, args);
+  },
+});
+
+// Add similar wrappers for schedules, event types, bookings...
+```
+
+<Callout type="info">
+  The full admin API includes wrappers for schedules, event types, and bookings. See the [demo repository](https://github.com/Finchmedia/convex-booking) for complete examples.
+</Callout>
+
+### 5. Configure Environment Variables
+
+Create or update `.env.local` with your credentials:
+
+```bash title=".env.local"
+# Convex (generated by npx convex dev)
+CONVEX_DEPLOYMENT=your-deployment
+NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
+
+# WorkOS AuthKit (get from dashboard.workos.com)
+WORKOS_API_KEY=sk_live_...
+WORKOS_CLIENT_ID=client_...
+WORKOS_WEBHOOK_SECRET=whsec_...
+NEXT_PUBLIC_WORKOS_REDIRECT_URI=http://localhost:3000/callback
+
+# Resend (Optional - for email notifications)
+RESEND_API_KEY=re_...
+RESEND_FROM_EMAIL=bookings@yourdomain.com
+```
+
+### 6. Set Up WorkOS Dashboard
+
+1. Go to [WorkOS Dashboard](https://dashboard.workos.com)
+2. Create a new application
+3. Configure the webhook endpoint:
+   - **URL**: `https://your-deployment.convex.site/workos/webhook`
+   - **Events**: Select `user.created`, `user.updated`, `user.deleted`
+4. Copy the webhook secret to your `WORKOS_WEBHOOK_SECRET` environment variable
+5. Test the sign-in flow
+
+### 7. Add Query Cache Provider
 
 Wrap your Convex provider with `ConvexQueryCacheProvider` for optimal caching:
 
@@ -106,27 +380,31 @@ export default function ConvexClientProvider({ children }: { children: React.Rea
 }
 ```
 
-### 5. Use the Components
+### 8. Use the Booker Component
 
-Import and use the Booker component in your app:
+Now you can use the Booker in your app:
 
 ```tsx title="app/book/page.tsx"
-import { Booker } from "@mrfinch/booking/react";
+import { Booker } from "@/components/booker/booker";
 
 export default function BookingPage() {
   return (
     <Booker
-      eventTypeId="your-event-type-id"
-      resourceId="your-resource-id"
-      title="Book a Session"
+      eventTypeId="studio-session"
+      resourceId="studio-a"
+      title="Book a Recording Session"
       description="Select a time that works for you"
     />
   );
 }
 ```
 
+<Callout type="warning">
+  **Authentication Required**: Users must be signed in to complete a booking. The Booker component automatically prompts for sign-in when the user tries to confirm their booking.
+</Callout>
+
 <Callout type="info">
-  You'll need to create resources, schedules, and event types first. See the [API Reference](/docs/api) for how to create these, or fork the demo for a ready-made Admin UI.
+  You'll need to create resources, schedules, and event types first using the admin API. See the [API Reference](/docs/api) or fork the [demo repository](https://github.com/Finchmedia/convex-booking) for a ready-made Admin UI.
 </Callout>
 
 ---

@@ -37,12 +37,31 @@ const navigation: NavItem[] = [
     ],
   },
   {
+    title: "Core Concepts",
+    items: [
+      { title: "Overview", href: "/docs/concepts" },
+      { title: "Authentication & Authorization", href: "/docs/authentication" },
+    ],
+  },
+  {
+    title: "Integrations",
+    items: [
+      { title: "WorkOS AuthKit", href: "/docs/integrations/workos" },
+      { title: "Email (Resend)", href: "/docs/integrations/email" },
+    ],
+  },
+  {
     title: "Reference",
     items: [
-      { title: "Core Concepts", href: "/docs/concepts" },
-      { title: "Guides", href: "/docs/guides" },
       { title: "API Reference", href: "/docs/api" },
       { title: "Components", href: "/docs/components" },
+      { title: "Guides", href: "/docs/guides" },
+    ],
+  },
+  {
+    title: "About",
+    items: [
+      { title: "Project Writeup", href: "/docs/writeup" },
     ],
   },
 ];

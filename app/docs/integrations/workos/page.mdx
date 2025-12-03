@@ -1,0 +1,648 @@
+<DocPage toc={[
+  { title: "Overview", url: "#overview", depth: 2 },
+  { title: "Why WorkOS AuthKit?", url: "#why-workos-authkit", depth: 3 },
+  { title: "Installation", url: "#installation", depth: 2 },
+  { title: "Component Architecture", url: "#component-architecture", depth: 2 },
+  { title: "Backend Setup", url: "#backend-setup", depth: 2 },
+  { title: "Mount the Component", url: "#mount-the-component", depth: 3 },
+  { title: "Create Auth Client", url: "#create-auth-client", depth: 3 },
+  { title: "Register Webhook Routes", url: "#register-webhook-routes", depth: 3 },
+  { title: "WorkOS Dashboard Configuration", url: "#workos-dashboard-configuration", depth: 2 },
+  { title: "Create Application", url: "#create-application", depth: 3 },
+  { title: "Configure Authentication", url: "#configure-authentication", depth: 3 },
+  { title: "Set Up Webhook", url: "#set-up-webhook", depth: 3 },
+  { title: "Environment Variables", url: "#environment-variables", depth: 2 },
+  { title: "Frontend Integration", url: "#frontend-integration", depth: 2 },
+  { title: "Setup ConvexClientProvider", url: "#setup-convexclientprovider", depth: 3 },
+  { title: "Add Sign-In Page", url: "#add-sign-in-page", depth: 3 },
+  { title: "User Sync Mechanism", url: "#user-sync-mechanism", depth: 2 },
+  { title: "How It Works", url: "#how-it-works", depth: 3 },
+  { title: "JWT Structure", url: "#jwt-structure", depth: 3 },
+  { title: "Testing the Integration", url: "#testing-the-integration", depth: 2 },
+  { title: "Troubleshooting", url: "#troubleshooting", depth: 2 },
+]}>
+
+# WorkOS AuthKit Integration
+
+This guide walks you through setting up WorkOS AuthKit for authentication in your ConvexBooking application.
+
+## Overview
+
+ConvexBooking uses [WorkOS AuthKit](https://workos.com/authkit) for authentication. This integration provides a complete authentication system with minimal setup.
+
+### Why WorkOS AuthKit?
+
+- **Built-in Convex Component** - First-class integration via `@convex-dev/workos-authkit`
+- **Automatic User Sync** - Users are synchronized to your Convex backend via webhooks
+- **Pre-built UI Components** - Sign-in/sign-up screens provided by WorkOS
+- **JWT Authentication** - Issues JWTs automatically that Convex validates
+- **Organization Support** - Multi-tenant capabilities built-in
+- **Enterprise Features** - SSO, SAML, directory sync available in paid tiers
+
+<Callout type="info">
+  **No Custom Auth Code Required**: Unlike building auth from scratch, WorkOS handles password hashing, session management, token refresh, and security best practices.
+</Callout>
+
+## Installation
+
+Install the required packages:
+
+```bash
+npm install @convex-dev/workos-authkit convex-helpers
+```
+
+**What you're installing:**
+- `@convex-dev/workos-authkit` - Convex component that syncs WorkOS users to your backend
+- `convex-helpers` - Utilities for building custom auth functions (optional but recommended)
+
+## Component Architecture
+
+WorkOS AuthKit is mounted as a **sibling component** to ConvexBooking at the app level:
+
+```
+Your App (defineApp)
+├── WorkOS AuthKit Component (@convex-dev/workos-authkit)
+│   ├── Users table (synced from WorkOS)
+│   ├── Webhook handler (/workos/webhook)
+│   └── JWT validation
+│
+└── Booking Component (@mrfinch/booking)
+    ├── Resources, Schedules, Event Types
+    ├── Bookings, Presence
+    └── Resend Component (nested)
+```
+
+**Key Point**: Both components are mounted using `app.use()` in your `convex.config.ts`. They operate independently but your app code bridges them together.
+
+## Backend Setup
+
+### Mount the Component
+
+Update your `convex/convex.config.ts` to mount both WorkOS AuthKit and ConvexBooking:
+
+```typescript title="convex/convex.config.ts"
+import { defineApp } from "convex/server";
+import workOSAuthKit from "@convex-dev/workos-authkit/convex.config";
+import booking from "@mrfinch/booking/convex.config";
+
+const app = defineApp();
+
+// Mount WorkOS AuthKit component
+app.use(workOSAuthKit);
+
+// Mount Booking component
+app.use(booking);
+
+export default app;
+```
+
+After saving, Convex will automatically generate types for both components in `./_generated/api.ts`.
+
+### Create Auth Client
+
+Create `convex/authClient.ts` to wrap the WorkOS AuthKit component:
+
+```typescript title="convex/authClient.ts"
+/**
+ * WorkOS AuthKit Client
+ *
+ * This is the integration with @convex-dev/workos-authkit component.
+ * It provides user syncing via webhooks and typed access to user data.
+ */
+import { AuthKit } from "@convex-dev/workos-authkit";
+import { components } from "./_generated/api";
+import type { DataModel } from "./_generated/dataModel";
+
+export const authKit = new AuthKit<DataModel>(components.workOSAuthKit);
+```
+
+**What this does:**
+- Instantiates the `AuthKit` class from the WorkOS package
+- Points it to your mounted `workOSAuthKit` component
+- Provides typed access to user data throughout your Convex functions
+
+### Register Webhook Routes
+
+Create `convex/http.ts` to register the WorkOS webhook endpoint:
+
+```typescript title="convex/http.ts"
+/**
+ * HTTP Router
+ *
+ * Registers HTTP routes for external services.
+ * Currently handles WorkOS AuthKit webhooks for user syncing.
+ */
+import { httpRouter } from "convex/server";
+import { authKit } from "./authClient";
+
+const http = httpRouter();
+
+// Register WorkOS AuthKit webhook routes
+// Webhook URL: https://<your-deployment>.convex.site/workos/webhook
+authKit.registerRoutes(http);
+
+export default http;
+```
+
+**What this does:**
+- Creates an HTTP router for your Convex backend
+- Registers the `/workos/webhook` endpoint
+- WorkOS will send user events (created, updated, deleted) to this endpoint
+- The AuthKit component handles parsing and storing user data
+
+<Callout type="warning">
+  **Important**: The webhook endpoint will be `https://<your-deployment>.convex.site/workos/webhook`. You'll need this URL in the next step.
+</Callout>
+
+## WorkOS Dashboard Configuration
+
+### Create Application
+
+1. Go to [WorkOS Dashboard](https://dashboard.workos.com)
+2. Sign up for a free account (no credit card required for development)
+3. Click **"Create Application"**
+4. Give it a name (e.g., "ConvexBooking App")
+5. Set the redirect URI:
+   - **Development**: `http://localhost:3000/callback`
+   - **Production**: `https://yourdomain.com/callback`
+
+<Callout type="info">
+  You can add multiple redirect URIs for different environments. Make sure to include both localhost (for development) and your production domain.
+</Callout>
+
+### Configure Authentication
+
+1. In your WorkOS application, go to **"Authentication"** tab
+2. Enable **Email + Password** authentication (easiest for getting started)
+3. Optional: Enable social providers (Google, GitHub, etc.)
+4. Configure session settings:
+   - Session duration: 7 days (recommended)
+   - Refresh token rotation: Enabled
+
+### Set Up Webhook
+
+This is the **critical step** that syncs WorkOS users to your Convex backend.
+
+1. In WorkOS Dashboard, go to **"Webhooks"**
+2. Click **"Create Webhook"**
+3. Configure webhook:
+   - **Endpoint URL**: `https://<your-deployment>.convex.site/workos/webhook`
+     - Get your deployment URL from running `npx convex dev` - look for "Deployment URL"
+     - Example: `https://happy-animal-123.convex.cloud/workos/webhook`
+   - **Events to send**:
+     - ✅ `user.created`
+     - ✅ `user.updated`
+     - ✅ `user.deleted`
+   - **Status**: Enabled
+4. Click **"Create Webhook"**
+5. **IMPORTANT**: Copy the **Webhook Secret** - you'll need this for environment variables
+
+<Callout type="warning">
+  **Webhook Secret is Critical**: Without the correct `WORKOS_WEBHOOK_SECRET`, Convex will reject webhook events and users won't sync. Keep this secret secure!
+</Callout>
+
+### Test Webhook Delivery
+
+After creating the webhook:
+
+1. Click **"Test"** in the WorkOS webhook settings
+2. Send a test `user.created` event
+3. Check the delivery status - it should show `200 OK`
+4. If you see errors:
+   - Verify the endpoint URL is correct
+   - Check that `npx convex dev` is running
+   - Check Convex logs for errors
+
+## Environment Variables
+
+Add these to your `.env.local` (for Next.js) or Convex Dashboard (for production):
+
+```bash title=".env.local"
+# Convex (automatically set by `npx convex dev`)
+CONVEX_DEPLOYMENT=dev:happy-animal-123
+NEXT_PUBLIC_CONVEX_URL=https://happy-animal-123.convex.cloud
+
+# WorkOS AuthKit
+WORKOS_API_KEY=sk_test_...                    # From WorkOS Dashboard > API Keys
+WORKOS_CLIENT_ID=client_...                   # From WorkOS Dashboard > Your Application
+WORKOS_WEBHOOK_SECRET=wh_secret_...           # From WorkOS Dashboard > Webhooks
+NEXT_PUBLIC_WORKOS_REDIRECT_URI=http://localhost:3000/callback
+
+# Resend (Optional - for email notifications)
+RESEND_API_KEY=re_...
+RESEND_FROM_EMAIL=bookings@yourdomain.com
+```
+
+**Where to find each value:**
+
+| Variable | Location in WorkOS Dashboard |
+|----------|------------------------------|
+| `WORKOS_API_KEY` | API Keys > Create API Key |
+| `WORKOS_CLIENT_ID` | Your Application > Configuration |
+| `WORKOS_WEBHOOK_SECRET` | Webhooks > Your Webhook > Signing Secret |
+
+**For production**, set these in the Convex Dashboard:
+
+1. Go to [Convex Dashboard](https://dashboard.convex.dev)
+2. Select your project
+3. Go to **Settings** > **Environment Variables**
+4. Add each variable
+
+<Callout type="info">
+  **Environment Variable Scoping**: Convex backend variables (without `NEXT_PUBLIC_`) are only accessible in Convex functions, not the frontend. Frontend variables must start with `NEXT_PUBLIC_`.
+</Callout>
+
+## Frontend Integration
+
+### Setup ConvexClientProvider
+
+Update your `components/ConvexClientProvider.tsx` to integrate WorkOS AuthKit:
+
+```tsx title="components/ConvexClientProvider.tsx"
+'use client';
+
+import { ReactNode, useCallback, useRef, useState } from 'react';
+import { ConvexReactClient } from 'convex/react';
+import { ConvexProviderWithAuth } from 'convex/react';
+import { AuthKitProvider, useAuth, useAccessToken } from '@workos-inc/authkit-nextjs/components';
+
+export default function ConvexClientProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [convex] = useState(() => {
+    return new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+  });
+
+  return (
+    <AuthKitProvider>
+      <ConvexProviderWithAuth client={convex} useAuth={useAuthFromAuthKit}>
+        {children}
+      </ConvexProviderWithAuth>
+    </AuthKitProvider>
+  );
+}
+
+/**
+ * Custom hook to bridge WorkOS AuthKit with Convex
+ *
+ * Convex needs: isLoading, isAuthenticated, fetchAccessToken
+ * WorkOS provides: user, accessToken, loading states
+ */
+function useAuthFromAuthKit() {
+  const { user, loading: isLoading } = useAuth();
+  const { accessToken, loading: tokenLoading, error: tokenError } = useAccessToken();
+
+  // Combine loading states from both user and token
+  const loading = (isLoading ?? false) || (tokenLoading ?? false);
+
+  // Only authenticated when we have BOTH user AND token AND not loading
+  const authenticated = !!user && !!accessToken && !loading;
+
+  // Use ref for stable token reference to avoid unnecessary re-renders
+  const stableAccessToken = useRef<string | null>(null);
+  if (accessToken && !tokenError) {
+    stableAccessToken.current = accessToken;
+  }
+
+  const fetchAccessToken = useCallback(async () => {
+    if (stableAccessToken.current && !tokenError) {
+      return stableAccessToken.current;
+    }
+    return null;
+  }, [tokenError]);
+
+  return {
+    isLoading: loading,
+    isAuthenticated: authenticated,
+    fetchAccessToken,
+  };
+}
+```
+
+**Key Points:**
+- `AuthKitProvider` wraps your app and provides WorkOS auth state
+- `ConvexProviderWithAuth` connects Convex to the authentication system
+- `useAuthFromAuthKit` bridges WorkOS hooks to Convex's expected interface
+
+Then wrap your app with this provider:
+
+```tsx title="app/layout.tsx"
+import ConvexClientProvider from "@/components/ConvexClientProvider";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <ConvexClientProvider>
+          {children}
+        </ConvexClientProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+### Add Sign-In Page
+
+Create a sign-in page at `app/auth/signin/page.tsx`:
+
+```tsx title="app/auth/signin/page.tsx"
+'use client';
+
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
+import { useAuth } from '@workos-inc/authkit-nextjs/components';
+
+export default function SignInPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading } = useAuth();
+  const redirectTo = searchParams.get('redirect') || '/';
+
+  useEffect(() => {
+    if (!loading && user) {
+      // User is already signed in, redirect them
+      router.push(redirectTo);
+    } else if (!loading && !user) {
+      // Redirect to WorkOS sign-in
+      window.location.href = `/api/auth/signin?returnTo=${encodeURIComponent(redirectTo)}`;
+    }
+  }, [user, loading, router, redirectTo]);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold mb-4">Signing you in...</h1>
+        <p className="text-muted-foreground">Redirecting to authentication...</p>
+      </div>
+    </div>
+  );
+}
+```
+
+Now your Booker component can redirect to `/auth/signin?redirect=/book/studio-a` when authentication is required.
+
+## User Sync Mechanism
+
+Understanding how users flow from WorkOS to Convex is crucial for debugging.
+
+### How It Works
+
+```
+┌─────────────┐
+│  User Signs │
+│  In/Out in  │
+│   WorkOS    │
+└──────┬──────┘
+       │
+       │ 1. User event (created/updated/deleted)
+       ▼
+┌─────────────┐
+│   WorkOS    │
+│  sends HTTP │
+│   webhook   │
+└──────┬──────┘
+       │
+       │ 2. POST /workos/webhook
+       ▼
+┌─────────────────────────┐
+│  Convex HTTP Endpoint   │
+│  (registered by AuthKit)│
+└──────┬──────────────────┘
+       │
+       │ 3. AuthKit component processes event
+       ▼
+┌─────────────────────────┐
+│  AuthKit Component      │
+│  - Validates signature  │
+│  - Parses user data     │
+│  - Writes to users table│
+└──────┬──────────────────┘
+       │
+       │ 4. User record created/updated
+       ▼
+┌─────────────────────────┐
+│  workOSAuthKit.users    │
+│  table in Convex        │
+└─────────────────────────┘
+       │
+       │ 5. JWT issued with user claims
+       ▼
+┌─────────────────────────┐
+│  Frontend receives JWT  │
+│  - ctx.auth populated   │
+│  - User can book        │
+└─────────────────────────┘
+```
+
+### JWT Structure
+
+When a user signs in, WorkOS issues a JWT that includes:
+
+```json
+{
+  "sub": "user_01HQXYZ123...",        // User ID (subject)
+  "email": "user@example.com",         // Email address
+  "name": "John Doe",                  // Display name (optional)
+  "org_id": "org_01HQXYZ...",         // Organization ID (optional)
+  "iat": 1704067200,                   // Issued at (timestamp)
+  "exp": 1704672000                    // Expires at (timestamp)
+}
+```
+
+In your Convex functions, you can access this via:
+
+```typescript
+const identity = await ctx.auth.getUserIdentity();
+// identity.subject → user ID
+// identity.email → email address
+// identity.name → display name
+```
+
+## Testing the Integration
+
+Follow these steps to verify everything is working:
+
+### 1. Start Development Servers
+
+```bash
+# Terminal 1: Start Convex dev server
+npx convex dev
+
+# Terminal 2: Start Next.js dev server
+npm run dev
+```
+
+### 2. Verify Webhook Endpoint
+
+Check the Convex terminal output for:
+
+```
+Deployment URL: https://happy-animal-123.convex.cloud
+```
+
+The webhook endpoint is: `https://happy-animal-123.convex.cloud/workos/webhook`
+
+### 3. Sign Up a Test User
+
+1. Navigate to `http://localhost:3000/auth/signin`
+2. You'll be redirected to WorkOS sign-in page
+3. Click **"Sign Up"** and create a test account
+4. Complete sign-up flow
+
+### 4. Verify User Synced to Convex
+
+1. Go to [Convex Dashboard](https://dashboard.convex.dev)
+2. Select your project
+3. Click **"Data"** tab
+4. Find the `workOSAuthKit/users` table
+5. You should see your test user record
+
+Example user record:
+```json
+{
+  "_id": "jx74...",
+  "_creationTime": 1704067200000,
+  "workosUserId": "user_01HQXYZ123...",
+  "email": "user@example.com",
+  "name": "John Doe",
+  "organizationId": null
+}
+```
+
+### 5. Test JWT in Convex Logs
+
+1. With Convex dev server running, watch the logs
+2. In your app, trigger a booking creation
+3. Check logs for JWT validation:
+
+```
+[LOG] User authenticated: { userId: 'user_01HQXYZ123...', email: 'user@example.com' }
+```
+
+### 6. Verify User Prefilling
+
+When creating a booking:
+1. Select a time slot
+2. Fill out booking form
+3. The "Name" and "Email" fields should be pre-filled from your authenticated user
+4. Complete the booking
+
+## Troubleshooting
+
+### Webhook Not Receiving Events
+
+**Symptoms:**
+- User signs up in WorkOS but doesn't appear in Convex
+- Webhook shows "Failed" status in WorkOS Dashboard
+
+**Solutions:**
+1. **Check webhook URL format**: Must be `https://<deployment>.convex.site/workos/webhook` (not `.convex.cloud`)
+2. **Verify Convex dev server is running**: Webhooks need the server to be active
+3. **Check firewall/network**: Make sure your network allows incoming webhooks
+4. **Verify webhook secret**: Must match `WORKOS_WEBHOOK_SECRET` in Convex env vars
+5. **Check Convex logs** for webhook errors:
+   ```bash
+   # In Convex dev terminal, look for:
+   [ERROR] Webhook signature validation failed
+   ```
+
+### JWT Not Populating `ctx.auth`
+
+**Symptoms:**
+- User is signed in on frontend but `ctx.auth.getUserIdentity()` returns `null`
+- Booking creation fails with "Authentication required"
+
+**Solutions:**
+1. **Verify component mounting**: Check `convex.config.ts` has `app.use(workOSAuthKit)`
+2. **Check environment variables**:
+   - `WORKOS_API_KEY` must be set in Convex Dashboard
+   - `WORKOS_CLIENT_ID` must be set
+3. **Verify JWT is being sent**: Check browser DevTools > Network > Request Headers for `Authorization: Bearer ...`
+4. **Check token expiration**: JWTs expire after 7 days (default) - try signing in again
+5. **Verify `useAuthFromAuthKit` hook**: Make sure it's returning `isAuthenticated: true`
+
+### CORS Issues in Development
+
+**Symptoms:**
+- Browser console shows CORS errors
+- "Access-Control-Allow-Origin" errors
+
+**Solutions:**
+1. **Verify redirect URI**: Must match `NEXT_PUBLIC_WORKOS_REDIRECT_URI`
+   - Development: `http://localhost:3000/callback`
+   - NOT `http://127.0.0.1:3000/callback` (use localhost, not IP)
+2. **Check WorkOS application settings**: Redirect URI must be added to allowed list
+3. **Restart dev servers**: Changes to `.env.local` require restart
+
+### User Not Syncing to Convex
+
+**Symptoms:**
+- User signs in successfully but `workOSAuthKit/users` table is empty
+- Webhook shows `200 OK` but no user record
+
+**Solutions:**
+1. **Verify webhook secret matches**: Check `WORKOS_WEBHOOK_SECRET` in Convex Dashboard
+2. **Check user.created event is enabled**: WorkOS Dashboard > Webhooks > Events
+3. **Test webhook manually**: In WorkOS Dashboard, click "Test" and send a test event
+4. **Check Convex function logs**: Look for errors in webhook processing:
+   ```bash
+   # Look for these in Convex dev terminal:
+   [LOG] Webhook received: user.created
+   [ERROR] Failed to process webhook: ...
+   ```
+5. **Verify HTTP routes registered**: Make sure `convex/http.ts` exports `authKit.registerRoutes(http)`
+
+### User Data Not Updating
+
+**Symptoms:**
+- User changes email/name in WorkOS but Convex shows old data
+
+**Solutions:**
+1. **Check user.updated event**: Must be enabled in WorkOS webhook configuration
+2. **Verify webhook is receiving updates**: Check WorkOS Dashboard > Webhooks > Deliveries
+3. **Manually trigger sync**: In WorkOS Dashboard, resend the `user.updated` event
+
+### Development vs Production Differences
+
+**Common gotchas when deploying to production:**
+
+1. **Webhook URL changes**:
+   - Development: `https://dev-happy-animal-123.convex.site/workos/webhook`
+   - Production: `https://happy-animal-123.convex.site/workos/webhook`
+   - Update webhook in WorkOS Dashboard for production!
+
+2. **Redirect URI changes**:
+   - Development: `http://localhost:3000/callback`
+   - Production: `https://yourdomain.com/callback`
+   - Add both to WorkOS allowed redirect URIs
+
+3. **Environment variables**:
+   - Development: `.env.local` file
+   - Production: Convex Dashboard > Settings > Environment Variables
+   - Make sure ALL variables are set in production!
+
+4. **Deployment URL**:
+   - Run `npx convex deploy` to get production deployment URL
+   - Use this for production webhook endpoint
+
+<Callout type="tip">
+  **Tip**: Set up separate WorkOS applications for development and production. This prevents webhook conflicts and makes testing safer.
+</Callout>
+
+## Next Steps
+
+Now that WorkOS AuthKit is configured:
+
+- [Set up custom function builders](/docs/authentication) for public/admin authorization
+- [Configure email notifications](/docs/integrations/email) with Resend
+- [Build your booking flow](/docs/components) with the Booker component
+- [Create an admin dashboard](/docs/guides) for managing resources
+
+</DocPage>

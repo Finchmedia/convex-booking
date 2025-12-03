@@ -176,7 +176,7 @@ export default function Home() {
                   <Image src="/nextjs-icon-dark-background.svg" alt="Next.js" width={24} height={24} className="hidden dark:block" />
                 </>
               }
-              label="Next.js 15"
+              label="Next.js 16"
             />
             <TechBadge
               icon={<Image src="/react.png" alt="React" width={26} height={24} />}
@@ -193,6 +193,24 @@ export default function Home() {
             <TechBadge
               icon={<Image src="/tailwind.svg" alt="Tailwind CSS" width={28} height={18} />}
               label="Tailwind CSS"
+            />
+            <TechBadge
+              icon={
+                <>
+                  <Image src="/WorkOS_light.svg" alt="WorkOS" width={24} height={24} className="dark:hidden" />
+                  <Image src="/WorkOS_dark.svg" alt="WorkOS" width={24} height={24} className="hidden dark:block" />
+                </>
+              }
+              label="WorkOS AuthKit"
+            />
+            <TechBadge
+              icon={
+                <>
+                  <Image src="/Resend_light.svg" alt="Resend" width={24} height={24} className="dark:hidden" />
+                  <Image src="/Resend_dark.svg" alt="Resend" width={24} height={24} className="hidden dark:block" />
+                </>
+              }
+              label="Resend"
             />
           </div>
         </section>

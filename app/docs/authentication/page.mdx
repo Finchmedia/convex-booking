@@ -1,0 +1,802 @@
+<DocPage toc={[
+  { title: "Overview", url: "#overview", depth: 2 },
+  { title: "Trust Zones", url: "#trust-zones", depth: 2 },
+  { title: "Public Zone (Green)", url: "#public-zone-green", depth: 3 },
+  { title: "Authenticated Zone (Yellow)", url: "#authenticated-zone-yellow", depth: 3 },
+  { title: "Admin Zone (Red)", url: "#admin-zone-red", depth: 3 },
+  { title: "Gateway Pattern", url: "#gateway-pattern", depth: 2 },
+  { title: "Why Gateway Files?", url: "#why-gateway-files", depth: 3 },
+  { title: "Public Gateway Example", url: "#public-gateway-example", depth: 3 },
+  { title: "Admin Gateway Example", url: "#admin-gateway-example", depth: 3 },
+  { title: "Custom Function Builders", url: "#custom-function-builders", depth: 2 },
+  { title: "Builder Reference Table", url: "#builder-reference-table", depth: 3 },
+  { title: "Implementation", url: "#implementation", depth: 3 },
+  { title: "Frontend Authentication", url: "#frontend-authentication", depth: 2 },
+  { title: "Progressive Auth UX", url: "#progressive-auth-ux", depth: 3 },
+  { title: "AuthKitProvider Setup", url: "#authkitprovider-setup", depth: 3 },
+  { title: "User Prefilling", url: "#user-prefilling", depth: 3 },
+  { title: "JWT Structure", url: "#jwt-structure", depth: 2 },
+  { title: "Testing Authentication", url: "#testing-authentication", depth: 2 },
+  { title: "Common Issues", url: "#common-issues", depth: 2 },
+]}>
+
+# Authentication & Authorization
+
+ConvexBooking uses a **trust zones** pattern to secure the booking system. The API is split into public and admin boundaries with different authentication requirements, providing defense-in-depth security.
+
+## Overview
+
+Authentication in ConvexBooking is designed around **progressive disclosure** - users can browse and explore without signing in, but must authenticate to complete bookings or access administrative functions.
+
+Key principles:
+
+- **Zero friction browsing** - No auth wall for viewing availability
+- **Auth-gated actions** - Sign-in required for booking creation
+- **Role-based admin** - Admin operations require elevated permissions
+- **Defense-in-depth** - Auth enforced at multiple layers (gateway + component)
+
+## Trust Zones
+
+ConvexBooking organizes operations into three trust zones, each with different authentication requirements:
+
+### Public Zone (Green)
+
+**No authentication required** - Anyone can access these operations:
+
+- **Resource browsing** - View available rooms, studios, equipment
+- **Event type listings** - See what can be booked
+- **Availability checks** - Month dots, day slots, time slots
+- **Presence system** - Slot holds (uses session IDs, not user auth)
+
+**Use case:** A user visits your booking page, browses resources, checks availability for next week.
+
+```typescript
+// Example: Public availability query - no auth needed
+const slots = await ctx.runQuery(api.public.getDaySlots, {
+  resourceId: "studio-a",
+  date: "2025-12-15",
+  duration: 60,
+});
+```
+
+### Authenticated Zone (Yellow)
+
+**Authentication required** - Users must sign in:
+
+- **Creating bookings** - Confirm a reservation
+- **User profile access** - View/edit personal information
+- **Booking history** - See past and upcoming bookings
+
+**Use case:** User selects a time slot, clicks "Book Now", gets prompted to sign in via WorkOS, then booking is created with their email auto-filled.
+
+```typescript
+// Example: Authenticated booking creation
+export const createBooking = publicMutation({
+  handler: async (ctx, args) => {
+    const { user } = ctx; // Auto-populated from JWT by publicMutation
+
+    // Auto-fill booker info from authenticated user
+    const booker = {
+      name: user.name ?? user.email.split("@")[0],
+      email: user.email,
+    };
+
+    return await ctx.runMutation(components.booking.public.createBooking, {
+      ...args,
+      booker,
+    });
+  },
+});
+```
+
+### Admin Zone (Red)
+
+**Admin role required** - Elevated permissions:
+
+- **Resource management** - Create/edit/delete resources
+- **Schedule management** - Define availability windows
+- **Event type management** - Configure booking options
+- **Booking administration** - View all bookings, cancel bookings
+- **System configuration** - Organization settings
+
+**Use case:** Admin logs into dashboard, creates new studio resource, configures availability schedule, links to event types.
+
+```typescript
+// Example: Admin-only resource creation
+export const createResource = adminMutation({
+  handler: async (ctx, args) => {
+    const { user, role } = ctx; // role = "admin" (verified by adminMutation)
+
+    return await ctx.runMutation(
+      components.booking.resources.createResource,
+      args
+    );
+  },
+});
+```
+
+## Gateway Pattern
+
+Authentication is enforced in **gateway files** (`convex/public.ts` and `convex/admin.ts`), not in the booking component itself. This provides a clear security boundary.
+
+### Why Gateway Files?
+
+The gateway pattern offers several advantages:
+
+1. **Defense-in-depth** - Auth checked before reaching component
+2. **Clear boundaries** - Public vs Admin APIs are separate files
+3. **Custom logic** - Add organization-specific auth rules
+4. **User enrichment** - Auto-fill user data from JWT
+5. **Component reusability** - Booking component stays auth-agnostic
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Frontend (React)                  │
+│  - useQuery(api.public.listResources)              │
+│  - useMutation(api.admin.createResource)           │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│              Gateway Layer (Auth Check)             │
+│                                                     │
+│  convex/public.ts          convex/admin.ts         │
+│  ├─ publicQuery             ├─ adminQuery          │
+│  ├─ publicMutation          ├─ adminMutation       │
+│  └─ Auto-fills ctx.user     └─ Checks role="admin" │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│            Booking Component (Business Logic)       │
+│  - components.booking.resources.listResources      │
+│  - components.booking.public.createBooking         │
+└─────────────────────────────────────────────────────┘
+```
+
+### Public Gateway Example
+
+`convex/public.ts` handles **anonymous browsing** and **authenticated booking**:
+
+```typescript
+import { v } from "convex/values";
+import { components } from "./_generated/api";
+import { publicQuery, publicMutation } from "./functions";
+
+// ============================================
+// ANONYMOUS BROWSING (Green Zone)
+// ============================================
+
+/**
+ * List resources - NO AUTH REQUIRED
+ * Anyone can browse available resources
+ */
+export const listResources = publicQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    // ctx.user may be null (anonymous user)
+    return await ctx.runQuery(components.booking.resources.listResources, {
+      ...args,
+      activeOnly: true, // Public only sees active resources
+    });
+  },
+});
+
+/**
+ * Get day slots - NO AUTH REQUIRED
+ * Anyone can check availability
+ */
+export const getDaySlots = publicQuery({
+  args: {
+    resourceId: v.string(),
+    date: v.string(),
+    duration: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.public.getDaySlots, args);
+  },
+});
+
+// ============================================
+// AUTHENTICATED BOOKING (Yellow Zone)
+// ============================================
+
+/**
+ * Create booking - AUTH REQUIRED
+ * publicMutation enforces authentication
+ */
+export const createBooking = publicMutation({
+  args: {
+    resourceId: v.string(),
+    eventTypeId: v.string(),
+    startTime: v.string(),
+    endTime: v.string(),
+    timezone: v.string(),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // ctx.user is guaranteed to exist (publicMutation enforces this)
+    const { user } = ctx;
+
+    // Auto-fill booker from authenticated user
+    const booker = {
+      name: user.name ?? user.email.split("@")[0],
+      email: user.email,
+    };
+
+    return await ctx.runMutation(components.booking.public.createBooking, {
+      ...args,
+      booker,
+      userId: user.userId, // Track who made the booking
+    });
+  },
+});
+```
+
+### Admin Gateway Example
+
+`convex/admin.ts` handles **admin-only operations**:
+
+```typescript
+import { v } from "convex/values";
+import { components } from "./_generated/api";
+import { adminQuery, adminMutation } from "./functions";
+
+// ============================================
+// ADMIN-ONLY OPERATIONS (Red Zone)
+// ============================================
+
+/**
+ * List all resources - ADMIN ONLY
+ * Includes inactive resources for management
+ */
+export const listResources = adminQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    // ctx.user and ctx.role guaranteed by adminQuery
+    // role = "admin" (verified)
+
+    return await ctx.runQuery(components.booking.resources.listResources, {
+      ...args,
+      activeOnly: false, // Admins see everything
+    });
+  },
+});
+
+/**
+ * Create resource - ADMIN ONLY
+ * Only admins can create new bookable resources
+ */
+export const createResource = adminMutation({
+  args: {
+    organizationId: v.string(),
+    name: v.string(),
+    type: v.string(),
+    location: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { user, role } = ctx;
+
+    // Additional custom checks (example)
+    if (args.type === "premium" && user.organizationId !== "enterprise") {
+      throw new Error("Premium resources require enterprise plan");
+    }
+
+    return await ctx.runMutation(
+      components.booking.resources.createResource,
+      {
+        ...args,
+        createdBy: user.userId, // Track who created it
+      }
+    );
+  },
+});
+```
+
+## Custom Function Builders
+
+ConvexBooking uses **custom function builders** from `convex-helpers` to create the trust zones. These are defined in `convex/functions.ts`.
+
+### Builder Reference Table
+
+| Builder | Auth Required? | Role Check? | Use Cases |
+|---------|----------------|-------------|-----------|
+| `publicQuery` | No | No | Browse resources, check availability, view event types |
+| `publicMutation` | **Yes** | No | Create booking, update user profile |
+| `adminQuery` | **Yes** | **Yes** | List all bookings, view inactive resources |
+| `adminMutation` | **Yes** | **Yes** | CRUD resources/schedules/event types |
+
+**Key behavior:**
+
+- `publicQuery`: `ctx.user` may be `null` (anonymous allowed)
+- `publicMutation`: `ctx.user` guaranteed to exist (throws if not authenticated)
+- `adminQuery`: `ctx.user` and `ctx.role` guaranteed, role = "admin"
+- `adminMutation`: Same as adminQuery, throws if role is not "admin"
+
+### Implementation
+
+The custom builders are defined in `convex/functions.ts`:
+
+```typescript
+import {
+  customQuery,
+  customMutation,
+  customCtx,
+} from "convex-helpers/server/customFunctions";
+import { query, mutation } from "./_generated/server";
+import { ConvexError } from "convex/values";
+
+// ====================================
+// HELPER FUNCTIONS
+// ====================================
+
+/**
+ * Extract user identity from JWT (WorkOS AuthKit)
+ * Returns null if not authenticated
+ */
+async function getUserIdentity(ctx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+
+  return {
+    userId: identity.subject, // WorkOS user ID
+    email: identity.email,
+    name: identity.name,
+    organizationId: identity.org_id, // WorkOS org (if applicable)
+  };
+}
+
+/**
+ * Require authentication - throws if not authenticated
+ */
+async function requireAuth(ctx) {
+  const user = await getUserIdentity(ctx);
+  if (!user) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+  }
+  return user;
+}
+
+/**
+ * Get user role
+ * Phase 1: Returns "admin" for any authenticated user
+ * Phase 2: Will query users table for actual roles
+ */
+async function getUserRole(ctx, userId, organizationId) {
+  // TODO: Phase 2 - Query users table for role
+  // For now, all authenticated users are admins
+  return "admin";
+}
+
+// ====================================
+// PUBLIC FUNCTION BUILDERS
+// ====================================
+
+/**
+ * Public Query - No auth required
+ * ctx.user may be null
+ */
+export const publicQuery = customQuery(
+  query,
+  customCtx(async (ctx) => {
+    const user = await getUserIdentity(ctx);
+    return { user };
+  })
+);
+
+/**
+ * Public Mutation - Auth required
+ * ctx.user guaranteed to exist
+ */
+export const publicMutation = customMutation(
+  mutation,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    return { user };
+  })
+);
+
+// ====================================
+// ADMIN FUNCTION BUILDERS
+// ====================================
+
+/**
+ * Admin Query - Auth + role check
+ * ctx.user and ctx.role guaranteed
+ */
+export const adminQuery = customQuery(
+  query,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    const role = await getUserRole(ctx, user.userId, user.organizationId);
+    return { user, role };
+  })
+);
+
+/**
+ * Admin Mutation - Auth + admin role required
+ * Throws if user is not admin
+ */
+export const adminMutation = customMutation(
+  mutation,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    const role = await getUserRole(ctx, user.userId, user.organizationId);
+
+    if (role !== "admin") {
+      throw new ConvexError({
+        code: "FORBIDDEN",
+        message: "Admin access required",
+      });
+    }
+
+    return { user, role };
+  })
+);
+```
+
+**How it works:**
+
+1. `customCtx` runs before your handler
+2. It extracts user identity from JWT via `ctx.auth.getUserIdentity()`
+3. For mutations/admin operations, it throws if auth fails
+4. Your handler receives enriched `ctx` with `user` (and `role` for admin)
+
+## Frontend Authentication
+
+The frontend uses **WorkOS AuthKit** for authentication, integrated with Convex's `ConvexProviderWithAuth`.
+
+### Progressive Auth UX
+
+Users experience a **seamless flow** from browsing to booking:
+
+1. **Anonymous browsing** - View resources and availability (no prompt)
+2. **Slot selection** - Choose time and date (no prompt)
+3. **Click "Book Now"** - Auth check triggers
+4. **Sign-in prompt** - If not authenticated, redirect to WorkOS sign-in
+5. **Return to booking** - After sign-in, user returns to booking form
+6. **Auto-filled form** - Name and email pre-populated from JWT
+7. **Complete booking** - Submit with one click
+
+This approach **maximizes conversion** - users explore freely, only authenticate when committed.
+
+### AuthKitProvider Setup
+
+Configure the providers in your root layout:
+
+```tsx title="components/ConvexClientProvider.tsx"
+'use client';
+
+import { ReactNode, useCallback, useRef, useState } from 'react';
+import { ConvexReactClient } from 'convex/react';
+import { ConvexProviderWithAuth } from 'convex/react';
+import { AuthKitProvider, useAuth, useAccessToken } from '@workos-inc/authkit-nextjs/components';
+
+export default function ConvexClientProvider({ children }: { children: ReactNode }) {
+  const [convex] = useState(() => {
+    return new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+  });
+
+  return (
+    <AuthKitProvider>
+      <ConvexProviderWithAuth client={convex} useAuth={useAuthFromAuthKit}>
+        {children}
+      </ConvexProviderWithAuth>
+    </AuthKitProvider>
+  );
+}
+
+/**
+ * Bridge between WorkOS AuthKit and Convex auth
+ */
+function useAuthFromAuthKit() {
+  const { user, loading: isLoading } = useAuth();
+  const { accessToken, loading: tokenLoading, error: tokenError } = useAccessToken();
+
+  // Combine loading states
+  const loading = (isLoading ?? false) || (tokenLoading ?? false);
+
+  // Only authenticated when we have BOTH user AND token AND not loading
+  const authenticated = !!user && !!accessToken && !loading;
+
+  // Stable token reference to avoid re-renders
+  const stableAccessToken = useRef<string | null>(null);
+  if (accessToken && !tokenError) {
+    stableAccessToken.current = accessToken;
+  }
+
+  const fetchAccessToken = useCallback(async () => {
+    if (stableAccessToken.current && !tokenError) {
+      return stableAccessToken.current;
+    }
+    return null;
+  }, [tokenError]);
+
+  return {
+    isLoading: loading,
+    isAuthenticated: authenticated,
+    fetchAccessToken,
+  };
+}
+```
+
+Then wrap your app:
+
+```tsx title="app/layout.tsx"
+import ConvexClientProvider from '@/components/ConvexClientProvider';
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        <ConvexClientProvider>
+          {children}
+        </ConvexClientProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+### User Prefilling
+
+When a user is authenticated, their information is automatically extracted from the JWT and used to pre-fill forms:
+
+```typescript title="convex/public.ts"
+export const createBooking = publicMutation({
+  handler: async (ctx, args) => {
+    const { user } = ctx; // From JWT
+
+    // Auto-fill booker info
+    const booker = {
+      name: user.name ?? user.email.split("@")[0], // Use name or email prefix
+      email: user.email,
+    };
+
+    return await ctx.runMutation(components.booking.public.createBooking, {
+      ...args,
+      booker,
+      userId: user.userId, // Track booking owner
+    });
+  },
+});
+```
+
+This provides a **1-click booking experience** once authenticated - no manual form filling required.
+
+## JWT Structure
+
+WorkOS AuthKit issues JWTs with the following claims:
+
+```typescript
+{
+  "sub": "user_01HQXE23ABCDEF", // User ID (subject)
+  "email": "user@example.com",  // User's email address
+  "name": "John Doe",            // Display name (optional)
+  "org_id": "org_01ABC123",      // Organization ID (optional, if multi-tenant)
+  "iss": "https://api.workos.com",
+  "aud": "client_123abc",
+  "iat": 1701234567,
+  "exp": 1701238167
+}
+```
+
+**How ConvexBooking uses these claims:**
+
+| Claim | Used For | Example |
+|-------|----------|---------|
+| `sub` | User ID (`ctx.user.userId`) | Track booking owner, audit logs |
+| `email` | Auto-fill booker email | Pre-populate booking form |
+| `name` | Display name | Show "Welcome, John" in UI |
+| `org_id` | Multi-tenancy | Filter resources by organization |
+
+The `getUserIdentity()` helper extracts these claims from `ctx.auth.getUserIdentity()`.
+
+## Testing Authentication
+
+Follow these steps to verify authentication is working correctly:
+
+### 1. Start Development Servers
+
+```bash
+# Terminal 1: Start Convex
+npx convex dev
+
+# Terminal 2: Start Next.js
+npm run dev
+```
+
+### 2. Test Anonymous Browsing
+
+1. Open `http://localhost:3000/book` (or your booking route)
+2. Browse resources - should work without sign-in
+3. Select a resource
+4. View calendar and availability - should work without sign-in
+5. Select a time slot - should work without sign-in
+
+**Expected:** No auth prompts, full browsing capability
+
+### 3. Test Sign-In Prompt
+
+1. After selecting a time slot, click "Continue" or "Book Now"
+2. Should see WorkOS sign-in page (or redirect to WorkOS)
+3. Sign in with test credentials
+4. Should redirect back to booking form
+
+**Expected:** Seamless redirect flow
+
+### 4. Test User Prefilling
+
+1. After signing in, observe the booking form
+2. Name field should be pre-filled with your name (from JWT)
+3. Email field should be pre-filled with your email (from JWT)
+4. Submit booking
+
+**Expected:** Form auto-filled, 1-click submission
+
+### 5. Verify Backend Auth
+
+Check Convex logs for:
+
+```
+✓ createBooking called with user: { userId: "user_01...", email: "..." }
+✓ Booking created successfully
+```
+
+**Expected:** User identity captured in backend
+
+### 6. Test Admin Access
+
+1. Navigate to `/demo` (or your admin route)
+2. Should be able to create resources, schedules, event types
+3. Log out and try accessing `/demo`
+4. Should redirect to sign-in (if properly protected)
+
+**Expected:** Admin routes protected by auth
+
+## Common Issues
+
+### Issue 1: "Authentication required" error on booking
+
+**Symptom:** User can browse but gets error when trying to book
+
+**Cause:** JWT not being passed to Convex, or `useAuthFromAuthKit` not working
+
+**Solution:**
+
+1. Check `ConvexClientProvider` is wrapping your app
+2. Verify `NEXT_PUBLIC_CONVEX_URL` environment variable is set
+3. Check browser DevTools Network tab - JWT should be in WebSocket frames
+4. Verify WorkOS AuthKit is configured correctly
+
+```typescript
+// Debug: Log auth state
+const { user } = useAuth();
+console.log("WorkOS user:", user);
+```
+
+### Issue 2: JWT claims missing (name, org_id)
+
+**Symptom:** `ctx.user.name` or `ctx.user.organizationId` is undefined
+
+**Cause:** WorkOS may not include optional claims depending on configuration
+
+**Solution:**
+
+1. These fields are **optional** - always provide fallbacks:
+
+```typescript
+const displayName = user.name ?? user.email.split("@")[0];
+```
+
+2. To get organization claims, ensure user is part of an organization in WorkOS
+
+### Issue 3: Admin mutations failing for legitimate admin
+
+**Symptom:** Admin user gets "Admin access required" error
+
+**Cause:** `getUserRole()` not returning "admin" role
+
+**Solution:**
+
+Currently, `getUserRole()` in `convex/functions.ts` returns "admin" for ALL authenticated users (Phase 1 implementation). If you've modified it:
+
+1. Check your custom role logic
+2. Verify user has admin role in your users table
+3. Debug log:
+
+```typescript
+const role = await getUserRole(ctx, user.userId);
+console.log("User role:", role);
+```
+
+### Issue 4: Infinite redirect loop on sign-in
+
+**Symptom:** After signing in, user gets redirected back to WorkOS repeatedly
+
+**Cause:** Callback URL misconfigured or AuthKitProvider setup issue
+
+**Solution:**
+
+1. Verify `NEXT_PUBLIC_WORKOS_REDIRECT_URI` matches your app's callback route
+2. Check WorkOS Dashboard - Redirect URI should match exactly
+3. Ensure `useAuthFromAuthKit` returns correct `isAuthenticated` value
+
+```typescript
+// Debug: Log auth state
+console.log("isAuthenticated:", isAuthenticated);
+console.log("accessToken:", !!accessToken);
+```
+
+### Issue 5: Booking form not auto-filling user data
+
+**Symptom:** User is authenticated but form fields are empty
+
+**Cause:** Gateway not extracting user from JWT or not passing to component
+
+**Solution:**
+
+Check `convex/public.ts` has user prefilling logic:
+
+```typescript
+export const createBooking = publicMutation({
+  handler: async (ctx, args) => {
+    const { user } = ctx; // Must extract user
+
+    const booker = {
+      name: user.name ?? user.email.split("@")[0],
+      email: user.email,
+    };
+
+    return await ctx.runMutation(components.booking.public.createBooking, {
+      ...args,
+      booker, // Must pass booker
+    });
+  },
+});
+```
+
+### Issue 6: Admin dashboard accessible without sign-in
+
+**Symptom:** Can access `/demo` routes without authentication
+
+**Cause:** Admin routes not protected with `adminQuery`/`adminMutation` in backend, or missing auth check in frontend
+
+**Solution:**
+
+1. **Backend:** Ensure all admin operations use `adminQuery`/`adminMutation`
+
+```typescript
+// convex/admin.ts
+export const listResources = adminQuery({ ... }); // NOT publicQuery
+```
+
+2. **Frontend:** Add auth check to admin pages:
+
+```tsx
+// app/demo/layout.tsx
+import { useAuth } from '@workos-inc/authkit-nextjs/components';
+import { redirect } from 'next/navigation';
+
+export default function AdminLayout({ children }) {
+  const { user, loading } = useAuth();
+
+  if (loading) return <div>Loading...</div>;
+  if (!user) redirect('/sign-in');
+
+  return <>{children}</>;
+}
+```
+
+---
+
+**Next Steps:**
+
+- [WorkOS Integration Guide](/docs/integrations/workos) - Detailed WorkOS setup
+- [API Reference](/docs/api) - See which operations require auth
+- [Getting Started](/docs/getting-started) - Complete setup walkthrough
+
+</DocPage>

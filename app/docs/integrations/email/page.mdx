@@ -1,0 +1,556 @@
+<DocPage toc={[
+  { title: "Overview", url: "#overview", depth: 2 },
+  { title: "Why Resend", url: "#why-resend", depth: 2 },
+  { title: "Setup Instructions", url: "#setup-instructions", depth: 2 },
+  { title: "Environment Variables", url: "#environment-variables", depth: 2 },
+  { title: "Component Configuration", url: "#component-configuration", depth: 2 },
+  { title: "Email Templates", url: "#email-templates", depth: 2 },
+  { title: "Graceful Fallback", url: "#graceful-fallback", depth: 2 },
+  { title: "Testing Emails", url: "#testing-emails", depth: 2 },
+  { title: "Troubleshooting", url: "#troubleshooting", depth: 2 },
+  { title: "Disabling Emails", url: "#disabling-emails", depth: 2 },
+  { title: "Future Enhancements", url: "#future-enhancements", depth: 2 },
+]}>
+
+# Email Notifications with Resend
+
+ConvexBooking automatically sends booking confirmation and cancellation emails when configured with Resend. This integration is completely optional—the system works perfectly without it.
+
+## Overview
+
+### What This Does
+
+- **Automatically sends confirmation emails** when bookings are created
+- **Sends cancellation emails** when bookings are cancelled
+- **Optional integration** with graceful fallback if no API key is provided
+- **Nested component architecture**: Resend is nested inside the booking component
+- **Triggered via lifecycle hooks** using the booking state machine
+
+### Component Architecture
+
+```
+App
+├─ workOSAuthKit (NPM component)
+└─ booking (NPM component)
+   └─ resend (nested component)
+```
+
+This creates "componentception"—a component within a component, each with isolated tables. Emails are automatically triggered by booking lifecycle events (`booking.created`, `booking.cancelled`).
+
+## Why Resend
+
+We chose Resend for several key reasons:
+
+- **Purpose-built for transactional email** - Designed specifically for application emails, not marketing
+- **Excellent template system** - Supports both HTML and plain text with React components
+- **Reliable delivery** - High deliverability rates with built-in DKIM/SPF configuration
+- **Great documentation** - Clear API and helpful guides
+- **Developer-friendly** - Simple REST API and generous free tier
+
+## Setup Instructions
+
+Follow these steps to enable email notifications in your ConvexBooking installation.
+
+### Step 1: Sign Up for Resend
+
+1. Go to [resend.com](https://resend.com) and create an account
+2. Complete the email verification process
+3. You'll start with a free tier (100 emails/day, 3,000 emails/month)
+
+### Step 2: Verify Your Domain
+
+To send emails from your domain:
+
+1. In the Resend dashboard, go to **Domains**
+2. Click **Add Domain**
+3. Enter your domain (e.g., `yourdomain.com`)
+4. Add the provided DNS records to your domain:
+   - **MX record** - For receiving bounces
+   - **TXT record (DKIM)** - For email authentication
+   - **TXT record (SPF)** - For sender verification
+5. Wait for DNS propagation (usually 5-30 minutes)
+6. Resend will verify your domain automatically
+
+<Callout type="info">
+  **Testing without a domain?** Resend provides a test domain (e.g., `onboarding@resend.dev`) you can use immediately for development. Just skip domain verification for now.
+</Callout>
+
+### Step 3: Generate API Key
+
+1. In the Resend dashboard, go to **API Keys**
+2. Click **Create API Key**
+3. Give it a name (e.g., "ConvexBooking Production")
+4. Select permissions:
+   - **Emails: Send** (required)
+5. Copy the API key immediately—it won't be shown again
+
+## Environment Variables
+
+Add these environment variables to your Convex deployment:
+
+### Required Variables
+
+```bash
+# Resend API Key (from Step 3 above)
+RESEND_API_KEY=re_your_api_key_here
+
+# Verified sender email address
+RESEND_FROM_EMAIL=bookings@yourdomain.com
+```
+
+### Setting Environment Variables
+
+**In Convex Dashboard:**
+1. Go to your deployment at [dashboard.convex.dev](https://dashboard.convex.dev)
+2. Navigate to **Settings** → **Environment Variables**
+3. Click **Add Variable**
+4. Add `RESEND_API_KEY` and `RESEND_FROM_EMAIL`
+5. Deploy to apply changes
+
+**For Local Development (.env.local):**
+```bash
+# Add to your .env.local file (NOT committed to git)
+RESEND_API_KEY=re_your_api_key_here
+RESEND_FROM_EMAIL=bookings@yourdomain.com
+```
+
+<Callout type="warning">
+  **Security Note**: Never commit API keys to version control. Use environment variables for all sensitive credentials.
+</Callout>
+
+## Component Configuration
+
+The booking component receives the Resend API key via **dependency injection** through function arguments. This is necessary because Convex components are isolated and cannot directly access `process.env`.
+
+### How It Works
+
+```typescript
+// APP LAYER (convex/public.ts or convex/admin.ts)
+// Can access process.env
+
+export const createBooking = publicMutation({
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.booking.public.createBooking,
+      {
+        ...args,
+        resendOptions: process.env.RESEND_API_KEY
+          ? {
+              apiKey: process.env.RESEND_API_KEY,
+              fromEmail: process.env.RESEND_FROM_EMAIL ?? "bookings@example.com",
+            }
+          : undefined,
+      }
+    );
+  },
+});
+```
+
+```typescript
+// COMPONENT LAYER (packages/convex-booking/src/component/public.ts)
+// Receives resendOptions as argument
+
+export const createBooking = mutation({
+  args: {
+    // ... booking args
+    resendOptions: v.optional(v.object({
+      apiKey: v.string(),
+      fromEmail: v.optional(v.string()),
+    })),
+  },
+  handler: async (ctx, args) => {
+    // Create booking...
+
+    // Trigger hooks (including email)
+    if (args.resendOptions) {
+      await ctx.runMutation(internal.hooks.triggerHooks, {
+        eventType: "booking.created",
+        payload: { /* booking data */ },
+        resendOptions: args.resendOptions,
+      });
+    }
+  },
+});
+```
+
+### Pattern Benefits
+
+This **dependency injection pattern** provides several advantages:
+
+- **Component isolation** - Component doesn't depend on parent's environment
+- **Explicit dependencies** - Clear what the component needs
+- **Testability** - Easy to test with mock credentials
+- **Flexibility** - Parent can override or customize behavior
+- **Security** - Component can't access unrelated environment variables
+
+### Where This Happens
+
+The `resendOptions` pattern is used in:
+- `convex/public.ts` → `createBooking` (for public bookings)
+- `convex/admin.ts` → `createBooking`, `cancelBooking`, `updateBooking` (for admin operations)
+
+## Email Templates
+
+ConvexBooking includes two professionally designed email templates that automatically adapt to dark/light mode.
+
+### Confirmation Email
+
+Sent automatically when a booking is created.
+
+**Visual Design:**
+- **Green accent** with checkmark icon (✓)
+- Clean card-based layout with gradient header
+- Responsive HTML that works across email clients
+
+**Content Includes:**
+- Personalized greeting with booker's name
+- Event title (e.g., "Studio Session")
+- Start and end time in the booker's timezone
+  - Example: "Monday, November 26, 2025, 2:00 PM - 4:00 PM PST"
+- Resource location (if provided)
+- Professional footer with your branding
+
+**Example:**
+```
+Hi John,
+
+Your booking has been confirmed!
+
+Studio Session
+Monday, November 26, 2025
+2:00 PM - 4:00 PM PST
+
+Location: Studio A, 123 Main St
+
+Looking forward to seeing you!
+```
+
+### Cancellation Email
+
+Sent automatically when a booking is cancelled.
+
+**Visual Design:**
+- **Red accent** with X icon (✗)
+- Same responsive layout as confirmation
+- Softer tone for cancellation notice
+
+**Content Includes:**
+- Cancellation notification
+- Original booking details (event, time, location)
+- Cancellation reason (if provided by canceller)
+- Professional closing message
+
+**Example:**
+```
+Hi John,
+
+Your booking has been cancelled.
+
+Studio Session
+Monday, November 26, 2025
+2:00 PM - 4:00 PM PST
+
+Reason: Studio maintenance scheduled
+
+We hope to see you again soon!
+```
+
+### Template Features
+
+Both templates support:
+- **Timezone-aware formatting** - Displays times in the booker's specified timezone
+- **Dark/light mode** - Automatically adapts to email client preferences
+- **Mobile responsive** - Looks great on all screen sizes
+- **Plain text fallback** - For clients that don't support HTML
+
+## Graceful Fallback
+
+One of ConvexBooking's key design principles is **graceful degradation**. The system works perfectly without Resend configured.
+
+### What Happens Without API Key
+
+If `RESEND_API_KEY` is not set:
+
+1. **Bookings succeed normally** - No errors or crashes
+2. **Warning logged** - Convex logs show: "Resend API key not configured, skipping email"
+3. **No emails sent** - Email sending is silently skipped
+4. **Full functionality** - All other features work as expected
+
+### Why This Matters
+
+- **Development flexibility** - Test bookings without email spam
+- **Staging environments** - Avoid sending emails to real customers
+- **Gradual rollout** - Deploy without email first, add later
+- **Cost control** - Use ConvexBooking without email service costs
+
+<Callout type="info">
+  **Best Practice**: Start without email in development, then add Resend for production. You can always enable it later without code changes.
+</Callout>
+
+## Testing Emails
+
+Follow these steps to verify your email integration is working correctly.
+
+### Step 1: Set Environment Variables
+
+Ensure both variables are set in your Convex deployment:
+```bash
+RESEND_API_KEY=re_your_key_here
+RESEND_FROM_EMAIL=bookings@yourdomain.com
+```
+
+### Step 2: Create a Test Booking
+
+1. Open your ConvexBooking app
+2. Navigate to a booking page
+3. Select a resource and time slot
+4. Fill in booking form with **your real email address** as the booker
+5. Submit the booking
+
+### Step 3: Check Convex Logs
+
+1. Go to [Convex Dashboard](https://dashboard.convex.dev)
+2. Select your deployment
+3. Navigate to **Logs**
+4. Look for log messages:
+   - `"Triggering hooks for event: booking.created"`
+   - `"Sending booking confirmation email to: your@email.com"`
+   - `"Email sent successfully"` (or error details if failed)
+
+### Step 4: Verify Email Received
+
+1. Check your inbox for the confirmation email
+2. Verify the content:
+   - Correct event title
+   - Correct date and time in your timezone
+   - Correct resource location
+   - Professional formatting
+
+### Step 5: Test Cancellation Email
+
+1. Go to the admin dashboard or booking management page
+2. Find the test booking you just created
+3. Cancel it with a reason (e.g., "Testing cancellation flow")
+4. Check your inbox for the cancellation email
+5. Verify it includes:
+   - Cancellation notice
+   - Original booking details
+   - The cancellation reason you provided
+
+### Expected Results
+
+✅ **Success indicators:**
+- Emails arrive within 1-2 seconds of booking/cancellation
+- Content matches booking details exactly
+- Timezone is displayed correctly
+- No errors in Convex logs
+
+❌ **If emails don't arrive:**
+- Check spam/junk folder
+- Verify `RESEND_FROM_EMAIL` is verified in Resend dashboard
+- Check Convex logs for error messages
+- See [Troubleshooting](#troubleshooting) below
+
+## Troubleshooting
+
+Common issues and their solutions:
+
+### Emails Not Sending
+
+**Symptoms:** No emails received, no errors in logs
+
+**Possible Causes:**
+1. **API key not set** - Check environment variables in Convex Dashboard
+2. **Missing `resendOptions`** - Verify your `convex/public.ts` and `convex/admin.ts` pass `resendOptions`
+3. **Deployment not updated** - Push changes with `npx convex deploy`
+
+**Solution:**
+```bash
+# Verify environment variables
+npx convex env list
+
+# Should show:
+# RESEND_API_KEY=re_***...
+# RESEND_FROM_EMAIL=bookings@yourdomain.com
+
+# If missing, add them:
+npx convex env set RESEND_API_KEY re_your_key
+npx convex env set RESEND_FROM_EMAIL bookings@yourdomain.com
+```
+
+### Wrong Sender Email
+
+**Symptoms:** Emails fail with "Domain not verified" error
+
+**Solution:**
+1. Go to Resend dashboard → **Domains**
+2. Check your domain verification status
+3. If "Pending", add the required DNS records
+4. If using test email, use `onboarding@resend.dev` as `RESEND_FROM_EMAIL`
+
+### Template Rendering Issues
+
+**Symptoms:** Broken layout, missing content, timezone errors
+
+**Possible Causes:**
+1. **Invalid timezone** - Ensure booking timezone is valid IANA format (e.g., "America/Los_Angeles")
+2. **Missing data** - Check booking has all required fields (event title, start, end)
+
+**Solution:**
+Check booking data structure in Convex Dashboard → Data → `bookings` table
+
+### Emails Going to Spam
+
+**Symptoms:** Emails arrive in spam/junk folder
+
+**Solution:**
+1. **Verify domain authentication** in Resend:
+   - Check DKIM record (green checkmark)
+   - Check SPF record (green checkmark)
+2. **Add SPF record** if not present:
+   ```
+   v=spf1 include:_spf.resend.com ~all
+   ```
+3. **Warm up your domain** - Start with low volume, gradually increase
+4. **Test with multiple providers** - Gmail, Outlook, Yahoo to identify patterns
+
+### Rate Limiting
+
+**Symptoms:** Some emails fail with "Rate limit exceeded"
+
+**Solution:**
+- Free tier: 100 emails/day, 3,000 emails/month
+- Upgrade to higher tier at [resend.com/pricing](https://resend.com/pricing)
+- Implement retry logic for failed sends (built-in to component)
+
+### Debugging Checklist
+
+When emails don't work, check these in order:
+
+1. ✅ Environment variables set in Convex
+2. ✅ `resendOptions` passed in gateway functions
+3. ✅ Domain verified in Resend (or using test domain)
+4. ✅ API key valid and has "Send Emails" permission
+5. ✅ Convex logs show "Triggering hooks" message
+6. ✅ No errors in Resend dashboard → **Logs**
+7. ✅ Check spam folder
+8. ✅ DNS records propagated (use [dns checker](https://dnschecker.org))
+
+## Disabling Emails
+
+You can disable email notifications at any time without breaking your application.
+
+### To Turn Off Emails
+
+**Option 1: Remove Environment Variable** (Recommended)
+```bash
+# In Convex Dashboard
+# Settings → Environment Variables → Delete RESEND_API_KEY
+```
+
+**Option 2: Comment Out in Code**
+```typescript
+// convex/public.ts
+export const createBooking = publicMutation({
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.booking.public.createBooking,
+      {
+        ...args,
+        // resendOptions: process.env.RESEND_API_KEY
+        //   ? { apiKey: process.env.RESEND_API_KEY, fromEmail: process.env.RESEND_FROM_EMAIL }
+        //   : undefined,
+      }
+    );
+  },
+});
+```
+
+### When to Disable
+
+- **Development** - Avoid sending test emails
+- **Staging** - Prevent emails to real customers
+- **Debugging** - Isolate booking logic from email issues
+- **Cost savings** - Pause emails during low-activity periods
+
+<Callout type="info">
+  **No Configuration Needed**: Simply omit the environment variable and the system works normally without emails. No code changes required.
+</Callout>
+
+## Future Enhancements
+
+While the current email integration is production-ready, here are potential enhancements for future versions:
+
+### Custom Email Templates
+
+Support for user-provided email templates:
+```typescript
+resendOptions: {
+  apiKey: "re_...",
+  fromEmail: "bookings@yourdomain.com",
+  templates: {
+    confirmation: {
+      subject: "Your booking is confirmed! 🎉",
+      htmlBody: customConfirmationTemplate,
+    },
+    cancellation: {
+      subject: "Booking cancelled",
+      htmlBody: customCancellationTemplate,
+    },
+  },
+}
+```
+
+### Additional Lifecycle Hooks
+
+More email triggers:
+- **Reminder emails** - 24 hours before booking (via scheduled functions)
+- **Follow-up emails** - After booking completion
+- **Rescheduling notifications** - When admin changes booking time
+- **Waitlist notifications** - When slot becomes available
+
+### Hook Registration API
+
+Allow apps to register custom webhooks:
+```typescript
+// Future API (not yet implemented)
+await ctx.runMutation(components.booking.hooks.registerHook, {
+  event: "booking.created",
+  webhookUrl: "https://myapp.com/api/booking-webhook",
+});
+```
+
+### Email Customization
+
+Per-resource or per-event-type email settings:
+- Different sender emails for different resources
+- Custom branding per organization
+- Localization support for multi-language apps
+
+### Advanced Features
+
+- **Email open tracking** - Via Resend's tracking features
+- **Click tracking** - For links in emails
+- **Bounce handling** - Automatic retry and notification
+- **Batch sending** - For bulk booking operations
+
+<Callout type="info">
+  **Want to contribute?** These features are on the roadmap. Check the GitHub repository for contribution guidelines.
+</Callout>
+
+---
+
+## Summary
+
+Email notifications via Resend provide a professional touch to your booking system with minimal setup:
+
+1. **Sign up** for Resend and verify your domain
+2. **Add environment variables** to Convex (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`)
+3. **Pass resendOptions** in your gateway functions (already configured in templates)
+4. **Test** by creating a booking and checking your inbox
+
+The system gracefully handles missing configuration, so you can start without email and add it later. The dependency injection pattern ensures clean separation between your app and the component.
+
+Ready to add email notifications? Start with [Setup Instructions](#setup-instructions) above!
+
+</DocPage>

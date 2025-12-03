@@ -1,207 +1,1065 @@
 <DocPage toc={[
   { title: "Setup", url: "#setup", depth: 2 },
-  { title: "Queries", url: "#queries", depth: 2 },
+  { title: "Public API", url: "#public-api", depth: 2 },
   { title: "Availability Queries", url: "#availability-queries", depth: 3 },
   { title: "Resource Queries", url: "#resource-queries", depth: 3 },
   { title: "Event Type Queries", url: "#event-type-queries", depth: 3 },
-  { title: "Mutations", url: "#mutations", depth: 2 },
+  { title: "Presence System", url: "#presence-system", depth: 3 },
   { title: "Booking Mutations", url: "#booking-mutations", depth: 3 },
-  { title: "Resource Mutations", url: "#resource-mutations", depth: 3 },
+  { title: "Admin API", url: "#admin-api", depth: 2 },
+  { title: "Resource Management", url: "#resource-management", depth: 3 },
+  { title: "Event Type Management", url: "#event-type-management", depth: 3 },
+  { title: "Schedule Management", url: "#schedule-management", depth: 3 },
+  { title: "Booking Administration", url: "#booking-administration", depth: 3 },
   { title: "Frontend Hooks", url: "#frontend-hooks", depth: 2 },
 ]}>
 
 # API Reference
 
-The ConvexBooking API is exposed through the `makeBookingAPI` function, which wraps the component's functions for use in your app.
+ConvexBooking exposes two API layers following the **trust zones pattern**: a **Public API** for anonymous browsing and authenticated booking, and an **Admin API** for management operations requiring admin privileges.
 
 ## Setup
 
-First, create a booking API file in your convex folder:
+ConvexBooking uses a **gateway pattern** where authentication and authorization are enforced at the app layer, not within the component itself. This provides flexibility to customize auth logic per your application's needs.
 
-```typescript title="convex/booking.ts"
-import { components } from "./_generated/api";
-import { makeBookingAPI } from "convex-booking";
+### Step 1: Create Custom Function Builders
 
-export const {
-  // Availability
-  getAvailability,
-  getMonthAvailability,
-  getDaySlots,
+Create `convex/functions.ts` to define authorization wrappers:
 
-  // Resources
-  getResource,
-  listResources,
-  createResource,
-  updateResource,
-  deleteResource,
+```typescript title="convex/functions.ts"
+import { customQuery, customMutation, customCtx } from "convex-helpers/server/customFunctions";
+import { query, mutation } from "./_generated/server";
+import { ConvexError } from "convex/values";
 
-  // Schedules
-  getSchedule,
-  listSchedules,
-  createSchedule,
-  updateSchedule,
-  deleteSchedule,
+// Extract user from WorkOS JWT
+async function getUserIdentity(ctx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
 
-  // Event Types
-  getEventType,
-  listEventTypes,
-  createEventType,
-  updateEventType,
-  deleteEventType,
+  return {
+    userId: identity.subject,
+    email: identity.email ?? "",
+    name: identity.name,
+    organizationId: identity.org_id,
+  };
+}
 
-  // Bookings
-  createBooking,
-  cancelBooking,
-  listBookings,
+// Require authentication
+async function requireAuth(ctx) {
+  const user = await getUserIdentity(ctx);
+  if (!user) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+  }
+  return user;
+}
 
-  // Presence
-  heartbeat,
-  leave,
-  getDatePresence,
-} = makeBookingAPI(components.booking);
+// Public query - no auth required
+export const publicQuery = customQuery(
+  query,
+  customCtx(async (ctx) => {
+    const user = await getUserIdentity(ctx);
+    return { user }; // user is null if not authenticated
+  })
+);
+
+// Public mutation - auth required
+export const publicMutation = customMutation(
+  mutation,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx); // throws if not authenticated
+    return { user };
+  })
+);
+
+// Admin query - auth + role check
+export const adminQuery = customQuery(
+  query,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    // Add role check here if needed
+    return { user, role: "admin" };
+  })
+);
+
+// Admin mutation - auth + admin role required
+export const adminMutation = customMutation(
+  mutation,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    // Add role check here if needed
+    return { user, role: "admin" };
+  })
+);
 ```
 
-## Queries
+### Step 2: Create Public API Gateway
+
+Create `convex/public.ts` to expose public-facing endpoints:
+
+```typescript title="convex/public.ts"
+import { v } from "convex/values";
+import { components } from "./_generated/api";
+import { publicQuery, publicMutation } from "./functions";
+
+// Resource browsing (anonymous OK)
+export const listResources = publicQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.booking.resources.listResources,
+      { ...args, activeOnly: true }
+    );
+  },
+});
+
+// Availability queries (anonymous OK)
+export const getDaySlots = publicQuery({
+  args: {
+    resourceId: v.string(),
+    date: v.string(),
+    eventLength: v.number(),
+    slotInterval: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.public.getDaySlots, args);
+  },
+});
+
+// Create booking (auth required)
+export const createBooking = publicMutation({
+  args: {
+    eventTypeId: v.string(),
+    resourceId: v.string(),
+    start: v.number(),
+    end: v.number(),
+    timezone: v.string(),
+    location: v.object({ type: v.string() }),
+  },
+  handler: async (ctx, args) => {
+    const { user } = ctx; // Auto-populated by publicMutation
+
+    // Auto-fill booker from authenticated user
+    const booker = {
+      name: user.name ?? user.email.split("@")[0],
+      email: user.email,
+    };
+
+    return await ctx.runMutation(
+      components.booking.public.createBooking,
+      { ...args, booker }
+    );
+  },
+});
+```
+
+### Step 3: Create Admin API Gateway
+
+Create `convex/admin.ts` for admin-only operations:
+
+```typescript title="convex/admin.ts"
+import { v } from "convex/values";
+import { components } from "./_generated/api";
+import { adminQuery, adminMutation } from "./functions";
+
+// List all resources (including inactive)
+export const listResources = adminQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.booking.resources.listResources,
+      args // No activeOnly filter - admins see everything
+    );
+  },
+});
+
+// Create resource (admin only)
+export const createResource = adminMutation({
+  args: {
+    id: v.string(),
+    name: v.string(),
+    type: v.string(),
+    timezone: v.string(),
+    organizationId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.booking.resources.createResource,
+      args
+    );
+  },
+});
+```
+
+### Why This Pattern?
+
+**Trust Zones**: The public API allows anonymous browsing (availability checks, resource listing) but requires authentication for booking creation. The admin API requires both authentication and admin role for all operations.
+
+**Defense-in-Depth**: Authorization is enforced at the gateway layer, providing a clear security boundary before reaching the component logic.
+
+**Flexibility**: You control the auth logic and can customize it per your application's needs (different roles, organization-based permissions, etc.).
+
+---
+
+## Public API
+
+The Public API (`convex/public.ts`) handles the customer-facing booking flow. Most queries are anonymous-accessible, while booking creation requires authentication.
 
 ### Availability Queries
 
+Check what time slots are available for booking.
+
 #### `getMonthAvailability`
 
-Get availability dots for a calendar month.
+Get availability dots for calendar month view. Returns a map of dates to boolean availability.
+
+**Auth Required:** No
 
 ```typescript
-const availability = await ctx.runQuery(api.booking.getMonthAvailability, {
+const availability = await ctx.runQuery(api.public.getMonthAvailability, {
   resourceId: "studio-a",
   dateFrom: "2025-01-01",
   dateTo: "2025-01-31",
-  eventLength: 60,
-  slotInterval: 60, // optional
+  eventLength: 60, // Duration in minutes
+  slotInterval: 60, // Optional: Time between slots (defaults to eventLength)
 });
 // Returns: { "2025-01-15": true, "2025-01-16": false, ... }
 ```
 
+**Parameters:**
+- `resourceId` (string): ID of the resource to check
+- `dateFrom` (string): ISO date string for start of range
+- `dateTo` (string): ISO date string for end of range
+- `eventLength` (number): Duration of booking in minutes
+- `slotInterval` (number, optional): Time between available slots
+
+**Returns:** `Record<string, boolean>` - Map of ISO dates to availability
+
+**Use Case:** Showing calendar dots indicating which days have availability.
+
+---
+
 #### `getDaySlots`
 
-Get available time slots for a specific day.
+Get detailed time slots for a specific day.
+
+**Auth Required:** No
 
 ```typescript
-const slots = await ctx.runQuery(api.booking.getDaySlots, {
+const slots = await ctx.runQuery(api.public.getDaySlots, {
   resourceId: "studio-a",
   date: "2025-01-15",
-  eventLength: 60,
-  slotInterval: 60,
-  scheduleId: "business-hours", // optional
-  timezone: "Europe/Berlin",    // optional
+  eventLength: 60, // Booking duration
+  slotInterval: 30, // Show slots every 30 minutes
 });
-// Returns: [{ slot: "2025-01-15T09:00:00.000Z", formatted: "9:00 AM" }, ...]
+// Returns: [
+//   { slot: "2025-01-15T09:00:00.000Z", formatted: "9:00 AM" },
+//   { slot: "2025-01-15T09:30:00.000Z", formatted: "9:30 AM" },
+//   ...
+// ]
 ```
 
-#### `getDatePresence`
+**Parameters:**
+- `resourceId` (string): ID of the resource
+- `date` (string): ISO date string (YYYY-MM-DD)
+- `eventLength` (number): Duration in minutes
+- `slotInterval` (number, optional): Interval between slots
 
-Get active presence holds for a date (used for real-time slot locking).
+**Returns:** Array of slot objects with ISO timestamp and formatted time
+
+**Use Case:** Displaying available time slots when user selects a date.
+
+---
+
+#### `getAvailability`
+
+Check if a specific time range is available.
+
+**Auth Required:** No
 
 ```typescript
-const presence = await ctx.runQuery(api.booking.getDatePresence, {
+const isAvailable = await ctx.runQuery(api.public.getAvailability, {
   resourceId: "studio-a",
-  date: "2025-01-15",
+  start: 1705312800000, // Unix timestamp (ms)
+  end: 1705316400000,   // Unix timestamp (ms)
 });
-// Returns: [{ slot: "2025-01-15T10:00:00.000Z", user: "session-123" }, ...]
+// Returns: true | false
 ```
+
+**Parameters:**
+- `resourceId` (string): ID of the resource
+- `start` (number): Unix timestamp in milliseconds
+- `end` (number): Unix timestamp in milliseconds
+
+**Returns:** `boolean` - Whether the time range is available
+
+**Use Case:** Validating a specific time range before booking.
+
+---
 
 ### Resource Queries
 
+Browse available resources.
+
 #### `listResources`
 
+List all active resources for public booking.
+
+**Auth Required:** No
+
 ```typescript
-const resources = await ctx.runQuery(api.booking.listResources, {
-  organizationId: "org-1",  // optional
-  activeOnly: true,         // optional
+const resources = await ctx.runQuery(api.public.listResources, {
+  organizationId: "org-123",
+  type: "room", // Optional filter by resource type
 });
+// Returns: [
+//   { id: "studio-a", name: "Studio A", type: "room", timezone: "America/New_York", ... },
+//   ...
+// ]
 ```
+
+**Parameters:**
+- `organizationId` (string): Filter by organization
+- `type` (string, optional): Filter by resource type
+
+**Returns:** Array of active resource objects
+
+**Note:** Public API only returns active resources. Use Admin API to see inactive ones.
+
+---
 
 #### `getResource`
 
+Get details for a single resource.
+
+**Auth Required:** No
+
 ```typescript
-const resource = await ctx.runQuery(api.booking.getResource, {
-  resourceId: "studio-a",
+const resource = await ctx.runQuery(api.public.getResource, {
+  id: "studio-a",
 });
+// Returns: { id: "studio-a", name: "Studio A", type: "room", ... }
 ```
+
+**Parameters:**
+- `id` (string): Resource ID
+
+**Returns:** Resource object or `null` if not found
+
+---
 
 ### Event Type Queries
 
+Browse available event types.
+
 #### `listEventTypes`
 
+List all active event types.
+
+**Auth Required:** No
+
 ```typescript
-const eventTypes = await ctx.runQuery(api.booking.listEventTypes, {
-  organizationId: "org-1",  // optional
-  activeOnly: true,         // optional
+const eventTypes = await ctx.runQuery(api.public.listEventTypes, {
+  organizationId: "org-123", // Optional
 });
+// Returns: [
+//   { id: "studio-session", slug: "studio", title: "Studio Session", lengthInMinutes: 60, ... },
+//   ...
+// ]
 ```
+
+**Parameters:**
+- `organizationId` (string, optional): Filter by organization
+
+**Returns:** Array of active event type objects
+
+---
 
 #### `getEventType`
 
+Get details for a single event type by ID.
+
+**Auth Required:** No
+
 ```typescript
-const eventType = await ctx.runQuery(api.booking.getEventType, {
+const eventType = await ctx.runQuery(api.public.getEventType, {
   eventTypeId: "studio-session",
 });
 ```
 
-## Mutations
+**Returns:** Event type object or `null` if not found
+
+---
+
+#### `getEventTypeBySlug`
+
+Get event type by URL slug (for booking pages).
+
+**Auth Required:** No
+
+```typescript
+const eventType = await ctx.runQuery(api.public.getEventTypeBySlug, {
+  slug: "studio",
+});
+```
+
+**Returns:** Event type object or `null` if not found
+
+---
+
+#### `getEventTypesForResource`
+
+Get all event types linked to a specific resource.
+
+**Auth Required:** No
+
+```typescript
+const eventTypes = await ctx.runQuery(api.public.getEventTypesForResource, {
+  resourceId: "studio-a",
+});
+```
+
+**Returns:** Array of event type objects linked to the resource
+
+---
+
+### Presence System
+
+Real-time slot locking to prevent double-booking during selection.
+
+#### `getDatePresence`
+
+Get all active presence holds for a date. Used by frontend to filter out slots being selected by other users.
+
+**Auth Required:** No
+
+```typescript
+const presence = await ctx.runQuery(api.public.getDatePresence, {
+  resourceId: "studio-a",
+  date: "2025-01-15",
+});
+// Returns: [
+//   { slot: "2025-01-15T10:00:00.000Z", user: "session-abc123" },
+//   ...
+// ]
+```
+
+**Parameters:**
+- `resourceId` (string): Resource ID
+- `date` (string): ISO date string (YYYY-MM-DD)
+
+**Returns:** Array of presence objects showing which slots are held
+
+**Use Case:** Frontend filters out reserved slots and shows them as "Reserved" to other users.
+
+---
+
+#### `heartbeat`
+
+Maintain a slot hold by sending periodic heartbeats. Called every 5 seconds while user is selecting a slot.
+
+**Auth Required:** No (uses client-generated session ID)
+
+```typescript
+await ctx.runMutation(api.public.heartbeat, {
+  resourceId: "studio-a",
+  slots: ["2025-01-15T10:00:00.000Z", "2025-01-15T11:00:00.000Z"],
+  user: "session-abc123", // Client-generated session ID
+});
+```
+
+**Parameters:**
+- `resourceId` (string): Resource ID
+- `slots` (string[]): Array of ISO timestamp strings to hold
+- `user` (string): Client-generated unique session ID
+
+**Note:** Holds expire after 10 seconds of inactivity. The frontend hook handles this automatically.
+
+---
+
+#### `leave`
+
+Release slot holds when user navigates away or deselects.
+
+**Auth Required:** No
+
+```typescript
+await ctx.runMutation(api.public.leave, {
+  resourceId: "studio-a",
+  slots: ["2025-01-15T10:00:00.000Z"],
+  user: "session-abc123",
+});
+```
+
+**Parameters:**
+- `resourceId` (string): Resource ID
+- `slots` (string[]): Array of slot timestamps to release
+- `user` (string): Session ID that holds the slots
+
+---
 
 ### Booking Mutations
+
+Create and retrieve bookings.
 
 #### `createBooking`
 
 Create a new booking.
 
+<Callout type="warning">
+  **Authentication Required**: Users must be signed in to create bookings. The booker information is automatically filled from the authenticated user's profile.
+</Callout>
+
 ```typescript
-const booking = await ctx.runMutation(api.booking.createBooking, {
-  resourceId: "studio-a",
+const booking = await ctx.runMutation(api.public.createBooking, {
   eventTypeId: "studio-session",
-  start: 1705312800000,  // Unix timestamp
-  end: 1705316400000,    // Unix timestamp
-  timezone: "Europe/Berlin",
-  attendee: {
+  resourceId: "studio-a",
+  start: 1705312800000,  // Unix timestamp (ms)
+  end: 1705316400000,    // Unix timestamp (ms)
+  timezone: "America/New_York",
+  location: {
+    type: "inPerson",
+    value: "123 Main St", // Optional
+  },
+  booker: { // Optional - auto-filled from authenticated user if omitted
     name: "John Doe",
     email: "john@example.com",
+    phone: "+1234567890", // Optional
+    notes: "Looking forward to it!", // Optional
   },
-  notes: "Looking forward to it!",  // optional
 });
+// Returns: { bookingId, uid, status, ... }
 ```
 
-#### `cancelBooking`
+**Parameters:**
+- `eventTypeId` (string): ID of the event type
+- `resourceId` (string): ID of the resource to book
+- `start` (number): Unix timestamp in milliseconds
+- `end` (number): Unix timestamp in milliseconds
+- `timezone` (string): IANA timezone (e.g., "America/New_York")
+- `location` (object): Location information
+  - `type` (string): Location type (e.g., "inPerson", "phone", "link")
+  - `value` (string, optional): Location details
+- `booker` (object, optional): Booker information (auto-filled from user if omitted)
+  - `name` (string): Full name
+  - `email` (string): Email address
+  - `phone` (string, optional): Phone number
+  - `notes` (string, optional): Booking notes
+
+**Returns:** Booking object with `bookingId`, `uid` (confirmation code), and `status`
+
+**Behavior:**
+- If `booker` is omitted, automatically fills from authenticated user's name and email
+- Sends confirmation email if Resend is configured
+- Transitions to "confirmed" status immediately (or "pending" if `requiresConfirmation` is true on the event type)
+
+---
+
+#### `getBooking`
+
+Get booking details by ID.
+
+**Auth Required:** No (booking ID acts as a secret)
 
 ```typescript
-await ctx.runMutation(api.booking.cancelBooking, {
+const booking = await ctx.runQuery(api.public.getBooking, {
   bookingId: "booking-123",
 });
 ```
 
-### Resource Mutations
+**Returns:** Booking object or `null` if not found
+
+---
+
+#### `getBookingByUid`
+
+Get booking by confirmation code (UID).
+
+**Auth Required:** No
+
+```typescript
+const booking = await ctx.runQuery(api.public.getBookingByUid, {
+  uid: "abc123def456",
+});
+```
+
+**Parameters:**
+- `uid` (string): Unique confirmation code
+
+**Returns:** Booking object or `null` if not found
+
+**Use Case:** Displaying booking confirmation page via URL like `/booking/abc123def456`.
+
+---
+
+## Admin API
+
+The Admin API (`convex/admin.ts`) provides management operations for resources, event types, schedules, and bookings. All operations require authentication and admin role.
+
+<Callout type="warning">
+  **Admin Access Required**: All operations in this section require authentication AND admin privileges. Unauthorized requests will throw `FORBIDDEN` errors.
+</Callout>
+
+### Resource Management
+
+CRUD operations for resources.
+
+#### `listResources`
+
+List all resources, including inactive ones.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+const resources = await ctx.runQuery(api.admin.listResources, {
+  organizationId: "org-123",
+  type: "room", // Optional filter
+  activeOnly: false, // Show inactive resources
+});
+```
+
+**Parameters:**
+- `organizationId` (string): Organization ID
+- `type` (string, optional): Filter by resource type
+- `activeOnly` (boolean, optional): Filter to active only (default: false)
+
+**Returns:** Array of all resource objects
+
+**Difference from Public API:** Admin API shows inactive resources.
+
+---
 
 #### `createResource`
 
+Create a new resource.
+
+**Auth Required:** Yes (Admin)
+
 ```typescript
-await ctx.runMutation(api.booking.createResource, {
+const resourceId = await ctx.runMutation(api.admin.createResource, {
   id: "studio-b",
+  organizationId: "org-123",
   name: "Studio B",
   type: "room",
-  timezone: "Europe/Berlin",
-  organizationId: "org-1",
+  description: "Large recording studio", // Optional
+  timezone: "America/New_York",
+  quantity: 1, // Optional: Number of identical units
+  isFungible: false, // Optional: Whether units are interchangeable
+  isStandalone: true, // Optional: Can be booked directly
+  isActive: true, // Optional: Default true
 });
 ```
+
+**Parameters:**
+- `id` (string): Unique resource identifier (kebab-case recommended)
+- `organizationId` (string): Organization ID
+- `name` (string): Display name
+- `type` (string): Resource type (e.g., "room", "equipment")
+- `description` (string, optional): Description
+- `timezone` (string): IANA timezone
+- `quantity` (number, optional): Number of identical units (default: 1)
+- `isFungible` (boolean, optional): Whether units are interchangeable (default: false)
+- `isStandalone` (boolean, optional): Can be booked directly (default: true)
+- `isActive` (boolean, optional): Active status (default: true)
+
+**Returns:** Resource ID
+
+---
 
 #### `updateResource`
 
+Update an existing resource.
+
+**Auth Required:** Yes (Admin)
+
 ```typescript
-await ctx.runMutation(api.booking.updateResource, {
+await ctx.runMutation(api.admin.updateResource, {
   id: "studio-b",
-  name: "Studio B (Large)",
-  isActive: true,
+  name: "Studio B (Large)", // All fields optional
+  isActive: false,
 });
 ```
 
+**Parameters:**
+- `id` (string): Resource ID
+- All other fields from `createResource` are optional
+
+**Returns:** Updated resource ID
+
+---
+
+#### `deleteResource`
+
+Delete a resource permanently.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+await ctx.runMutation(api.admin.deleteResource, {
+  id: "studio-b",
+});
+```
+
+**Parameters:**
+- `id` (string): Resource ID
+
+**Warning:** This permanently deletes the resource and all associated data.
+
+---
+
+#### `toggleResourceActive`
+
+Toggle resource active status.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+await ctx.runMutation(api.admin.toggleResourceActive, {
+  id: "studio-b",
+  isActive: false,
+});
+```
+
+**Parameters:**
+- `id` (string): Resource ID
+- `isActive` (boolean): New active status
+
+---
+
+### Event Type Management
+
+CRUD operations for event types.
+
+#### `listEventTypes`
+
+List all event types, including inactive ones.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+const eventTypes = await ctx.runQuery(api.admin.listEventTypes, {
+  organizationId: "org-123", // Optional
+  activeOnly: false, // Show inactive event types
+});
+```
+
+---
+
+#### `createEventType`
+
+Create a new event type.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+const eventTypeId = await ctx.runMutation(api.admin.createEventType, {
+  id: "studio-session",
+  slug: "studio",
+  title: "Studio Session",
+  lengthInMinutes: 60,
+  lengthInMinutesOptions: [60, 120, 300], // Optional: Multiple duration options
+  slotInterval: 30, // Optional: Time between slots
+  description: "Professional recording session", // Optional
+  timezone: "America/New_York",
+  lockTimeZoneToggle: false,
+  locations: [
+    {
+      type: "inPerson",
+      address: "123 Main St",
+      public: true,
+    },
+  ],
+  organizationId: "org-123", // Optional
+  scheduleId: "business-hours", // Optional: Default schedule
+  bufferBefore: 15, // Optional: Buffer before booking (minutes)
+  bufferAfter: 15, // Optional: Buffer after booking (minutes)
+  minNoticeMinutes: 1440, // Optional: Min time before booking (24h)
+  maxFutureMinutes: 43200, // Optional: Max booking window (30 days)
+  requiresConfirmation: false, // Optional: Requires admin approval
+  isActive: true, // Optional: Default true
+});
+```
+
+**Parameters:**
+- `id` (string): Unique identifier
+- `slug` (string): URL-friendly slug
+- `title` (string): Display title
+- `lengthInMinutes` (number): Default duration
+- `lengthInMinutesOptions` (number[], optional): Multiple duration options
+- `slotInterval` (number, optional): Time between available slots
+- `description` (string, optional): Description
+- `timezone` (string): IANA timezone
+- `lockTimeZoneToggle` (boolean): Whether timezone is locked
+- `locations` (array): Available location options
+- `organizationId` (string, optional): Organization ID
+- `scheduleId` (string, optional): Default schedule
+- `bufferBefore` (number, optional): Buffer before booking (minutes)
+- `bufferAfter` (number, optional): Buffer after booking (minutes)
+- `minNoticeMinutes` (number, optional): Minimum notice period
+- `maxFutureMinutes` (number, optional): Maximum booking window
+- `requiresConfirmation` (boolean, optional): Requires admin approval
+- `isActive` (boolean, optional): Active status
+
+**Returns:** Event type ID
+
+---
+
+#### `updateEventType`
+
+Update an existing event type.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+await ctx.runMutation(api.admin.updateEventType, {
+  id: "studio-session",
+  title: "Professional Studio Session", // All fields optional
+  lengthInMinutes: 90,
+});
+```
+
+---
+
+#### `deleteEventType`
+
+Delete an event type permanently.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+await ctx.runMutation(api.admin.deleteEventType, {
+  id: "studio-session",
+});
+```
+
+---
+
+### Schedule Management
+
+CRUD operations for availability schedules.
+
+#### `listSchedules`
+
+List all schedules for an organization.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+const schedules = await ctx.runQuery(api.admin.listSchedules, {
+  organizationId: "org-123",
+});
+```
+
+---
+
+#### `getSchedule`
+
+Get schedule details by ID.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+const schedule = await ctx.runQuery(api.admin.getSchedule, {
+  id: "business-hours",
+});
+// Returns: {
+//   id: "business-hours",
+//   name: "Business Hours",
+//   timezone: "America/New_York",
+//   isDefault: true,
+//   weeklyHours: [
+//     { dayOfWeek: 1, startTime: "09:00", endTime: "17:00" },
+//     ...
+//   ]
+// }
+```
+
+---
+
+#### `createSchedule`
+
+Create a new availability schedule.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+const scheduleId = await ctx.runMutation(api.admin.createSchedule, {
+  id: "business-hours",
+  organizationId: "org-123",
+  name: "Business Hours",
+  timezone: "America/New_York",
+  isDefault: true, // Optional: Set as default for organization
+  weeklyHours: [
+    { dayOfWeek: 1, startTime: "09:00", endTime: "17:00" }, // Monday
+    { dayOfWeek: 2, startTime: "09:00", endTime: "17:00" }, // Tuesday
+    { dayOfWeek: 3, startTime: "09:00", endTime: "17:00" }, // Wednesday
+    { dayOfWeek: 4, startTime: "09:00", endTime: "17:00" }, // Thursday
+    { dayOfWeek: 5, startTime: "09:00", endTime: "17:00" }, // Friday
+  ],
+});
+```
+
+**Parameters:**
+- `id` (string): Unique schedule identifier
+- `organizationId` (string): Organization ID
+- `name` (string): Display name
+- `timezone` (string): IANA timezone
+- `isDefault` (boolean, optional): Set as default schedule
+- `weeklyHours` (array): Weekly availability windows
+  - `dayOfWeek` (number): Day (0=Sunday, 1=Monday, ..., 6=Saturday)
+  - `startTime` (string): Start time (HH:MM format)
+  - `endTime` (string): End time (HH:MM format)
+
+---
+
+#### `updateSchedule`
+
+Update an existing schedule.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+await ctx.runMutation(api.admin.updateSchedule, {
+  id: "business-hours",
+  name: "Extended Hours", // All fields optional
+  weeklyHours: [
+    { dayOfWeek: 1, startTime: "08:00", endTime: "20:00" },
+    // ...
+  ],
+});
+```
+
+---
+
+#### `deleteSchedule`
+
+Delete a schedule.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+await ctx.runMutation(api.admin.deleteSchedule, {
+  id: "business-hours",
+});
+```
+
+---
+
+### Booking Administration
+
+Manage bookings and view history.
+
+#### `listBookings`
+
+List all bookings with optional filters.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+const bookings = await ctx.runQuery(api.admin.listBookings, {
+  organizationId: "org-123", // Optional
+  resourceId: "studio-a", // Optional
+  status: "confirmed", // Optional: Filter by status
+  dateFrom: 1705312800000, // Optional: Unix timestamp
+  dateTo: 1705399200000, // Optional: Unix timestamp
+  eventTypeId: "studio-session", // Optional
+  limit: 50, // Optional: Max results
+});
+```
+
+---
+
+#### `getBooking`
+
+Get booking details.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+const booking = await ctx.runQuery(api.admin.getBooking, {
+  bookingId: "booking-123",
+});
+```
+
+---
+
+#### `transitionBookingState`
+
+Transition booking to a new state (confirm, decline, cancel, complete).
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+await ctx.runMutation(api.admin.transitionBookingState, {
+  bookingId: "booking-123",
+  toStatus: "confirmed", // Or "declined", "cancelled", "completed"
+  reason: "Approved by manager", // Optional
+});
+```
+
+**Parameters:**
+- `bookingId` (string): Booking ID
+- `toStatus` (string): Target status ("confirmed", "declined", "cancelled", "completed")
+- `reason` (string, optional): Reason for state transition
+
+**Note:** State transitions are tracked in booking history with the admin's user ID.
+
+---
+
+#### `confirmBooking`
+
+Approve a pending booking (shorthand for `transitionBookingState`).
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+await ctx.runMutation(api.admin.confirmBooking, {
+  bookingId: "booking-123",
+  reason: "Approved", // Optional
+});
+```
+
+---
+
+#### `declineBooking`
+
+Reject a pending booking.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+await ctx.runMutation(api.admin.declineBooking, {
+  bookingId: "booking-123",
+  reason: "Resource unavailable", // Optional
+});
+```
+
+---
+
+#### `getBookingHistory`
+
+Get state transition history for a booking.
+
+**Auth Required:** Yes (Admin)
+
+```typescript
+const history = await ctx.runQuery(api.admin.getBookingHistory, {
+  bookingId: "booking-123",
+});
+// Returns: [
+//   { timestamp: 1705312800000, fromStatus: null, toStatus: "pending", changedBy: "user-123" },
+//   { timestamp: 1705316400000, fromStatus: "pending", toStatus: "confirmed", changedBy: "admin-456" },
+//   ...
+// ]
+```
+
+---
+
 ## Frontend Hooks
+
+ConvexBooking provides React hooks for common booking flows.
 
 ### `useSlotHold`
 
@@ -210,35 +1068,91 @@ Manages real-time presence for slot locking. Automatically sends heartbeats whil
 ```typescript
 import { useSlotHold } from "@/lib/hooks/use-slot-hold";
 
-const { isHolding, error } = useSlotHold({
-  resourceId: "studio-a",
-  slot: selectedSlot,      // ISO timestamp string
-  duration: 60,            // minutes
-  slotInterval: 60,        // minutes
-  enabled: !!selectedSlot, // only hold when slot is selected
-});
+function BookingFlow() {
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [duration, setDuration] = useState(60);
+
+  const { isHolding, error } = useSlotHold({
+    resourceId: "studio-a",
+    slot: selectedSlot,      // ISO timestamp string
+    duration: duration,      // minutes
+    slotInterval: 60,        // minutes
+    enabled: !!selectedSlot, // Only hold when slot is selected
+  });
+
+  return (
+    <div>
+      {isHolding && <Badge>Holding slot...</Badge>}
+      {error && <Alert>{error}</Alert>}
+    </div>
+  );
+}
 ```
+
+**Parameters:**
+- `resourceId` (string): Resource ID
+- `slot` (string | null): ISO timestamp of selected slot
+- `duration` (number): Booking duration in minutes
+- `slotInterval` (number): Time between slots
+- `enabled` (boolean): Whether to hold the slot
+
+**Behavior:**
+- Sends heartbeat every 5 seconds
+- Automatically releases hold on unmount
+- Handles multi-slot bookings (e.g., 5-hour duration spans multiple slot intervals)
+
+---
 
 ### `useConvexSlots`
 
-Fetches and processes time slots with presence awareness.
+Fetches and processes time slots with presence awareness. Splits slots into available and reserved.
 
 ```typescript
 import { useConvexSlots } from "@/lib/hooks/use-convex-slots";
 
-const {
-  availableSlots,  // Slots not held by others
-  reservedSlots,   // Slots held by others (shown as "Reserved")
-  isLoading,
-} = useConvexSlots({
-  resourceId: "studio-a",
-  eventTypeId: "studio-session",
-  date: selectedDate,
-  duration: 60,
-  slotInterval: 60,
-  timezone: "Europe/Berlin",
-});
+function TimeSlotPicker() {
+  const {
+    availableSlots,  // Slots not held by others
+    reservedSlots,   // Slots held by others (shown as "Reserved")
+    isLoading,
+  } = useConvexSlots({
+    resourceId: "studio-a",
+    eventTypeId: "studio-session",
+    date: selectedDate,
+    duration: 60,
+    slotInterval: 60,
+    timezone: "America/New_York",
+  });
+
+  return (
+    <div>
+      {availableSlots.map(slot => (
+        <Button key={slot.slot}>{slot.formatted}</Button>
+      ))}
+      {reservedSlots.map(slot => (
+        <Button key={slot.slot} disabled>Reserved</Button>
+      ))}
+    </div>
+  );
+}
 ```
+
+**Parameters:**
+- `resourceId` (string): Resource ID
+- `eventTypeId` (string): Event type ID
+- `date` (string): ISO date string (YYYY-MM-DD)
+- `duration` (number): Booking duration in minutes
+- `slotInterval` (number): Time between slots
+- `timezone` (string): IANA timezone
+
+**Returns:**
+- `availableSlots`: Slots not held by others
+- `reservedSlots`: Slots held by others (temporary holds)
+- `isLoading`: Loading state
+
+**Key Feature:** Automatically filters out slots held by other users in real-time, preventing double-booking.
+
+---
 
 ### `useBookingValidation`
 
@@ -247,14 +1161,39 @@ Validates that the selected resource and event type still exist and are active.
 ```typescript
 import { useBookingValidation } from "@/lib/hooks/use-booking-validation";
 
-const validation = useBookingValidation({
-  resourceId: "studio-a",
-  eventTypeId: "studio-session",
-});
+function BookingPage() {
+  const validation = useBookingValidation({
+    resourceId: "studio-a",
+    eventTypeId: "studio-session",
+  });
 
-if (validation.status === "error") {
-  // Show error dialog with validation.error
+  if (validation.status === "loading") {
+    return <Skeleton />;
+  }
+
+  if (validation.status === "error") {
+    return (
+      <Alert variant="destructive">
+        {validation.error}
+      </Alert>
+    );
+  }
+
+  return <Booker {...validation.data} />;
 }
 ```
+
+**Parameters:**
+- `resourceId` (string): Resource ID
+- `eventTypeId` (string): Event type ID
+
+**Returns:**
+- `status`: "loading" | "error" | "success"
+- `error`: Error message if validation fails
+- `data`: Validated resource and event type objects
+
+**Use Case:** Ensuring the booking page is still valid before allowing user to proceed.
+
+---
 
 </DocPage>
