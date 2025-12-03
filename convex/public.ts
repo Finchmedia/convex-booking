@@ -283,6 +283,12 @@ export const createBooking = publicMutation({
       timezone: args.timezone,
       booker,
       location: args.location,
+      resendOptions: process.env.RESEND_API_KEY
+        ? {
+            apiKey: process.env.RESEND_API_KEY,
+            fromEmail: process.env.RESEND_FROM_EMAIL,
+          }
+        : undefined,
     });
   },
 });

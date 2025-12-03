@@ -122,6 +122,7 @@ export declare const components: {
           bookingId: string;
           changedBy?: string;
           reason?: string;
+          resendOptions?: { apiKey: string; fromEmail?: string };
           toStatus: string;
         },
         any
@@ -143,7 +144,12 @@ export declare const components: {
       cancelMultiResourceBooking: FunctionReference<
         "mutation",
         "internal",
-        { bookingId: string; cancelledBy?: string; reason?: string },
+        {
+          bookingId: string;
+          cancelledBy?: string;
+          reason?: string;
+          resendOptions?: { apiKey: string; fromEmail?: string };
+        },
         any
       >;
       checkMultiResourceAvailability: FunctionReference<
@@ -170,6 +176,7 @@ export declare const components: {
           eventTypeId: string;
           location?: { type: string; value?: string };
           organizationId?: string;
+          resendOptions?: { apiKey: string; fromEmail?: string };
           resources: Array<{ quantity?: number; resourceId: string }>;
           start: number;
           timezone: string;
@@ -225,7 +232,10 @@ export declare const components: {
       cancelReservation: FunctionReference<
         "mutation",
         "internal",
-        { reservationId: string },
+        {
+          resendOptions?: { apiKey: string; fromEmail?: string };
+          reservationId: string;
+        },
         any
       >;
       createBooking: FunctionReference<
@@ -241,6 +251,7 @@ export declare const components: {
           end: number;
           eventTypeId: string;
           location: { type: string; value?: string };
+          resendOptions?: { apiKey: string; fromEmail?: string };
           resourceId: string;
           start: number;
           timezone: string;
@@ -279,7 +290,13 @@ export declare const components: {
       createReservation: FunctionReference<
         "mutation",
         "internal",
-        { actorId: string; end: number; resourceId: string; start: number },
+        {
+          actorId: string;
+          end: number;
+          resendOptions?: { apiKey: string; fromEmail?: string };
+          resourceId: string;
+          start: number;
+        },
         any
       >;
       deleteEventType: FunctionReference<
