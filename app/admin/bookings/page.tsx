@@ -36,13 +36,14 @@ import { Input } from "@/components/ui/input";
 import { CalendarDays, Check, X, Clock, Mail, Phone, User } from "lucide-react";
 import { toast } from "sonner";
 
-type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed";
+type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "declined";
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "All Bookings" },
   { value: "pending", label: "Pending" },
   { value: "confirmed", label: "Confirmed" },
   { value: "cancelled", label: "Cancelled" },
+  { value: "declined", label: "Declined" },
   { value: "completed", label: "Completed" },
 ];
 
@@ -55,18 +56,25 @@ export default function BookingsPage() {
     status: statusFilter === "all" ? undefined : statusFilter,
   });
 
-  const transitionState = useMutation(api.admin.transitionBookingState);
+  const confirmBooking = useMutation(api.admin.confirmBooking);
+  const declineBooking = useMutation(api.admin.declineBooking);
   const cancelBooking = useMutation(api.admin.cancelReservation);
 
   const handleConfirm = async (bookingId: string) => {
     try {
-      await transitionState({
-        bookingId,
-        toStatus: "confirmed",
-      });
+      await confirmBooking({ bookingId });
       toast.success("Booking confirmed");
     } catch (error: any) {
       toast.error(error.message || "Failed to confirm booking");
+    }
+  };
+
+  const handleDecline = async (bookingId: string) => {
+    try {
+      await declineBooking({ bookingId });
+      toast.success("Booking declined");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to decline booking");
     }
   };
 
@@ -78,6 +86,8 @@ export default function BookingsPage() {
       toast.error(error.message || "Failed to cancel booking");
     }
   };
+
+  const transitionState = useMutation(api.admin.transitionBookingState);
 
   const handleComplete = async (bookingId: string) => {
     try {
@@ -101,6 +111,7 @@ export default function BookingsPage() {
       confirmed: "default",
       pending: "secondary",
       cancelled: "destructive",
+      declined: "destructive",
       completed: "outline",
     };
     return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
@@ -241,7 +252,7 @@ export default function BookingsPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleCancel(booking._id)}
+                                onClick={() => handleDecline(booking._id)}
                               >
                                 <X className="h-4 w-4" />
                               </Button>
@@ -351,7 +362,7 @@ export default function BookingsPage() {
                     <Button
                       variant="outline"
                       onClick={() => {
-                        handleCancel(selectedBooking._id);
+                        handleDecline(selectedBooking._id);
                         setShowDetailModal(false);
                       }}
                     >
