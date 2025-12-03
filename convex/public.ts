@@ -14,6 +14,7 @@ import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { publicQuery, publicMutation } from "./functions";
 import { query, mutation } from "./_generated/server";
+import { authKit } from "./authClient";
 
 // ============================================
 // RESOURCES (Public Read)
@@ -327,5 +328,21 @@ export const getEffectiveAvailability = publicQuery({
       components.booking.schedules.getEffectiveAvailability,
       args
     );
+  },
+});
+
+// ============================================
+// USER (WorkOS AuthKit Integration)
+// ============================================
+
+/**
+ * Get the current authenticated user's profile
+ * Returns synced user data from WorkOS AuthKit component
+ * Returns null if not authenticated
+ */
+export const getCurrentUser = query({
+  args: {},
+  handler: async (ctx) => {
+    return await authKit.getAuthUser(ctx);
   },
 });

@@ -37,6 +37,9 @@ export default function ResourceBookingPage() {
     resourceId,
   });
 
+  // Fetch current authenticated user for form prefilling
+  const currentUser = useQuery(api.public.getCurrentUser);
+
   // Auto-select event type when returning from auth with pending booking
   useEffect(() => {
     if (pendingEventTypeId && eventTypes && !selectedEventType) {
@@ -131,6 +134,11 @@ export default function ResourceBookingPage() {
                 title={resource.name}
                 description={selectedEventType.description || resource.description}
                 organizerName="Studio Team"
+                currentUser={currentUser ? {
+                  name: `${currentUser.firstName ?? ""} ${currentUser.lastName ?? ""}`.trim() || undefined,
+                  email: currentUser.email,
+                  avatarUrl: currentUser.profilePictureUrl ?? undefined,
+                } : undefined}
                 onBookingComplete={(booking) => {
                   console.log("Booking completed:", booking);
                 }}

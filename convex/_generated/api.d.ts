@@ -9,7 +9,9 @@
  */
 
 import type * as admin from "../admin.js";
+import type * as authClient from "../authClient.js";
 import type * as functions from "../functions.js";
+import type * as http from "../http.js";
 import type * as public_ from "../public.js";
 import type * as seed from "../seed.js";
 
@@ -21,7 +23,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
+  authClient: typeof authClient;
   functions: typeof functions;
+  http: typeof http;
   public: typeof public_;
   seed: typeof seed;
 }>;
@@ -53,6 +57,43 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
+  workOSAuthKit: {
+    lib: {
+      enqueueWebhookEvent: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          apiKey: string;
+          event: string;
+          eventId: string;
+          eventTypes?: Array<string>;
+          logLevel?: "DEBUG";
+          onEventHandle?: string;
+          updatedAt?: string;
+        },
+        any
+      >;
+      getAuthUser: FunctionReference<
+        "query",
+        "internal",
+        { id: string },
+        {
+          createdAt: string;
+          email: string;
+          emailVerified: boolean;
+          externalId?: null | string;
+          firstName?: null | string;
+          id: string;
+          lastName?: null | string;
+          lastSignInAt?: null | string;
+          locale?: null | string;
+          metadata: Record<string, any>;
+          profilePictureUrl?: null | string;
+          updatedAt: string;
+        } | null
+      >;
+    };
+  };
   booking: {
     hooks: {
       getBookingHistory: FunctionReference<

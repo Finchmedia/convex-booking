@@ -765,6 +765,157 @@ This is not just app logic—it's a **reusable Convex component** (`@convex-dev/
 
 ---
 
+## 📦 Convex Components Ecosystem (December 2025)
+
+### Component Architecture Overview
+
+Convex supports **composable components** - self-contained packages with their own schemas, tables, and functions that can be nested within each other.
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         APP (convexbooking)                          │
+│                         convex/convex.config.ts                      │
+│                                                                      │
+│    app.use(workOSAuthKit)              app.use(booking)              │
+│           ↓                                   ↓                      │
+│    ┌─────────────────┐              ┌─────────────────────────┐     │
+│    │     WorkOS      │              │     Booking Component    │     │
+│    │  (NPM package)  │              │      (NPM package)      │     │
+│    │  @convex-dev/   │              │     @mrfinch/booking    │     │
+│    │  workos-authkit │              │                         │     │
+│    │                 │              │  component.use(resend)  │     │
+│    │  Own tables:    │              │          ↓              │     │
+│    │  • users        │              │   ┌─────────────┐       │     │
+│    │  • webhooks     │              │   │   Resend    │       │     │
+│    └─────────────────┘              │   │  (nested)   │       │     │
+│                                     │   └─────────────┘       │     │
+│                                     │                         │     │
+│                                     │  Hooks → Emails:        │     │
+│                                     │  • booking.created      │     │
+│                                     │  • booking.cancelled    │     │
+│                                     └─────────────────────────┘     │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Concepts
+
+| Concept | Definition | Example |
+|---------|------------|---------|
+| **NPM Component** | Installed via `npm install`, self-contained with own tables | `@convex-dev/workos-authkit`, `@mrfinch/booking` |
+| **Local/Sibling Component** | Defined next to `convex/` folder in same repo | Custom component in project |
+| **Component Nesting** | `component.use()` for embedding components within components | Resend inside Booking |
+| **App Mounting** | `app.use()` for mounting NPM components at app level | Both WorkOS and Booking at Level 1 |
+
+### Nesting Levels
+
+```
+Level 0: App (defineApp)
+├─ convex/convex.config.ts
+├─ Uses: app.use(component)
+└─ Mounts NPM components
+
+Level 1: NPM Components (direct mount)
+├─ @convex-dev/workos-authkit
+├─ @mrfinch/booking
+└─ Each has own tables, isolated from app schema
+
+Level 2+: Nested Components (component.use)
+├─ @convex-dev/resend (inside booking)
+└─ Tables isolated within parent component
+```
+
+### Component Configuration Files
+
+**App Level (`convex/convex.config.ts`):**
+```typescript
+import { defineApp } from "convex/server";
+import workOSAuthKit from "@convex-dev/workos-authkit/convex.config";
+import booking from "@mrfinch/booking/convex.config";
+
+const app = defineApp();
+app.use(workOSAuthKit);
+app.use(booking);
+
+export default app;
+```
+
+**Component Level (`src/component/convex.config.ts`):**
+```typescript
+import { defineComponent } from "convex/server";
+import resend from "@convex-dev/resend/convex.config.js";
+
+const component = defineComponent("booking");
+component.use(resend);  // Nesting!
+
+export default component;
+```
+
+### Accessing Nested Component APIs
+
+**From component code:**
+```typescript
+import { components } from "./_generated/api";
+
+// Access nested Resend component
+const resend = new Resend(components.resend, { testMode: false });
+await resend.sendEmail(ctx, { from, to, subject, html });
+```
+
+**From app code:**
+```typescript
+import { components } from "./_generated/api";
+
+// Access first-level component
+const result = await ctx.runQuery(components.booking.resources.listResources, args);
+
+// For WorkOS AuthKit, use the client wrapper
+import { authKit } from "./authClient";
+const user = await authKit.getAuthUser(ctx);
+```
+
+### Component Development Workflow
+
+1. **Build component**: `npm run build` (uses `tsconfig.build.json`)
+2. **Generate types**: `npx convex codegen --component-dir ./src/component`
+3. **Pack**: `npm pack --ignore-scripts`
+4. **Install in app**: `npm install path/to/component-0.x.x.tgz`
+5. **Regenerate app types**: `npx convex dev` (runs once to sync)
+
+### WorkOS AuthKit Integration
+
+**Required Setup:**
+1. Install: `npm install @convex-dev/workos-authkit`
+2. Mount in `convex/convex.config.ts`
+3. Create `convex/authClient.ts`:
+   ```typescript
+   import { AuthKit } from "@convex-dev/workos-authkit";
+   import { components } from "./_generated/api";
+   export const authKit = new AuthKit(components.workOSAuthKit);
+   ```
+4. Create `convex/http.ts`:
+   ```typescript
+   import { httpRouter } from "convex/server";
+   import { authKit } from "./authClient";
+   const http = httpRouter();
+   authKit.registerRoutes(http);
+   export default http;
+   ```
+5. Configure webhook in WorkOS Dashboard:
+   - URL: `https://<deployment>.convex.site/workos/webhook`
+   - Events: `user.created`, `user.updated`, `user.deleted`
+   - Set `WORKOS_WEBHOOK_SECRET` env var
+
+### Key Learnings
+
+1. **Components are isolated**: Each component has its own database tables, invisible to parent/siblings
+2. **Type generation is critical**: Always run codegen after changing component structure
+3. **Webhooks for sync**: NPM components often use webhooks (HTTP routes) for external data sync
+4. **Import paths matter**: Use `.js` extensions for component imports due to ESM requirements
+5. **Build vs Typecheck**: Build (`tsc --project`) may succeed while typecheck (`tsc --noEmit`) fails - different configs
+
+---
+
 ## 📚 References & Inspiration
 
 - **Redis Bitmaps:** O(1) presence checking via bitmasks
@@ -802,4 +953,4 @@ This is not just app logic—it's a **reusable Convex component** (`@convex-dev/
 ---
 
 **Built with 🎵 for the future of booking systems**
-*Last Updated: November 26, 2025*
+*Last Updated: December 3, 2025*

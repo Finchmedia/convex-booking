@@ -14,6 +14,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@convex-dev/workos-authkit": "^0.1.4",
     "@hookform/resolvers": "^5.2.2",
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
