@@ -167,9 +167,9 @@ const generateSlug = (value: string) => {
 
 export function EventTypeForm({ eventType, availableResources, initialResourceIds }: EventTypeFormProps) {
   const router = useRouter();
-  const createEventType = useMutation(api.booking.createEventType);
-  const updateEventType = useMutation(api.booking.updateEventType);
-  const setResourcesForEventType = useMutation(api.booking.setResourcesForEventType);
+  const createEventType = useMutation(api.admin.createEventType);
+  const updateEventType = useMutation(api.admin.updateEventType);
+  const setResourcesForEventType = useMutation(api.admin.setResourcesForEventType);
 
   // Memoize default values to prevent re-renders
   const defaultValues = useMemo<EventTypeFormData>(() => ({

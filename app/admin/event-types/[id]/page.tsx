@@ -12,18 +12,18 @@ export default function EditEventTypePage() {
   const params = useParams();
   const eventTypeId = params.id as string;
 
-  const eventType = useQuery(api.booking.getEventType, {
+  const eventType = useQuery(api.admin.getEventType, {
     eventTypeId,
   });
 
   // Fetch all resources for the form
-  const allResources = useQuery(api.booking.listResources, {
+  const allResources = useQuery(api.admin.listResources, {
     organizationId: DEMO_ORG_ID,
     activeOnly: false,
   });
 
   // Fetch linked resource IDs for this event type
-  const linkedResourceIds = useQuery(api.booking.getResourceIdsForEventType, {
+  const linkedResourceIds = useQuery(api.admin.getResourceIdsForEventType, {
     eventTypeId,
   });
 

@@ -10,8 +10,8 @@ import { Calendar, CalendarDays, Clock, Users } from "lucide-react";
 import Link from "next/link";
 
 export default function DemoDashboard() {
-  const eventTypes = useQuery(api.booking.listEventTypes, {});
-  const bookings = useQuery(api.booking.listBookings, { limit: 10 });
+  const eventTypes = useQuery(api.admin.listEventTypes, {});
+  const bookings = useQuery(api.admin.listBookings, { limit: 10 });
 
   const stats = [
     {

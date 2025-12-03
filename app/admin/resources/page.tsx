@@ -76,14 +76,14 @@ export default function ResourcesPage() {
   });
 
   // Query resources for the demo organization
-  const resources = useQuery(api.booking.listResources, {
+  const resources = useQuery(api.admin.listResources, {
     organizationId: DEMO_ORG_ID,
   });
 
-  const createResource = useMutation(api.booking.createResource);
-  const updateResource = useMutation(api.booking.updateResource);
-  const deleteResource = useMutation(api.booking.deleteResource);
-  const toggleActive = useMutation(api.booking.toggleResourceActive);
+  const createResource = useMutation(api.admin.createResource);
+  const updateResource = useMutation(api.admin.updateResource);
+  const deleteResource = useMutation(api.admin.deleteResource);
+  const toggleActive = useMutation(api.admin.toggleResourceActive);
 
   const openCreateModal = () => {
     setFormData({
@@ -188,7 +188,7 @@ export default function ResourcesPage() {
 
   // Query presence count for pending toggle
   const presenceCount = useQuery(
-    api.booking.getActivePresenceCount,
+    api.admin.getActivePresenceCount,
     pendingToggle ? { resourceId: pendingToggle.id } : "skip"
   );
 

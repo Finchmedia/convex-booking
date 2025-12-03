@@ -74,13 +74,13 @@ export default function SchedulesPage() {
   });
 
   // Query schedules for the demo organization
-  const schedules = useQuery(api.booking.listSchedules, {
+  const schedules = useQuery(api.admin.listSchedules, {
     organizationId: DEMO_ORG_ID,
   });
 
-  const createSchedule = useMutation(api.booking.createSchedule);
-  const updateSchedule = useMutation(api.booking.updateSchedule);
-  const deleteSchedule = useMutation(api.booking.deleteSchedule);
+  const createSchedule = useMutation(api.admin.createSchedule);
+  const updateSchedule = useMutation(api.admin.updateSchedule);
+  const deleteSchedule = useMutation(api.admin.deleteSchedule);
 
   const openCreateModal = () => {
     setFormData({

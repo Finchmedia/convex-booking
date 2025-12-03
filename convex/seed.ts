@@ -1,12 +1,12 @@
 import { internalMutation } from "./_generated/server";
-import { api } from "./_generated/api";
+import { components } from "./_generated/api";
 
 export const seedDemoData = internalMutation(async (ctx) => {
   const orgId = "demo-org";
   const tz = "Europe/Berlin";
 
   // 1. Create Schedule
-  await ctx.runMutation(api.booking.createSchedule, {
+  await ctx.runMutation(components.booking.schedules.createSchedule, {
     id: "business-hours",
     organizationId: orgId,
     name: "Business Hours",
@@ -22,7 +22,7 @@ export const seedDemoData = internalMutation(async (ctx) => {
   });
 
   // 2. Create Resources
-  await ctx.runMutation(api.booking.createResource, {
+  await ctx.runMutation(components.booking.resources.createResource, {
     id: "studio-a",
     organizationId: orgId,
     name: "StudioA",
@@ -34,7 +34,7 @@ export const seedDemoData = internalMutation(async (ctx) => {
     isActive: true,
   });
 
-  await ctx.runMutation(api.booking.createResource, {
+  await ctx.runMutation(components.booking.resources.createResource, {
     id: "studio-b",
     organizationId: orgId,
     name: "StudioB",
@@ -46,7 +46,7 @@ export const seedDemoData = internalMutation(async (ctx) => {
     isActive: true,
   });
 
-  await ctx.runMutation(api.booking.createResource, {
+  await ctx.runMutation(components.booking.resources.createResource, {
     id: "sm7b",
     organizationId: orgId,
     name: "Shure SM7b",
@@ -59,7 +59,7 @@ export const seedDemoData = internalMutation(async (ctx) => {
     isActive: true,
   });
 
-  await ctx.runMutation(api.booking.createResource, {
+  await ctx.runMutation(components.booking.resources.createResource, {
     id: "keyboard-fp88",
     organizationId: orgId,
     name: "Keyboard FP88",
@@ -73,7 +73,7 @@ export const seedDemoData = internalMutation(async (ctx) => {
   });
 
   // 3. Create Event Types
-  await ctx.runMutation(api.booking.createEventType, {
+  await ctx.runMutation(components.booking.public.createEventType, {
     id: "recording-session",
     slug: "recording-session",
     title: "Recording Session",
@@ -92,7 +92,7 @@ export const seedDemoData = internalMutation(async (ctx) => {
     isActive: true,
   });
 
-  await ctx.runMutation(api.booking.createEventType, {
+  await ctx.runMutation(components.booking.public.createEventType, {
     id: "probesession",
     slug: "probesession",
     title: "Probesession",
@@ -111,12 +111,12 @@ export const seedDemoData = internalMutation(async (ctx) => {
   });
 
   // 4. Link Resources to Event Types
-  await ctx.runMutation(api.booking.setResourcesForEventType, {
+  await ctx.runMutation(components.booking.resource_event_types.setResourcesForEventType, {
     eventTypeId: "recording-session",
     resourceIds: ["studio-a", "studio-b"],
   });
 
-  await ctx.runMutation(api.booking.setResourcesForEventType, {
+  await ctx.runMutation(components.booking.resource_event_types.setResourcesForEventType, {
     eventTypeId: "probesession",
     resourceIds: ["studio-a", "studio-b"],
   });

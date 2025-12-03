@@ -8,7 +8,9 @@
  * @module
  */
 
-import type * as booking from "../booking.js";
+import type * as admin from "../admin.js";
+import type * as functions from "../functions.js";
+import type * as public_ from "../public.js";
 import type * as seed from "../seed.js";
 
 import type {
@@ -18,7 +20,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  booking: typeof booking;
+  admin: typeof admin;
+  functions: typeof functions;
+  public: typeof public_;
   seed: typeof seed;
 }>;
 
@@ -265,9 +269,11 @@ export declare const components: {
         "query",
         "internal",
         {
+          availableSlots?: Array<number>;
           date: string;
           eventLength: number;
           resourceId: string;
+          resourceTimezone?: string;
           slotInterval?: number;
         },
         any
@@ -292,6 +298,7 @@ export declare const components: {
           dateTo: string;
           eventLength: number;
           resourceId: string;
+          resourceTimezone?: string;
           slotInterval?: number;
         },
         any
@@ -388,7 +395,7 @@ export declare const components: {
         { eventTypeId: string },
         any
       >;
-      hasLink: FunctionReference<
+      hasResourceEventTypeLink: FunctionReference<
         "query",
         "internal",
         { eventTypeId: string; resourceId: string },

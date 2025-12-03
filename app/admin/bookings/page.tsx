@@ -51,19 +51,18 @@ export default function BookingsPage() {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  const bookings = useQuery(api.booking.listBookings, {
+  const bookings = useQuery(api.admin.listBookings, {
     status: statusFilter === "all" ? undefined : statusFilter,
   });
 
-  const transitionState = useMutation(api.booking.transitionBookingState);
-  const cancelBooking = useMutation(api.booking.cancelReservation);
+  const transitionState = useMutation(api.admin.transitionBookingState);
+  const cancelBooking = useMutation(api.admin.cancelReservation);
 
   const handleConfirm = async (bookingId: string) => {
     try {
       await transitionState({
         bookingId,
         toStatus: "confirmed",
-        changedBy: "admin",
       });
       toast.success("Booking confirmed");
     } catch (error: any) {
@@ -85,7 +84,6 @@ export default function BookingsPage() {
       await transitionState({
         bookingId,
         toStatus: "completed",
-        changedBy: "admin",
       });
       toast.success("Booking marked as completed");
     } catch (error: any) {

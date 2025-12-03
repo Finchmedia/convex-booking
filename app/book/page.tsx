@@ -14,10 +14,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const DEMO_ORG_ID = "demo-org";
 
 export default function BookPage() {
-  // Query all active resources
-  const resources = useQuery(api.booking.listResources, {
+  // Query all active resources (public API - no auth required)
+  const resources = useQuery(api.public.listResources, {
     organizationId: DEMO_ORG_ID,
-    activeOnly: true,
   });
 
   // Filter to standalone resources only (can be booked directly)

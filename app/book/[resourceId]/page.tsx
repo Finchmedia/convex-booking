@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Booker, BookingProvider, type EventType } from "@mrfinch/booking/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,18 +18,46 @@ const DEMO_ORG_ID = "demo-org";
 
 export default function ResourceBookingPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const resourceId = params.resourceId as string;
+
+  // Read pending booking data from URL (set when redirecting to auth)
+  const pendingEventTypeId = searchParams.get("eventTypeId");
+  const pendingSlot = searchParams.get("pendingSlot");
+  const pendingDuration = searchParams.get("duration");
 
   // State: selected event type
   const [selectedEventType, setSelectedEventType] = useState<EventType | null>(null);
 
-  // Fetch resource details
-  const resource = useQuery(api.booking.getResource, { id: resourceId });
+  // Fetch resource details (public API - no auth required)
+  const resource = useQuery(api.public.getResource, { id: resourceId });
 
-  // Fetch event types for this resource (via mapping table)
-  const eventTypes = useQuery(api.booking.getEventTypesForResource, {
+  // Fetch event types for this resource (public API)
+  const eventTypes = useQuery(api.public.getEventTypesForResource, {
     resourceId,
   });
+
+  // Auto-select event type when returning from auth with pending booking
+  useEffect(() => {
+    if (pendingEventTypeId && eventTypes && !selectedEventType) {
+      const matchingEventType = eventTypes.find(
+        (et: EventType) => et.id === pendingEventTypeId
+      );
+      if (matchingEventType) {
+        setSelectedEventType(matchingEventType);
+      }
+    }
+  }, [pendingEventTypeId, eventTypes, selectedEventType]);
+
+  // Handler for when auth is required - redirect to sign-in with return URL
+  const handleAuthRequired = (slotData: {
+    slot: string;
+    duration: number;
+    eventTypeId: string;
+  }) => {
+    const returnUrl = `/book/${resourceId}?eventTypeId=${encodeURIComponent(slotData.eventTypeId)}&pendingSlot=${encodeURIComponent(slotData.slot)}&duration=${slotData.duration}`;
+    window.location.href = `/sign-in?returnTo=${encodeURIComponent(returnUrl)}`;
+  };
 
   // Loading state
   if (resource === undefined || eventTypes === undefined) {
@@ -96,7 +124,7 @@ export default function ResourceBookingPage() {
 
           {/* Booker Component */}
           <div className="container max-w-5xl mx-auto">
-            <BookingProvider api={api.booking}>
+            <BookingProvider publicApi={api.public}>
               <Booker
                 eventTypeId={selectedEventType.id}
                 resourceId={resourceId}
@@ -107,6 +135,7 @@ export default function ResourceBookingPage() {
                   console.log("Booking completed:", booking);
                 }}
                 onEventTypeReset={() => setSelectedEventType(null)}
+                onAuthRequired={handleAuthRequired}
               />
             </BookingProvider>
           </div>

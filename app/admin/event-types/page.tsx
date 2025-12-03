@@ -42,9 +42,9 @@ import { toast } from "sonner";
 export default function EventTypesPage() {
   const [pendingToggle, setPendingToggle] = useState<{ id: string; isActive: boolean } | null>(null);
 
-  const eventTypes = useQuery(api.booking.listEventTypes, {});
-  const toggleActive = useMutation(api.booking.toggleEventTypeActive);
-  const deleteEventType = useMutation(api.booking.deleteEventType);
+  const eventTypes = useQuery(api.admin.listEventTypes, {});
+  const toggleActive = useMutation(api.admin.toggleEventTypeActive);
+  const deleteEventType = useMutation(api.admin.deleteEventType);
 
   const handleToggleActive = (id: string, isActive: boolean) => {
     // Set pending toggle to trigger the query and show the dialog if needed
@@ -87,7 +87,7 @@ export default function EventTypesPage() {
 
   // Query presence count for pending toggle
   const presenceCount = useQuery(
-    api.booking.getActivePresenceCount,
+    api.admin.getActivePresenceCount,
     pendingToggle ? { eventTypeId: pendingToggle.id } : "skip"
   );
 

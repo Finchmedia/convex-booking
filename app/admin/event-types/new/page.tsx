@@ -9,7 +9,7 @@ const DEMO_ORG_ID = "demo-org";
 
 export default function NewEventTypePage() {
   // Fetch all resources for the form
-  const allResources = useQuery(api.booking.listResources, {
+  const allResources = useQuery(api.admin.listResources, {
     organizationId: DEMO_ORG_ID,
     activeOnly: false,
   });
