@@ -1,10 +1,13 @@
 'use client';
 
-import { ReactNode, useCallback, useRef, useState } from 'react';
+import { ReactNode, useCallback, useRef, useState, useEffect } from 'react';
 import { ConvexReactClient } from 'convex/react';
 import { ConvexProviderWithAuth } from 'convex/react';
 import { ConvexQueryCacheProvider } from 'convex-helpers/react/cache/provider';
 import { AuthKitProvider, useAuth, useAccessToken } from '@workos-inc/authkit-nextjs/components';
+
+// Prevent AuthKit's default window.location.reload() on session expiration
+const noop = () => {};
 
 export default function ConvexClientProvider({
   children,
@@ -16,7 +19,7 @@ export default function ConvexClientProvider({
   });
 
   return (
-    <AuthKitProvider>
+    <AuthKitProvider onSessionExpired={noop}>
       <ConvexProviderWithAuth client={convex} useAuth={useAuthFromAuthKit}>
         <ConvexQueryCacheProvider>
           {children}
@@ -28,30 +31,40 @@ export default function ConvexClientProvider({
 
 function useAuthFromAuthKit() {
   const { user, loading: isLoading } = useAuth();
-  const { accessToken, loading: tokenLoading, error: tokenError } = useAccessToken();
+  const { getAccessToken, accessToken, refresh } = useAccessToken();
 
-  // Combine loading states from both user and token
-  const loading = (isLoading ?? false) || (tokenLoading ?? false);
+  // Cache token for fallback during network issues
+  const accessTokenRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    accessTokenRef.current = accessToken;
+  }, [accessToken]);
 
-  // Only authenticated when we have BOTH user AND token AND not loading
-  const authenticated = !!user && !!accessToken && !loading;
+  const isAuthenticated = !!user;
 
-  // Use ref for stable token reference to avoid unnecessary re-renders
-  const stableAccessToken = useRef<string | null>(null);
-  if (accessToken && !tokenError) {
-    stableAccessToken.current = accessToken;
-  }
+  const fetchAccessToken = useCallback(
+    async ({ forceRefreshToken }: { forceRefreshToken?: boolean } = {}): Promise<string | null> => {
+      if (!user) {
+        return null;
+      }
 
-  const fetchAccessToken = useCallback(async () => {
-    if (stableAccessToken.current && !tokenError) {
-      return stableAccessToken.current;
-    }
-    return null;
-  }, [tokenError]);
+      try {
+        // If Convex requests a forced refresh (e.g., token was rejected by server),
+        // always get a fresh token. Otherwise, return cached token if still valid.
+        return forceRefreshToken ? ((await refresh()) ?? null) : ((await getAccessToken()) ?? null);
+      } catch {
+        // On network errors during laptop wake, fall back to cached token.
+        // Even if expired, Convex will treat it like null and clear auth.
+        // AuthKit's tokenStore schedules automatic retries in the background.
+        console.log('[Convex Auth] Using cached token during network issues');
+        return accessTokenRef.current ?? null;
+      }
+    },
+    [user, getAccessToken, refresh],
+  );
 
   return {
-    isLoading: loading,
-    isAuthenticated: authenticated,
+    isLoading,
+    isAuthenticated,
     fetchAccessToken,
   };
 }

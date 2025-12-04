@@ -1,6 +1,8 @@
 import { authkitMiddleware } from '@workos-inc/authkit-nextjs';
 
 export default authkitMiddleware({
+  // Pre-fetch auth state on every request to reduce race conditions
+  eagerAuth: true,
   middlewareAuth: {
     enabled: true,
     unauthenticatedPaths: [
