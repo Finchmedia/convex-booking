@@ -103,7 +103,7 @@ export default function RescheduleBookingPage() {
           <p className="text-muted-foreground mb-8">
             This booking has already been {booking.status}. Only pending or confirmed bookings can be rescheduled.
           </p>
-          <Link href={`/book/${uid}?token=${encodeURIComponent(token)}`}>
+          <Link href={`/book/booking/${uid}?token=${encodeURIComponent(token)}`}>
             <Button variant="outline">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Booking Details
@@ -171,7 +171,7 @@ export default function RescheduleBookingPage() {
             resourceId={booking.resourceId}
             showHeader={false}
             originalBooking={originalBooking}
-            reuseBookerInfo={true}
+            reuseBookerInfo={false}
             onBookingComplete={(newBooking) => {
               // Redirect back to view page after reschedule
               // Use the NEW booking's uid (reschedule creates a new booking)

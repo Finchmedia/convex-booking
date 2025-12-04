@@ -287,6 +287,7 @@ export const createBooking = publicMutation({
         ? {
             apiKey: process.env.RESEND_API_KEY,
             fromEmail: process.env.RESEND_FROM_EMAIL,
+            baseUrl: process.env.NEXT_PUBLIC_APP_URL,
           }
         : undefined,
     });
@@ -331,7 +332,9 @@ export const getBookingByToken = publicQuery({
  * Cancel booking by token (for public management)
  * Allows booker to cancel their booking via email link
  */
-export const cancelBookingByToken = publicMutation({
+// Token-based mutations use raw mutation (not publicMutation) because
+// authentication is via the management token, not via login
+export const cancelBookingByToken = mutation({
   args: {
     uid: v.string(),
     token: v.string(),
@@ -346,6 +349,7 @@ export const cancelBookingByToken = publicMutation({
         ? {
             apiKey: process.env.RESEND_API_KEY,
             fromEmail: process.env.RESEND_FROM_EMAIL,
+            baseUrl: process.env.NEXT_PUBLIC_APP_URL,
           }
         : undefined,
     });
@@ -356,7 +360,9 @@ export const cancelBookingByToken = publicMutation({
  * Reschedule booking by token (for public management)
  * Allows booker to reschedule their booking to a new time
  */
-export const rescheduleBookingByToken = publicMutation({
+// Token-based mutations use raw mutation (not publicMutation) because
+// authentication is via the management token, not via login
+export const rescheduleBookingByToken = mutation({
   args: {
     uid: v.string(),
     token: v.string(),
@@ -373,6 +379,7 @@ export const rescheduleBookingByToken = publicMutation({
         ? {
             apiKey: process.env.RESEND_API_KEY,
             fromEmail: process.env.RESEND_FROM_EMAIL,
+            baseUrl: process.env.NEXT_PUBLIC_APP_URL,
           }
         : undefined,
     });

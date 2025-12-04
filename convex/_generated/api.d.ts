@@ -122,7 +122,11 @@ export declare const components: {
           bookingId: string;
           changedBy?: string;
           reason?: string;
-          resendOptions?: { apiKey: string; fromEmail?: string };
+          resendOptions?: {
+            apiKey: string;
+            baseUrl?: string;
+            fromEmail?: string;
+          };
           toStatus: string;
         },
         any
@@ -148,7 +152,11 @@ export declare const components: {
           bookingId: string;
           cancelledBy?: string;
           reason?: string;
-          resendOptions?: { apiKey: string; fromEmail?: string };
+          resendOptions?: {
+            apiKey: string;
+            baseUrl?: string;
+            fromEmail?: string;
+          };
         },
         any
       >;
@@ -176,7 +184,11 @@ export declare const components: {
           eventTypeId: string;
           location?: { type: string; value?: string };
           organizationId?: string;
-          resendOptions?: { apiKey: string; fromEmail?: string };
+          resendOptions?: {
+            apiKey: string;
+            baseUrl?: string;
+            fromEmail?: string;
+          };
           resources: Array<{ quantity?: number; resourceId: string }>;
           start: number;
           timezone: string;
@@ -234,7 +246,11 @@ export declare const components: {
         "internal",
         {
           reason?: string;
-          resendOptions?: { apiKey: string; fromEmail?: string };
+          resendOptions?: {
+            apiKey: string;
+            baseUrl?: string;
+            fromEmail?: string;
+          };
           token: string;
           uid: string;
         },
@@ -244,7 +260,11 @@ export declare const components: {
         "mutation",
         "internal",
         {
-          resendOptions?: { apiKey: string; fromEmail?: string };
+          resendOptions?: {
+            apiKey: string;
+            baseUrl?: string;
+            fromEmail?: string;
+          };
           reservationId: string;
         },
         any
@@ -262,7 +282,11 @@ export declare const components: {
           end: number;
           eventTypeId: string;
           location: { type: string; value?: string };
-          resendOptions?: { apiKey: string; fromEmail?: string };
+          resendOptions?: {
+            apiKey: string;
+            baseUrl?: string;
+            fromEmail?: string;
+          };
           resourceId: string;
           start: number;
           timezone: string;
@@ -304,7 +328,11 @@ export declare const components: {
         {
           actorId: string;
           end: number;
-          resendOptions?: { apiKey: string; fromEmail?: string };
+          resendOptions?: {
+            apiKey: string;
+            baseUrl?: string;
+            fromEmail?: string;
+          };
           resourceId: string;
           start: number;
         },
@@ -406,7 +434,11 @@ export declare const components: {
           newEnd: number;
           newStart: number;
           reason?: string;
-          resendOptions?: { apiKey: string; fromEmail?: string };
+          resendOptions?: {
+            apiKey: string;
+            baseUrl?: string;
+            fromEmail?: string;
+          };
         },
         any
       >;
@@ -416,7 +448,11 @@ export declare const components: {
         {
           newEnd: number;
           newStart: number;
-          resendOptions?: { apiKey: string; fromEmail?: string };
+          resendOptions?: {
+            apiKey: string;
+            baseUrl?: string;
+            fromEmail?: string;
+          };
           token: string;
           uid: string;
         },

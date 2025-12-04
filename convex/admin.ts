@@ -563,6 +563,7 @@ export const transitionBookingState = adminMutation({
           ? {
               apiKey: process.env.RESEND_API_KEY,
               fromEmail: process.env.RESEND_FROM_EMAIL,
+              baseUrl: process.env.NEXT_PUBLIC_APP_URL,
             }
           : undefined,
       }
@@ -591,6 +592,7 @@ export const confirmBooking = adminMutation({
           ? {
               apiKey: process.env.RESEND_API_KEY,
               fromEmail: process.env.RESEND_FROM_EMAIL,
+              baseUrl: process.env.NEXT_PUBLIC_APP_URL,
             }
           : undefined,
       }
@@ -619,6 +621,7 @@ export const declineBooking = adminMutation({
           ? {
               apiKey: process.env.RESEND_API_KEY,
               fromEmail: process.env.RESEND_FROM_EMAIL,
+              baseUrl: process.env.NEXT_PUBLIC_APP_URL,
             }
           : undefined,
       }
@@ -638,6 +641,7 @@ export const cancelReservation = adminMutation({
         ? {
             apiKey: process.env.RESEND_API_KEY,
             fromEmail: process.env.RESEND_FROM_EMAIL,
+            baseUrl: process.env.NEXT_PUBLIC_APP_URL,
           }
         : undefined,
     });
@@ -666,6 +670,7 @@ export const rescheduleBooking = adminMutation({
           ? {
               apiKey: process.env.RESEND_API_KEY,
               fromEmail: process.env.RESEND_FROM_EMAIL,
+              baseUrl: process.env.NEXT_PUBLIC_APP_URL,
             }
           : undefined,
       }
@@ -760,6 +765,7 @@ export const cancelMultiResourceBooking = adminMutation({
           ? {
               apiKey: process.env.RESEND_API_KEY,
               fromEmail: process.env.RESEND_FROM_EMAIL,
+              baseUrl: process.env.NEXT_PUBLIC_APP_URL,
             }
           : undefined,
       }

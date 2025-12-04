@@ -242,7 +242,7 @@ export default function ViewBookingPage() {
         {canModify && (
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
-              href={`/book/${uid}/reschedule?token=${encodeURIComponent(token)}`}
+              href={`/book/booking/${uid}/reschedule?token=${encodeURIComponent(token)}`}
               className="flex-1"
             >
               <Button variant="outline" className="w-full">
@@ -251,7 +251,7 @@ export default function ViewBookingPage() {
               </Button>
             </Link>
             <Link
-              href={`/book/${uid}/cancel?token=${encodeURIComponent(token)}`}
+              href={`/book/booking/${uid}/cancel?token=${encodeURIComponent(token)}`}
               className="flex-1"
             >
               <Button variant="destructive" className="w-full">

@@ -76,7 +76,7 @@ export default function CancelBookingPage() {
       toast.success("Booking cancelled successfully");
 
       // Redirect back to view page with token
-      router.push(`/book/${uid}?token=${encodeURIComponent(token)}`);
+      router.push(`/book/booking/${uid}?token=${encodeURIComponent(token)}`);
     } catch (error: any) {
       toast.error(error.message || "Failed to cancel booking");
       setIsSubmitting(false);
@@ -134,7 +134,7 @@ export default function CancelBookingPage() {
           <p className="text-muted-foreground mb-8">
             This booking has already been {booking.status}. Only pending or confirmed bookings can be cancelled.
           </p>
-          <Link href={`/book/${uid}?token=${encodeURIComponent(token)}`}>
+          <Link href={`/book/booking/${uid}?token=${encodeURIComponent(token)}`}>
             <Button variant="outline">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Booking Details
@@ -156,7 +156,7 @@ export default function CancelBookingPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            href={`/book/${uid}?token=${encodeURIComponent(token)}`}
+            href={`/book/booking/${uid}?token=${encodeURIComponent(token)}`}
             className="flex items-center text-muted-foreground hover:text-foreground transition-colors mb-4 text-sm"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -234,7 +234,7 @@ export default function CancelBookingPage() {
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3">
           <Link
-            href={`/book/${uid}?token=${encodeURIComponent(token)}`}
+            href={`/book/booking/${uid}?token=${encodeURIComponent(token)}`}
             className="flex-1"
           >
             <Button variant="outline" className="w-full" disabled={isSubmitting}>
