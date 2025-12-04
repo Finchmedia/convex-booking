@@ -14,19 +14,51 @@ import {
   BookOpen,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-white via-gray-300 to-white dark:from-background dark:via-muted dark:to-background">
       {/* Header: Logo + Theme Toggle */}
       <div className="fixed top-4 left-4 right-4 z-50 flex justify-between items-center">
-        <Image
-          src="/convex_booking_logo.png"
-          alt="ConvexBooking"
-          width={40}
-          height={40}
-          className="dark:invert"
-        />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="outline-none rounded-lg">
+              <Image
+                src="/convex_booking_logo.png"
+                alt="ConvexBooking"
+                width={40}
+                height={40}
+                className="dark:invert cursor-pointer"
+              />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuItem asChild>
+              <Link href="/book" className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                Try Booking
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/admin" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Admin Dashboard
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/docs" className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4" />
+                Docs
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <ThemeToggle />
       </div>
       <div className="max-w-5xl mx-auto px-4 py-16">
@@ -37,8 +69,8 @@ export default function Home() {
           </h1>
           <p className="text-xl sm:text-2xl md:text-3xl text-foreground mb-6 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-0">
             <span>Real-time booking system for</span>
-            <Image src="/convex-logotype-black.svg" alt="Convex" width={170} height={38} className="dark:hidden sm:-ml-1 translate-y-[1px]" />
-            <Image src="/convex-logotype-white.svg" alt="Convex" width={170} height={38} className="hidden dark:block sm:-ml-1 translate-y-[1px]" />
+            <Image src="/convex-logotype-black.svg" alt="Convex" width={170} height={38} priority className="dark:hidden sm:-ml-1 translate-y-[1px]" />
+            <Image src="/convex-logotype-white.svg" alt="Convex" width={170} height={38} priority className="hidden dark:block sm:-ml-1 translate-y-[1px]" />
           </p>
           <p className="text-base sm:text-lg md:text-xl text-muted-foreground/70 max-w-2xl mx-auto mb-8 px-4">
             An open-source booking component with presence-aware slot locking,
@@ -201,7 +233,7 @@ export default function Home() {
                   <Image src="/WorkOS_dark.svg" alt="WorkOS" width={24} height={24} className="hidden dark:block" />
                 </>
               }
-              label="WorkOS AuthKit"
+              label="WorkOS"
             />
             <TechBadge
               icon={

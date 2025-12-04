@@ -131,7 +131,7 @@ export default function RescheduleBookingPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            href={`/book/${uid}?token=${encodeURIComponent(token)}`}
+            href={`/book/booking/${uid}?token=${encodeURIComponent(token)}`}
             className="flex items-center text-muted-foreground hover:text-foreground transition-colors mb-4 text-sm"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -175,7 +175,7 @@ export default function RescheduleBookingPage() {
             onBookingComplete={(newBooking) => {
               // Redirect back to view page after reschedule
               // Use the NEW booking's uid (reschedule creates a new booking)
-              router.push(`/book/${newBooking.uid}?token=${encodeURIComponent(token)}`);
+              router.push(`/book/booking/${newBooking.uid}?token=${encodeURIComponent(token)}`);
             }}
           />
         </BookingProvider>
