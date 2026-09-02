@@ -184,7 +184,7 @@ Full documentation available at [convexbooking.dev/docs](https://convexbooking.d
 
 This repository contains both the npm package (`booking-component/`) and a demo Next.js app (`convexbooking/`).
 
-The demo app runs on `@mrfinch/booking` 0.3.0 from a vendored tarball (`convexbooking/vendor/mrfinch-booking-0.3.0.tgz`). Booking is anonymous; the admin dashboard is gated by **Convex Auth v2** with its *anonymous* login provider only ("Continue as guest admin" mints a throw-away session — no external auth provider). A cron wipes and reseeds the sandbox every hour and deletes guest users older than an hour.
+The demo app runs on `@mrfinch/booking` 0.3.0 from npm. Booking is anonymous; the admin dashboard is gated by **Convex Auth v2** with its *anonymous* login provider only ("Continue as guest admin" mints a throw-away session — no external auth provider). A cron wipes and reseeds the sandbox every hour and deletes guest users older than an hour.
 
 > **Convex Auth v2 is alpha.** The demo pins `@convex-dev/auth@2.0.0-alpha.1` exactly. Its APIs may still change and it is not recommended for production yet; the auth layer here is deliberately thin (`convex/auth.ts`, `convex/users.ts`, `convex/functions.ts`, the gate in `app/admin/layout.tsx`).
 
@@ -323,15 +323,6 @@ Two workable shapes:
   ```json
   "buildCommand": "if [ \"$VERCEL_ENV\" = production ]; then npx convex deploy --cmd 'npm run build'; else npm run build; fi"
   ```
-
-### Once `@mrfinch/booking` 0.3.0 is published
-
-The app currently installs the component from the committed tarball in `vendor/`. After `npm publish`, switch to the registry:
-
-1. In `package.json`, replace `"@mrfinch/booking": "file:vendor/mrfinch-booking-0.3.0.tgz"` with `"@mrfinch/booking": "^0.3.0"`.
-2. `rm -rf vendor node_modules/@mrfinch && npm install` — check that `package-lock.json` now resolves the package from `registry.npmjs.org`.
-3. `npx tsc --noEmit && npm run build` to confirm nothing shifted.
-4. Commit `package.json`, `package-lock.json` and the deletion of `vendor/`.
 
 ### Convex Auth v2 is alpha
 
