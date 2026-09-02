@@ -6,7 +6,7 @@ import { v } from "convex/values";
 export default defineSchema({
   // Convex Auth v2 user records (one per anonymous "guest admin" session).
   // email/name are optional so that legacy rows written by the previous
-  // (WorkOS-era) app schema still validate and so that a non-anonymous
+  // provider-backed app schema still validate and so that a non-anonymous
   // provider can be added later without a migration.
   users: defineTable({
     email: v.optional(v.string()),
