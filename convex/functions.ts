@@ -1,14 +1,19 @@
 /**
- * Custom Function Builders with Authorization
+ * Custom Function Builders — guest-admin model
  *
- * Following Ian's Convex authorization article and convex-helpers patterns.
- * These provide reusable auth wrappers for public and admin APIs.
+ * convexbooking.dev is a public sandbox. Two trust zones:
  *
- * Trust Zones:
- * - publicQuery: No auth (anonymous browsing)
- * - publicMutation: Auth required (for booking creation)
- * - adminQuery: Auth + role check
- * - adminMutation: Auth + admin role required
+ * - publicQuery / publicMutation: anonymous. No identity is read or required.
+ *   Booking, browsing, presence and token-based cancel/reschedule live here.
+ * - adminQuery / adminMutation: require a Convex Auth v2 identity. The only
+ *   login provider is the anonymous one ("Continue as guest admin"), so the
+ *   gate is not about *who* you are — it makes the dashboard an explicit,
+ *   sessioned step (and gives audit fields a user id) without an external
+ *   auth provider. Everyone who signs in is an admin of the shared demo org;
+ *   the sandbox resets every hour.
+ *
+ * Built with convex-helpers' customQuery/customMutation. The builder names are
+ * load-bearing: convex/admin.ts and convex/public.ts use them at ~56 call sites.
  */
 import {
   customQuery,
@@ -29,42 +34,36 @@ import { ConvexError } from "convex/values";
 // ====================================
 
 export type UserIdentity = {
-  userId: string; // WorkOS user ID (sub claim)
+  /** Convex Auth user id (`identity.subject`) — the app `users` row. */
+  userId: string;
+  /** Always "" for anonymous sessions; kept for admin.ts compatibility. */
   email: string;
   name?: string;
-  organizationId?: string; // From WorkOS org membership (if applicable)
 };
 
-export type Role = "admin" | "member";
+export type Role = "admin";
 
 // ====================================
 // IDENTITY HELPERS
 // ====================================
 
 /**
- * Extract user identity from JWT (WorkOS AuthKit)
- * Returns null if not authenticated
+ * Read the Convex Auth identity, or null when the caller is not signed in.
  */
 export async function getUserIdentity(
   ctx: QueryCtx | MutationCtx
 ): Promise<UserIdentity | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
-
-  // WorkOS JWT structure:
-  // - subject: WorkOS user ID
-  // - email: User's email
-  // - name: User's display name (optional)
   return {
     userId: identity.subject,
     email: identity.email ?? "",
     name: identity.name,
-    organizationId: (identity as unknown as Record<string, string>).org_id,
   };
 }
 
 /**
- * Require authentication - throws if not authenticated
+ * Require a signed-in (guest admin) session.
  */
 export async function requireAuth(
   ctx: QueryCtx | MutationCtx
@@ -73,95 +72,58 @@ export async function requireAuth(
   if (!user) {
     throw new ConvexError({
       code: "UNAUTHENTICATED",
-      message: "Authentication required",
+      message: "Sign in as guest admin to use the dashboard",
     });
   }
   return user;
 }
 
-/**
- * Get user role
- *
- * Phase 1: Returns "admin" for any authenticated user (simple mode)
- * Phase 2: Will query users table for actual role/permissions
- */
-export async function getUserRole(
-  _ctx: QueryCtx | MutationCtx,
-  _userId: string,
-  _organizationId?: string
-): Promise<Role> {
-  // TODO: Phase 2 - Query users table for role
-  // For now, any authenticated user is admin
-  return "admin";
-}
-
 // ====================================
-// PUBLIC FUNCTION BUILDERS
+// PUBLIC FUNCTION BUILDERS (anonymous)
 // ====================================
 
 /**
- * Public Query - No auth required
- * Use for: Availability checks, resource browsing, event type listings
+ * Public Query — no auth, nothing injected.
+ * Use for: availability, resource browsing, event type listings.
  */
 export const publicQuery = customQuery(
   query,
-  customCtx(async (ctx) => {
-    // Optionally capture user identity for analytics/logging
-    const user = await getUserIdentity(ctx);
-    return { user };
-  })
+  customCtx(async () => ({}))
 );
 
 /**
- * Public Mutation - Auth required
- * Use for: Creating bookings (auto-fills booker from user)
+ * Public Mutation — no auth, nothing injected.
+ * Use for: anonymous booking creation, presence heartbeats.
  */
 export const publicMutation = customMutation(
   mutation,
-  customCtx(async (ctx) => {
-    const user = await requireAuth(ctx);
-    return { user };
-  })
+  customCtx(async () => ({}))
 );
 
 // ====================================
-// ADMIN FUNCTION BUILDERS
+// ADMIN FUNCTION BUILDERS (guest admin session required)
 // ====================================
 
 /**
- * Admin Query - Auth + role check
- * Use for: Listing all bookings, viewing inactive resources
+ * Admin Query — requires a Convex Auth identity; injects { user, role }.
  */
 export const adminQuery = customQuery(
   query,
   customCtx(async (ctx) => {
     const user = await requireAuth(ctx);
-    const role = await getUserRole(ctx, user.userId, user.organizationId);
-
-    // Phase 1: Any authenticated user can query
-    // Phase 2: Check for admin/member role here
-    return { user, role };
+    return { user, role: "admin" as Role };
   })
 );
 
 /**
- * Admin Mutation - Auth + admin role required
- * Use for: CRUD operations on resources, event types, schedules
+ * Admin Mutation — requires a Convex Auth identity; injects { user, role }.
+ * `user.userId` is what admin.ts records as changedBy / cancelledBy.
  */
 export const adminMutation = customMutation(
   mutation,
   customCtx(async (ctx) => {
     const user = await requireAuth(ctx);
-    const role = await getUserRole(ctx, user.userId, user.organizationId);
-
-    if (role !== "admin") {
-      throw new ConvexError({
-        code: "FORBIDDEN",
-        message: "Admin access required",
-      });
-    }
-
-    return { user, role };
+    return { user, role: "admin" as Role };
   })
 );
 
