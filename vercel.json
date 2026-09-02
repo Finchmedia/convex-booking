@@ -1,4 +1,4 @@
 {
   "framework": "nextjs",
-  "buildCommand": "npx convex deploy --cmd 'npm run build'"
+  "buildCommand": "npm run build"
 }

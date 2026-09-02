@@ -204,6 +204,14 @@ Open [http://localhost:3000](http://localhost:3000) to see the demo. Confirmatio
 
 ## Deploy
 
+> **Current production setup (2026-09-02):** Vercel runs a plain `npm run build` with
+> `NEXT_PUBLIC_CONVEX_URL` and `NEXT_PUBLIC_APP_URL` set as Production environment
+> variables; the Convex backend is deployed from a terminal with `npx convex deploy`.
+> To let Vercel push the backend too, generate a Convex deploy key with at least
+> `deployment:deploy`, `deployment:data:view` and `deployment:env:view`, set it as
+> `CONVEX_DEPLOY_KEY` in Vercel and switch `vercel.json`'s `buildCommand` back to
+> `npx convex deploy --cmd 'npm run build'`.
+
 The site is a Next.js app on Vercel plus a Convex **production** deployment. `vercel.json` ties the two together:
 
 ```json
