@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Calendar, Clock, AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { toast } from "sonner";
+import { convexErrorMessage } from "@/lib/convex-error-message";
 
 export default function CancelBookingPage() {
   const params = useParams();
@@ -77,8 +78,8 @@ export default function CancelBookingPage() {
 
       // Redirect back to view page with token
       router.push(`/book/booking/${uid}?token=${encodeURIComponent(token)}`);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to cancel booking");
+    } catch (error) {
+      toast.error(convexErrorMessage(error, "Failed to cancel booking"));
       setIsSubmitting(false);
     }
   };

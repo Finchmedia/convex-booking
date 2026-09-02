@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Booker, BookingProvider, type EventType } from "@mrfinch/booking/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,13 +18,7 @@ const DEMO_ORG_ID = "demo-org";
 
 export default function ResourceBookingPage() {
   const params = useParams();
-  const searchParams = useSearchParams();
   const resourceId = params.resourceId as string;
-
-  // Read pending booking data from URL (set when redirecting to auth)
-  const pendingEventTypeId = searchParams.get("eventTypeId");
-  const pendingSlot = searchParams.get("pendingSlot");
-  const pendingDuration = searchParams.get("duration");
 
   // State: selected event type
   const [selectedEventType, setSelectedEventType] = useState<EventType | null>(null);
@@ -36,31 +30,6 @@ export default function ResourceBookingPage() {
   const eventTypes = useQuery(api.public.getEventTypesForResource, {
     resourceId,
   });
-
-  // Fetch current authenticated user for form prefilling
-  const currentUser = useQuery(api.public.getCurrentUser);
-
-  // Auto-select event type when returning from auth with pending booking
-  useEffect(() => {
-    if (pendingEventTypeId && eventTypes && !selectedEventType) {
-      const matchingEventType = eventTypes.find(
-        (et: EventType) => et.id === pendingEventTypeId
-      );
-      if (matchingEventType) {
-        setSelectedEventType(matchingEventType);
-      }
-    }
-  }, [pendingEventTypeId, eventTypes, selectedEventType]);
-
-  // Handler for when auth is required - redirect to sign-in with return URL
-  const handleAuthRequired = (slotData: {
-    slot: string;
-    duration: number;
-    eventTypeId: string;
-  }) => {
-    const returnUrl = `/book/${resourceId}?eventTypeId=${encodeURIComponent(slotData.eventTypeId)}&pendingSlot=${encodeURIComponent(slotData.slot)}&duration=${slotData.duration}`;
-    window.location.href = `/sign-in?returnTo=${encodeURIComponent(returnUrl)}`;
-  };
 
   // Loading state
   if (resource === undefined || eventTypes === undefined) {
@@ -108,6 +77,29 @@ export default function ResourceBookingPage() {
     return mins ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
+  // Human-readable notice / horizon of the selected event type (the server
+  // enforces both; this only tells the visitor what to expect).
+  const formatWindow = (minutes: number) => {
+    if (minutes % 1440 === 0) {
+      const days = minutes / 1440;
+      return `${days} day${days === 1 ? "" : "s"}`;
+    }
+    if (minutes % 60 === 0) {
+      const hours = minutes / 60;
+      return `${hours} hour${hours === 1 ? "" : "s"}`;
+    }
+    return `${minutes} min`;
+  };
+  const windowParts: string[] = [];
+  if (selectedEventType?.minNoticeMinutes) {
+    windowParts.push(`at least ${formatWindow(selectedEventType.minNoticeMinutes)} in advance`);
+  }
+  if (selectedEventType?.maxFutureMinutes) {
+    windowParts.push(`up to ${formatWindow(selectedEventType.maxFutureMinutes)} ahead`);
+  }
+  const bookingWindowHint =
+    windowParts.length > 0 ? `Bookable ${windowParts.join(", ")}.` : null;
+
   // If event type is selected, show the Booker
   if (selectedEventType) {
     return (
@@ -134,19 +126,20 @@ export default function ResourceBookingPage() {
                 title={resource.name}
                 description={selectedEventType.description || resource.description}
                 organizerName="Studio Team"
-                currentUser={currentUser ? {
-                  name: `${currentUser.firstName ?? ""} ${currentUser.lastName ?? ""}`.trim() || undefined,
-                  email: currentUser.email,
-                  avatarUrl: currentUser.profilePictureUrl ?? undefined,
-                } : undefined}
                 onBookingComplete={(booking) => {
                   console.log("Booking completed:", booking);
                 }}
                 onEventTypeReset={() => setSelectedEventType(null)}
-                onAuthRequired={handleAuthRequired}
               />
             </BookingProvider>
           </div>
+
+          {/* Timezone + booking-window hint (the Booker shows browser-local times) */}
+          <p className="text-xs text-muted-foreground/70 text-center mt-4">
+            Times are shown in your browser&apos;s timezone; {resource.name} is in{" "}
+            {resource.timezone}.
+            {bookingWindowHint && <> {bookingWindowHint}</>}
+          </p>
 
           {/* Real-time presence demo */}
           <div className="mt-8 text-center">

@@ -104,6 +104,10 @@ export default function ViewBookingPage() {
   const { date, time } = formatDateTime(booking.start, booking.timezone);
   const isPast = booking.start < Date.now();
   const canModify = !["cancelled", "completed", "declined"].includes(booking.status) && !isPast;
+  // A reschedule cancels the old booking with this reason and links the new uid.
+  const wasRescheduled =
+    booking.status === "cancelled" &&
+    (!!booking.rescheduleUid || booking.cancellationReason === "Rescheduled to new time");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-card to-background">
@@ -215,8 +219,30 @@ export default function ViewBookingPage() {
           </CardContent>
         </Card>
 
+        {/* Rescheduled: the old booking stays as a cancelled record pointing at the new one */}
+        {booking.status === "cancelled" && wasRescheduled && (
+          <Card className="bg-card/50 border-border mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg">This booking was rescheduled</CardTitle>
+              <CardDescription>
+                A new booking was created for the new time; this record is kept for reference.
+              </CardDescription>
+            </CardHeader>
+            {booking.rescheduleUid && (
+              <CardContent>
+                <Link
+                  href={`/book/booking/${booking.rescheduleUid}?token=${encodeURIComponent(token)}`}
+                  className="text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors"
+                >
+                  View the new booking
+                </Link>
+              </CardContent>
+            )}
+          </Card>
+        )}
+
         {/* Cancellation Info */}
-        {booking.status === "cancelled" && booking.cancellationReason && (
+        {booking.status === "cancelled" && !wasRescheduled && booking.cancellationReason && (
           <Card className="bg-card/50 border-destructive/50 mb-6">
             <CardHeader>
               <CardTitle className="text-lg text-destructive">Cancellation Details</CardTitle>

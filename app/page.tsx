@@ -227,13 +227,8 @@ export default function Home() {
               label="Tailwind CSS"
             />
             <TechBadge
-              icon={
-                <>
-                  <Image src="/WorkOS_light.svg" alt="WorkOS" width={24} height={24} className="dark:hidden" />
-                  <Image src="/WorkOS_dark.svg" alt="WorkOS" width={24} height={24} className="hidden dark:block" />
-                </>
-              }
-              label="WorkOS"
+              icon={<Image src="/convex.svg" alt="Convex Auth" width={24} height={24} />}
+              label="Convex Auth"
             />
             <TechBadge
               icon={
@@ -307,7 +302,7 @@ export default function Home() {
             </a>
           </p>
           <p className="text-muted-foreground/50 text-xs mt-2">
-            Development Demo
+            Public sandbox — data resets every hour
           </p>
         </footer>
       </div>

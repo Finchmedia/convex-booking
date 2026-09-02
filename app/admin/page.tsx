@@ -51,7 +51,8 @@ export default function DemoDashboard() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">
-          Welcome to the Convex Booking admin panel
+          Welcome to the ConvexBooking admin panel. This is a shared public
+          sandbox — anyone can edit, and everything resets every hour.
         </p>
       </div>
 
@@ -97,7 +98,7 @@ export default function DemoDashboard() {
               </div>
             ) : recentBookings.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                No bookings yet. Create an event type and make your first booking!
+                No bookings yet. Make one on the booking page, or wait for the next hourly reset to restore the demo data.
               </p>
             ) : (
               <div className="space-y-4">
@@ -164,7 +165,7 @@ export default function DemoDashboard() {
             </CardHeader>
           </Card>
         </Link>
-        <Link href="/">
+        <Link href="/book">
           <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
             <CardHeader>
               <CardTitle className="text-lg">View Booker</CardTitle>
