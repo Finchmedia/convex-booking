@@ -2,6 +2,9 @@
   "name": "convexbooking",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev --webpack",
     "dev:all": "npm-run-all --parallel dev:frontend dev:backend",

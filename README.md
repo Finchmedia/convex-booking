@@ -195,12 +195,147 @@ git clone https://github.com/Finchmedia/convex-booking
 cd convex-booking/convexbooking
 npm install
 npx convex dev            # In one terminal (creates/links a dev deployment)
-npx @convex-dev/auth      # Once: generates AUTH_PRIVATE_KEY / AUTH_JWKS on that deployment
+npx @convex-dev/auth@2.0.0-alpha.1   # Once: generates AUTH_PRIVATE_KEY / AUTH_JWKS on that deployment
 npx convex run seed:resetSandbox   # Seed the demo org, resources, schedule and event types
 npm run dev               # In another terminal
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to see the demo. Confirmation emails are optional (`RESEND_API_KEY`, see `.env.example`).
+
+## Deploy
+
+The site is a Next.js app on Vercel plus a Convex **production** deployment. `vercel.json` ties the two together:
+
+```json
+{
+  "framework": "nextjs",
+  "buildCommand": "npx convex deploy --cmd 'npm run build'"
+}
+```
+
+With `CONVEX_DEPLOY_KEY` set on the Vercel project, that single command pushes the Convex backend (functions, schema, indexes, components, crons) **and then** runs `npm run build` with `NEXT_PUBLIC_CONVEX_URL` injected — the Convex CLI sees `next` in `package.json` and picks that variable name automatically (`--cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL` makes it explicit). Frontend and backend therefore go live together, or not at all.
+
+> **Plain-build alternative.** To keep Vercel to the frontend only, drop `buildCommand` from `vercel.json` (Vercel falls back to `npm run build`), set `NEXT_PUBLIC_CONVEX_URL` on the Vercel project by hand, and run `npx convex deploy` from a terminal whenever the backend changes. Simpler, but a schema change and the UI that depends on it can go live minutes apart.
+
+### First deploy — manual, from a terminal
+
+The very first deploy cannot come from Vercel. `convex/convex.config.ts` declares the auth signing keys in `defineApp({ env: … })`, so pushing to a deployment that does not have them fails. Provision them first.
+
+**1 — Auth signing keys on the production deployment.**
+
+The Convex Auth v2 setup CLI has no `--prod` flag; it shells out to `npx convex env get/set` against whichever deployment the working directory selects. A shell `CONVEX_DEPLOYMENT` overrides `.env.local`, so aim it at production:
+
+```bash
+CONVEX_DEPLOYMENT=prod:<your-prod-deployment-name> npx @convex-dev/auth@2.0.0-alpha.1
+```
+
+It generates an RS256 key pair and sets `AUTH_PRIVATE_KEY` + `AUTH_JWKS` on that deployment. `convex/auth.config.ts`, `convex/convex.config.ts` and `convex/auth.ts` already exist, so it leaves them untouched and only prints what they should contain. `--force` rotates existing keys (and invalidates every live guest session).
+
+If you would rather not hand the deployment choice to that CLI, generate the pair yourself. The auth component reads the variable as `atob(AUTH_PRIVATE_KEY)` and imports the result as a PKCS8 RS256 PEM:
+
+```bash
+node --input-type=module -e '
+import { webcrypto as c } from "node:crypto";
+import { writeFileSync } from "node:fs";
+const { publicKey, privateKey } = await c.subtle.generateKey(
+  { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+  true, ["sign", "verify"]);
+const b64 = Buffer.from(await c.subtle.exportKey("pkcs8", privateKey)).toString("base64");
+const pem = `-----BEGIN PRIVATE KEY-----\n${b64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----\n`;
+const { kty, n, e } = await c.subtle.exportKey("jwk", publicKey);
+writeFileSync("AUTH_PRIVATE_KEY.txt", Buffer.from(pem).toString("base64"));
+writeFileSync("AUTH_JWKS.json", JSON.stringify({ keys: [{ kty, n, e, kid: c.randomUUID(), alg: "RS256", use: "sig" }] }));
+'
+npx convex env set --prod AUTH_PRIVATE_KEY --from-file AUTH_PRIVATE_KEY.txt
+npx convex env set --prod AUTH_JWKS --from-file AUTH_JWKS.json
+rm AUTH_PRIVATE_KEY.txt AUTH_JWKS.json
+```
+
+`CONVEX_SITE_URL` — the JWT issuer in `convex/auth.config.ts` and the base of the JWKS URL — is a Convex built-in, present on every deployment. There is no `SITE_URL`-style variable to set.
+
+**2 — Push the backend.**
+
+```bash
+npx convex deploy          # add --dry-run first to preview the change set
+```
+
+Confirm the prompt before accepting it. Coming from the WorkOS-era deployment it should report the `workOSAuthKit` component being **removed**, the `auth` and `authAnonymous` components added, the app `users` table plus its index added, and the hourly `reset sandbox` cron registered.
+
+**3 — Seed the sandbox.**
+
+```bash
+npx convex run seed:resetSandbox --prod
+```
+
+`seed:resetSandbox` is an internal action — `npx convex run` may call internal functions. It wipes the booking component's data, reseeds the demo org, resources, schedule and event types, and purges stale guest users. After this the hourly cron keeps doing it.
+
+**4 — Ship the frontend.**
+
+```bash
+npx vercel link            # once, to connect the directory to the Vercel project
+npx vercel --prod
+```
+
+Set `CONVEX_DEPLOY_KEY` on the project **before** this build: without it, `npx convex deploy` inside the build command has no deployment to target and the build fails.
+
+Subsequent deploys are just `git push` — Vercel runs the build command, which pushes Convex and builds Next together.
+
+### Environment variables
+
+**Vercel project** (dashboard, or `npx vercel env add`):
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `CONVEX_DEPLOY_KEY` | **yes** | Production deploy key from the Convex dashboard (*Settings → Deploy keys → Generate production deploy key*). Authorises the push in `buildCommand` and tells the CLI which deployment to target. |
+| `NEXT_PUBLIC_APP_URL` | no | Public base URL of the site. Nothing in the Next.js code reads it today; set it on the **Convex** deployment for the email links. Harmless to mirror here. |
+
+Do not set `NEXT_PUBLIC_CONVEX_URL` on Vercel while `buildCommand` uses `convex deploy --cmd` — the deploy injects the right value for the deployment it just pushed to.
+
+**Convex production deployment** (`npx convex env set --prod NAME value`):
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `AUTH_PRIVATE_KEY` | **yes** | Base64 of the PKCS8 RS256 private key PEM. Signs the guest-admin JWTs. Declared in `defineApp({ env })`, so the push fails without it. |
+| `AUTH_JWKS` | **yes** | The matching public JWK Set, served at `<site>/auth/.well-known/jwks.json` and validated against `convex/auth.config.ts`. Same story: no push without it. |
+| `NEXT_PUBLIC_APP_URL` | no | Base URL used to build the "manage your booking" links in emails. Despite the prefix it is read **server-side inside Convex** (`convex/public.ts`, `convex/admin.ts`). |
+| `RESEND_API_KEY` | no | Enables confirmation / cancellation emails. **Leave unset on the public sandbox** — without it no email is ever sent. |
+| `RESEND_FROM_EMAIL` | no | Sender address; only meaningful together with `RESEND_API_KEY`. |
+| `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, `WORKOS_COOKIE_PASSWORD`, `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | remove | Left over from the WorkOS integration. `npx convex env remove --prod WORKOS_API_KEY` (and so on), and delete them from Vercel and from `.env.local`. |
+
+A local `.env.production.local` that also defines `NEXT_PUBLIC_CONVEX_URL` is a leftover from manual deploys: it makes the Convex CLI warn that it "cannot update automatically" and makes a local `next build` point at production. Delete it.
+
+### Preview deployments
+
+Two workable shapes:
+
+- **Per-branch Convex preview deployments.** Generate a *Preview* deploy key in the Convex dashboard and set it as `CONVEX_DEPLOY_KEY` for Vercel's Preview environment; each branch then gets its own fresh Convex deployment. A fresh deployment starts with no environment variables, so seed the auth keys once as project-level preview defaults (generate a **separate** key pair — never reuse the production one):
+
+  ```bash
+  npx convex env default set --type preview AUTH_PRIVATE_KEY --from-file AUTH_PRIVATE_KEY.txt
+  npx convex env default set --type preview AUTH_JWKS --from-file AUTH_JWKS.json
+  ```
+
+  and have each preview seed itself by extending the build command with `--preview-run seed:resetSandbox` (ignored on production deploys).
+
+- **Plain build against the existing backend.** Leave the Preview environment without a deploy key, point it at a deployment you already have via `NEXT_PUBLIC_CONVEX_URL`, and skip the Convex push. Since `vercel.json` sets one build command for every environment, branch on Vercel's own variable:
+
+  ```json
+  "buildCommand": "if [ \"$VERCEL_ENV\" = production ]; then npx convex deploy --cmd 'npm run build'; else npm run build; fi"
+  ```
+
+### Once `@mrfinch/booking` 0.3.0 is published
+
+The app currently installs the component from the committed tarball in `vendor/`. After `npm publish`, switch to the registry:
+
+1. In `package.json`, replace `"@mrfinch/booking": "file:vendor/mrfinch-booking-0.3.0.tgz"` with `"@mrfinch/booking": "^0.3.0"`.
+2. `rm -rf vendor node_modules/@mrfinch && npm install` — check that `package-lock.json` now resolves the package from `registry.npmjs.org`.
+3. `npx tsc --noEmit && npm run build` to confirm nothing shifted.
+4. Commit `package.json`, `package-lock.json` and the deletion of `vendor/`.
+
+### Convex Auth v2 is alpha
+
+`@convex-dev/auth` is pinned to the exact version `2.0.0-alpha.1` — no caret. The alpha's own docs say not to use it in production yet and that its APIs may change, which is why the auth layer here is deliberately small: `convex/auth.ts`, `convex/users.ts`, the four builders in `convex/functions.ts`, and the gate in `app/admin/layout.tsx`. When v2 reaches stable, bump the pin, re-run the setup CLI against each deployment if the key format changed, and re-check those four files against the migration notes — nothing else in the app touches auth.
 
 ## Tech Stack
 

@@ -148,7 +148,7 @@ The dashboard uses **Convex Auth v2** with its **Anonymous** login provider — 
 
 ```bash
 npm install --save-exact @convex-dev/auth@2.0.0-alpha.1
-npx @convex-dev/auth
+npx @convex-dev/auth@2.0.0-alpha.1
 ```
 
 The setup CLI generates an RS256 key pair and sets `AUTH_PRIVATE_KEY` and `AUTH_JWKS` on the deployment (never in a file you commit). Peer requirements at this version: `convex` `^1.43.0` (this app is on `^1.45.0`), `next` `^16`, `react` `^18 || ^19`.
@@ -712,7 +712,7 @@ npm run dev
 
 1. `ConvexAuthProvider` wraps the tree (see `app/layout.tsx`), and the admin content is inside `Authenticated`.
 2. `NEXT_PUBLIC_CONVEX_URL` points at the deployment you are running functions on.
-3. `AUTH_PRIVATE_KEY` and `AUTH_JWKS` are set **on the deployment** (`npx convex env list`), not in `.env.local`. Re-run `npx @convex-dev/auth` if either is missing.
+3. `AUTH_PRIVATE_KEY` and `AUTH_JWKS` are set **on the deployment** (`npx convex env list`), not in `.env.local`. Re-run `npx @convex-dev/auth@2.0.0-alpha.1` if either is missing.
 
 ### Sign-in fails or the button spins forever
 
