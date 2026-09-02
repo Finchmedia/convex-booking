@@ -1,6 +1,7 @@
 <DocPage toc={[
   { title: "Overview", url: "#overview", depth: 2 },
   { title: "Why WorkOS AuthKit?", url: "#why-workos-authkit", depth: 3 },
+  { title: "How This Fits the Gateway Pattern", url: "#how-this-fits-the-gateway-pattern", depth: 3 },
   { title: "Installation", url: "#installation", depth: 2 },
   { title: "Component Architecture", url: "#component-architecture", depth: 2 },
   { title: "Backend Setup", url: "#backend-setup", depth: 2 },
@@ -24,11 +25,17 @@
 
 # WorkOS AuthKit Integration
 
-This guide walks you through setting up WorkOS AuthKit for authentication in your ConvexBooking application.
+<Callout type="info">
+  The live demo on convexbooking.dev uses **Convex Auth v2** (anonymous guest admin). This guide shows how to wire **WorkOS AuthKit** into the same gateway pattern instead.
+</Callout>
+
+This guide walks you through setting up WorkOS AuthKit as the identity provider for a ConvexBooking app of your own.
 
 ## Overview
 
-ConvexBooking uses [WorkOS AuthKit](https://workos.com/authkit) for authentication. This integration provides a complete authentication system with minimal setup.
+[WorkOS AuthKit](https://workos.com/authkit) is one way to put a real identity provider behind the admin side of a booking app. The public sandbox at convexbooking.dev does not use it - it signs guest admins in with the Convex Auth v2 anonymous provider - but everything below plugs into the same place: the `adminQuery` / `adminMutation` gateway in `convex/functions.ts`. If you use WorkOS, this integration gives you a complete authentication system with minimal setup.
+
+Booking itself is unaffected by the choice of provider: **taking a booking never requires a sign-in**. `publicQuery` / `publicMutation` stay anonymous, and authentication only guards the admin dashboard.
 
 ### Why WorkOS AuthKit?
 
@@ -42,6 +49,34 @@ ConvexBooking uses [WorkOS AuthKit](https://workos.com/authkit) for authenticati
 <Callout type="info">
   **No Custom Auth Code Required**: Unlike building auth from scratch, WorkOS handles password hashing, session management, token refresh, and security best practices.
 </Callout>
+
+### How This Fits the Gateway Pattern
+
+The app-side gate never talks to a provider SDK. It reads whatever identity Convex has validated on the request:
+
+```typescript title="convex/functions.ts"
+export async function getUserIdentity(
+  ctx: QueryCtx | MutationCtx
+): Promise<UserIdentity | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return {
+    userId: identity.subject,
+    email: identity.email ?? "",
+    name: identity.name,
+  };
+}
+```
+
+`adminQuery` / `adminMutation` wrap that in a `requireAuth()` helper which throws `ConvexError({ code: "UNAUTHENTICATED", ... })` when there is no identity, and injects `{ user, role: "admin" }` otherwise. `publicQuery` / `publicMutation` read no identity at all.
+
+So swapping providers is a three-part change and nothing else:
+
+1. Mount a different auth component in `convex/convex.config.ts` (WorkOS AuthKit instead of the Convex Auth v2 core).
+2. Make the frontend send that provider's JWT to Convex.
+3. Adjust the copy on the sign-in screen.
+
+The booking gateway, the guards in `convex/public.ts` and every `adminQuery` call site stay byte-for-byte the same.
 
 ## Installation
 
@@ -57,7 +92,7 @@ npm install @convex-dev/workos-authkit convex-helpers
 
 ## Component Architecture
 
-WorkOS AuthKit is mounted as a **sibling component** to ConvexBooking at the app level:
+If you use WorkOS, AuthKit is mounted as a **sibling component** to ConvexBooking at the app level - the same slot where the live demo mounts the Convex Auth v2 core and its anonymous provider:
 
 ```
 Your App (defineApp)
@@ -256,7 +291,7 @@ RESEND_FROM_EMAIL=bookings@yourdomain.com
 
 ### Setup ConvexClientProvider
 
-Update your `components/ConvexClientProvider.tsx` to integrate WorkOS AuthKit:
+The shipped provider wraps the app in `ConvexAuthProvider` from `@convex-dev/auth/react`. To use WorkOS instead, replace it with an AuthKit bridge in `components/ConvexClientProvider.tsx`:
 
 ```tsx title="components/ConvexClientProvider.tsx"
 'use client';
@@ -386,7 +421,7 @@ export default function SignInPage() {
 }
 ```
 
-Now your Booker component can redirect to `/auth/signin?redirect=/book/studio-a` when authentication is required.
+Link your admin shell to `/auth/signin?redirect=/admin` - that is the only place a sign-in belongs. The Booker never redirects there: booking is anonymous, and `createBooking` takes the booker's name and email as arguments instead of reading an identity.
 
 ## User Sync Mechanism
 
@@ -437,7 +472,7 @@ Understanding how users flow from WorkOS to Convex is crucial for debugging.
 ┌─────────────────────────┐
 │  Frontend receives JWT  │
 │  - ctx.auth populated   │
-│  - User can book        │
+│  - Admin gate opens     │
 └─────────────────────────┘
 ```
 
@@ -519,20 +554,20 @@ Example user record:
 ### 5. Test JWT in Convex Logs
 
 1. With Convex dev server running, watch the logs
-2. In your app, trigger a booking creation
+2. In your app, open a page that calls an `adminQuery` (the dashboard)
 3. Check logs for JWT validation:
 
 ```
 [LOG] User authenticated: { userId: 'user_01HQXYZ123...', email: 'user@example.com' }
 ```
 
-### 6. Verify User Prefilling
+### 6. Verify the Admin Gate
 
-When creating a booking:
-1. Select a time slot
-2. Fill out booking form
-3. The "Name" and "Email" fields should be pre-filled from your authenticated user
-4. Complete the booking
+1. Sign out, then open `/admin` - the gate screen should ask you to sign in
+2. Sign in with your test user - the dashboard loads and `adminQuery` calls resolve instead of throwing
+3. Open `/book/studio-a` in a private window - booking still completes with no session at all
+
+That last step is the important one: authentication gates the dashboard, never the booking flow.
 
 ## Troubleshooting
 
@@ -557,7 +592,7 @@ When creating a booking:
 
 **Symptoms:**
 - User is signed in on frontend but `ctx.auth.getUserIdentity()` returns `null`
-- Booking creation fails with "Authentication required"
+- Every `adminQuery` / `adminMutation` throws `ConvexError({ code: "UNAUTHENTICATED" })`
 
 **Solutions:**
 1. **Verify component mounting**: Check `convex.config.ts` has `app.use(workOSAuthKit)`

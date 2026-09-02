@@ -4,6 +4,7 @@
   { title: "Discrete Time Buckets", url: "#discrete-time-buckets", depth: 3 },
   { title: "Resources", url: "#resources", depth: 2 },
   { title: "Schedules", url: "#schedules", depth: 2 },
+  { title: "Schedule-Aware Availability", url: "#schedule-aware-availability", depth: 3 },
   { title: "Event Types", url: "#event-types", depth: 2 },
   { title: "Presence System", url: "#presence-system", depth: 2 },
   { title: "How Presence Works", url: "#how-presence-works", depth: 3 },
@@ -11,6 +12,7 @@
   { title: "Data Flow", url: "#data-flow", depth: 2 },
   { title: "Authentication & Authorization", url: "#authentication--authorization", depth: 2 },
   { title: "Trust Zones Overview", url: "#trust-zones-overview", depth: 3 },
+  { title: "How This Demo Splits Them", url: "#how-this-demo-splits-them", depth: 3 },
   { title: "Why Split APIs", url: "#why-split-apis", depth: 3 },
   { title: "Gateway Pattern", url: "#gateway-pattern", depth: 3 },
   { title: "Frontend vs Backend Auth", url: "#frontend-vs-backend-auth", depth: 3 },
@@ -118,6 +120,64 @@ Schedules support:
 - **Date overrides** - Special hours for specific dates
 - **Default schedule** - Fallback when a resource doesn't have a specific schedule
 
+### Schedule-Aware Availability
+
+Availability is only schedule-aware if the schedule is passed **in**. Both
+availability queries accept it, and neither of them looks it up on its own:
+
+- `getMonthAvailability` takes `resourceTimezone` + `scheduleId` and resolves the
+  weekly hours and date overrides per date itself.
+- `getDaySlots` takes `resourceTimezone` + `availableSlots` — the day's open slot
+  indices (`0`–`95`) **in the schedule's timezone**, which you read from
+  `schedules.getEffectiveAvailability({ scheduleId, date })`.
+
+The component turns those local indices into real timestamps in that timezone and
+checks each candidate against the `busySlots` row of its **own UTC date**, so a
+window that crosses midnight or a DST change still lands on the right rows. The
+two arguments always travel together: with only one of them the component
+silently falls back to its legacy hardcoded 09:00–17:00 **UTC** hours.
+
+**An empty window means closed.** A weekend, a day without weekly hours, or an
+"unavailable" date override yields `availableSlots: []` — `getDaySlots` returns
+`[]` and `getMonthAvailability` reports `false`. There is no fallback to the
+built-in business hours.
+
+In this app the resolution happens **server-side**, in the `convex/public.ts`
+wrapper: the React Booker only sends `resourceId` / `date` / `eventLength` /
+`slotInterval`, and the wrapper resolves the resource → the event type's own
+`scheduleId` if it has one → otherwise the organization's default schedule
+(`schedules.getDefaultSchedule`), then forwards the timezone and the window:
+
+```typescript
+// convex/public.ts — day view (type casts elided)
+let availableSlots: number[] | undefined;
+if (avail.scheduleId && avail.timezone) {
+  const effective = await ctx.runQuery(
+    components.booking.schedules.getEffectiveAvailability,
+    { scheduleId: avail.scheduleId, date: opts.date }
+  );
+  availableSlots = effective.availableSlots;
+  // Empty window (weekend, "unavailable" override): no slots, skip the call.
+  if (availableSlots.length === 0) return [];
+}
+
+const slots = await ctx.runQuery(components.booking.public.getDaySlots, {
+  resourceId: avail.resource.id,
+  date: opts.date,
+  eventLength: opts.eventLength,
+  slotInterval: opts.slotInterval,
+  // Both or neither — otherwise the component takes the legacy path.
+  resourceTimezone: availableSlots ? avail.timezone : undefined,
+  availableSlots,
+  excludeBookingUid: opts.excludeBookingUid,
+});
+```
+
+A resource whose organization has no schedule at all gets neither argument and
+keeps the legacy 09:00–17:00 UTC behaviour — nothing breaks, the hours are just
+not yours. The month view is wired the same way, with `scheduleId` instead of
+`availableSlots`.
+
 ## Event Types
 
 An **Event Type** is a booking template that connects resources and schedules with booking rules.
@@ -137,12 +197,38 @@ await ctx.runMutation(api.booking.createEventType, {
 ```
 
 **Key fields:**
-- `lengthInMinutes` - Default duration
+- `lengthInMinutes` - Default duration, in minutes
 - `lengthInMinutesOptions` - Available duration choices
 - `slotInterval` - How often slots appear (e.g., every 30min, every hour)
 - `bufferBefore` / `bufferAfter` - Gap between bookings
 
 Event types are linked to resources via a many-to-many relationship. One event type can be booked on multiple resources.
+
+**Naming:** the duration is called `lengthInMinutes` on the event type, but the
+availability queries take it as **`eventLength`** (minutes). There is no
+`duration` argument anywhere in the API:
+
+```typescript
+// convex/public.ts — the two availability queries
+api.public.getMonthAvailability({
+  resourceId: "studio-a",
+  dateFrom: "2026-03-01",
+  dateTo: "2026-03-31",
+  eventLength: 60, // minutes — the argument is NOT called `duration`
+  slotInterval: 30,
+});
+
+api.public.getDaySlots({
+  resourceId: "studio-a",
+  date: "2026-03-17",
+  eventLength: 60,
+  slotInterval: 30,
+});
+```
+
+The Booker sends the duration the visitor picked as `eventLength`, and
+`createBooking` re-checks `end - start` against `lengthInMinutesOptions` (or
+`lengthInMinutes` when no options are configured) before it writes anything.
 
 ## Presence System
 
@@ -187,83 +273,151 @@ Here's how data flows through the system:
 ```
 1. User opens booking page
    ↓
-2. getMonthAvailability() → Calendar dots (which days have slots)
+2. getMonthAvailability({ resourceId, dateFrom, dateTo, eventLength })
+   → Calendar dots (which days have slots)
    ↓
 3. User selects a date
    ↓
-4. getDaySlots() → Available time slots for that day
+4. getDaySlots({ resourceId, date, eventLength }) → Start times for that day
    ↓
-5. getDatePresence() → Which slots are currently held by others
+5. getDatePresence({ resourceId, date }) → Slots currently held by others
    ↓
 6. Frontend merges: available slots - held slots = bookable slots
    ↓
 7. User selects a slot → useSlotHold starts heartbeat
    ↓
-8. User submits booking form → createBooking mutation
+8. User submits booking form → createBooking (anonymous: name and email
+   travel with the call, no sign-in)
    ↓
-9. Backend: Validate → Update busySlots → Create booking record
+9. Wrapper guard: event type + resource → duration whitelist → past / notice /
+   horizon → "is this start still an offered slot?" → rate limit
    ↓
-10. Success! Other users see the slot disappear (real-time)
+10. Component: update busySlots + insert booking record (one transaction)
+   ↓
+11. Success! Other users see the slot disappear (real-time)
 ```
+
+Steps 2 and 4 are the schedule-aware wrappers described above — they resolve the
+schedule before they call the component.
 
 **Key insight:** Steps 4 and 5 are separate queries. `getDaySlots` rarely changes (only when bookings are made). `getDatePresence` changes every 5 seconds (heartbeats). Keeping them separate means the heavy slot calculation is cached while presence updates are lightweight.
 
 ## Authentication & Authorization
 
-ConvexBooking implements a **three-zone trust model** that separates public operations, authenticated user actions, and administrative functions.
+The booking component has **no** notion of users, sessions or roles. Every
+function it exports is callable by anything holding a component reference — the
+component trusts its caller and validates inputs, not identities. Authorization
+is entirely the host app's job, so the three-zone model below is a **pattern you
+can adopt**, not a feature the component enforces.
+
+<Callout type="info" title="A pattern, not an enforcement">
+Nothing inside `@mrfinch/booking` checks who you are. If your app calls
+`components.booking.resources.deleteResource` from an unguarded public mutation,
+the component deletes the resource. The trust zones live in *your* wrapper files
+(`convex/public.ts`, `convex/admin.ts`) and in the custom function builders they
+are written with (`convex/functions.ts`).
+</Callout>
 
 ### Trust Zones Overview
 
-The system divides operations into three security zones:
+The pattern divides operations into three security zones:
 
 **🟢 Green Zone (Public - No Authentication Required):**
 - Browsing available resources
 - Checking availability (month/day slots)
 - Viewing event types
-- Holding time slots (presence system uses session-based auth)
+- Holding time slots (presence uses a client-generated session id)
+- Creating a booking, *if* your product books anonymously
 
-**🟡 Yellow Zone (Authenticated - Sign-in Required):**
-- Creating bookings
-- Viewing own bookings
-- Cancelling bookings
-- Any operation that involves user identity
+**🟡 Yellow Zone (Identified - Optional):**
+- Bookings tied to a signed-in user
+- "My bookings" listings
+- Cancel/reschedule through an account instead of a signed link
+- Any operation that has to know *which* person is acting
 
-**🔴 Red Zone (Admin - Admin Role Required):**
+**🔴 Red Zone (Admin - Elevated Session Required):**
 - Creating/editing resources
 - Managing event types
 - Configuring schedules
 - Viewing all bookings
 - System configuration
 
-### Why Split APIs
+The yellow zone is optional. A booking flow can be fully anonymous and still be
+safe, as long as its writes are guarded on the server — validated against the
+same rules the UI shows, not against a login. This demo takes exactly that route.
 
-A single API endpoint cannot enforce different authentication rules for different operations. By separating functionality into distinct files, we make security boundaries explicit:
+### How This Demo Splits Them
+
+convexbooking.dev is a public sandbox, so it uses only two of the three zones:
+
+**Booking is anonymous (green).** No sign-in, no account, no identity beyond the
+presence session id. `createBooking` takes the booker's name and email inline and
+is guarded entirely on the server: 15-minute grid alignment, past /
+minimum-notice / booking-horizon windows, the duration whitelist, "is this start
+one of the slots `getDaySlots` would offer right now", and a small per-email rate
+limit (5 bookings per 10 minutes). Every rejection is a
+`ConvexError({ code, message })`, so the UI gets a stable code instead of
+Convex's redacted "Server Error".
+
+**The dashboard needs a session (red).** `/admin` is gated by Convex Auth v2 with
+its **anonymous** provider: "Continue as guest admin" mints a throw-away
+identity, and `adminQuery` / `adminMutation` refuse to run without one. The gate
+is not about *who* you are — everyone who signs in is an admin of the same demo
+organization. It makes entering the dashboard an explicit, sessioned step and
+gives the audit fields (`changedBy`, `cancelledBy`) a real user id.
+
+**Everything resets every hour.** A cron wipes the component's data, reseeds the
+demo organization and deletes stale guest-admin users:
 
 ```typescript
-// public.ts - Green Zone (no auth)
+// convex/crons.ts
+crons.interval("reset sandbox", { hours: 1 }, internal.seed.resetSandbox, {});
+```
+
+`resetSandbox` is an `internalAction` that runs `wipeSandbox`
+(`components.booking.maintenance.wipeAllData`) → `seedDemoData` →
+`cleanupGuestUsers`, each as its own mutation. Nothing public can trigger a wipe.
+
+<Callout type="warning" title="Shared sandbox">
+The demo data is shared by every visitor. Anything you create in the admin
+dashboard is visible to everyone else and disappears at the next hourly reset.
+</Callout>
+
+### Why Split APIs
+
+A single API endpoint cannot enforce different authentication rules for different operations. By separating functionality into distinct files, the security boundary becomes visible in the file name:
+
+```typescript
+// convex/public.ts - Green Zone (anonymous)
 export const listResources = publicQuery({
-  args: { organizationId: v.string() },
+  args: { organizationId: v.string(), type: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    // No ctx.auth check needed
-    return await ctx.runQuery(internal.resources.listResources, args);
-  }
+    // No ctx.auth check — this is deliberately open
+    return await ctx.runQuery(components.booking.resources.listResources, {
+      organizationId: args.organizationId,
+      type: args.type,
+      activeOnly: true, // Always filter to active for public
+    });
+  },
 });
 
-// admin.ts - Red Zone (admin required)
+// convex/admin.ts - Red Zone (guest-admin session required)
 export const createResource = adminMutation({
-  args: { /* ... */ },
+  args: { id: v.string(), organizationId: v.string() /* ... */ },
   handler: async (ctx, args) => {
-    // Auth already enforced by adminMutation builder
-    // Only admins can reach this code
-    return await ctx.runMutation(internal.resources.createResource, args);
-  }
+    // Auth already enforced by the adminMutation builder
+    return await ctx.runMutation(
+      components.booking.resources.createResource,
+      args
+    );
+  },
 });
 ```
 
 **Benefits:**
-- Frontend can show/hide UI based on user role (`useAuthFromAuthKit()`)
+- Frontend can show/hide UI with `<Authenticated>` / `<Unauthenticated>`
 - Backend enforces authorization regardless of frontend state
-- Security review is easier (audit `admin.ts` for sensitive operations)
+- Security review is easier (audit `convex/admin.ts` for sensitive operations)
 - API boundaries match product features (public booking vs admin dashboard)
 
 ### Gateway Pattern
@@ -277,7 +431,7 @@ Authentication is enforced in **wrapper functions**, not inside the component it
 │  public.ts                      admin.ts                │
 │  ├─ publicQuery                 ├─ adminQuery           │
 │  ├─ publicMutation              ├─ adminMutation        │
-│  │  (no auth check)             │  (requires admin)     │
+│  │  (anonymous)                 │  (session required)   │
 │  │         ↓                    │         ↓             │
 │  └─────────┼────────────────────┴─────────┼─────────────┤
 │            │                               │             │
@@ -293,82 +447,99 @@ Authentication is enforced in **wrapper functions**, not inside the component it
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Custom function builders** handle the authentication logic:
+**Custom function builders** carry the whole authentication decision:
 
 ```typescript
-// convex/lib/functionBuilders.ts
-export const publicQuery = customQuery(query, {
-  args: {},
-  input: async (ctx, args) => {
-    // No authentication check - anyone can call
-    return { ctx, args };
+// convex/functions.ts
+export const publicQuery = customQuery(
+  query,
+  customCtx(async () => ({})) // anonymous: nothing required, nothing injected
+);
+
+export const adminMutation = customMutation(
+  mutation,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    return { user, role: "admin" as Role };
+  })
+);
+
+// requireAuth (getUserIdentity inlined here for brevity)
+export async function requireAuth(ctx: QueryCtx | MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Sign in as guest admin to use the dashboard",
+    });
   }
-});
-
-export const adminMutation = customMutation(mutation, {
-  args: {},
-  input: async (ctx, args) => {
-    // Extract and verify admin role
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    const role = identity.role as string | undefined;
-    if (role !== "admin") {
-      throw new Error("Admin access required");
-    }
-
-    return { ctx: { ...ctx, userId: identity.subject }, args };
-  }
-});
+  return {
+    userId: identity.subject,
+    email: identity.email ?? "",
+    name: identity.name,
+  };
+}
 ```
+
+The builder names are load-bearing: swapping the demo's anonymous provider for a
+real one (WorkOS, Clerk, Convex Auth with passwords, your own JWT) means changing
+`requireAuth` — the ~56 call sites in `public.ts` and `admin.ts` stay as they are.
 
 **Special Case - Presence System:**
 
-The presence system uses **session-based authentication** instead of JWT tokens:
+The presence system uses **session-based holds** instead of identities:
 
 - Users get a random `sessionId` on page load (no sign-in required)
-- Heartbeats are tied to the session, not a user account
-- This allows anonymous users to "reserve" slots temporarily
-- Real booking creation still requires full authentication
+- Heartbeats are tied to that session, not to a user account
+- This lets anonymous visitors "reserve" a slot for a few seconds
+- Booking creation is anonymous too, but guarded server-side (see above)
 
 ### Frontend vs Backend Auth
 
 **Frontend Authentication (UX Only):**
-```typescript
-// app/demo/layout.tsx
-const { isLoading, isAuthenticated } = useAuthFromAuthKit();
-
-if (isAuthenticated) {
-  return <AdminDashboard />;  // Show admin UI
-} else {
-  return <SignInPrompt />;    // Redirect to login
+```tsx
+// app/admin/layout.tsx
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <AuthLoading><AdminGateSkeleton /></AuthLoading>
+      <Unauthenticated><GuestAdminGate /></Unauthenticated>
+      <Authenticated><AdminShell>{children}</AdminShell></Authenticated>
+    </>
+  );
 }
 ```
 
 **Backend Authentication (Security Enforcement):**
 ```typescript
 // convex/admin.ts
-export const createResource = adminMutation({
+export const confirmBooking = adminMutation({
+  args: { bookingId: v.string(), reason: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    // ctx.userId is guaranteed to exist here
-    // adminMutation builder already verified admin role
-    // Frontend checks were just for UX
-    return await ctx.runMutation(internal.resources.create, args);
-  }
+    const { user } = ctx; // guaranteed: adminMutation already required a session
+    return await ctx.runMutation(components.booking.hooks.transitionBookingState, {
+      bookingId: args.bookingId,
+      toStatus: "confirmed",
+      reason: args.reason,
+      changedBy: user.userId, // the guest-admin's Convex Auth user id
+    });
+  },
 });
 ```
 
 **Critical Rule:** Never trust frontend authentication for security decisions. Frontend checks improve UX (hide buttons users can't use), but the backend must independently verify every operation.
 
 **Example attack scenario:**
-1. User opens DevTools, finds admin API endpoint
-2. User manually calls `ctx.runMutation(api.admin.deleteResource, { id: "studio-a" })`
-3. Backend checks authentication → No valid admin role → Request rejected
+1. User opens DevTools, finds the admin API
+2. User manually calls `api.admin.deleteResource` with `{ id: "studio-a" }`
+3. `adminMutation` reads the Convex Auth identity → none → `ConvexError` with code `UNAUTHENTICATED` → nothing is written
 
 Even if the frontend accidentally showed an admin button, the backend would still block unauthorized access.
 
-For detailed information on implementing authentication, managing user roles, and integrating with WorkOS AuthKit, see [Authentication](/docs/authentication).
+For the authentication patterns themselves — trust zones, gateway files, and how
+to wire any Convex auth provider in place of this demo's anonymous one — see
+[Authentication](/docs/authentication). The
+[WorkOS AuthKit guide](/docs/integrations/workos) walks through a hosted provider
+end to end.
 
 </DocPage>

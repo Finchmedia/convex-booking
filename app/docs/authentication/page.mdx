@@ -1,323 +1,597 @@
 <DocPage toc={[
   { title: "Overview", url: "#overview", depth: 2 },
-  { title: "Trust Zones", url: "#trust-zones", depth: 2 },
-  { title: "Public Zone (Green)", url: "#public-zone-green", depth: 3 },
-  { title: "Authenticated Zone (Yellow)", url: "#authenticated-zone-yellow", depth: 3 },
-  { title: "Admin Zone (Red)", url: "#admin-zone-red", depth: 3 },
-  { title: "Gateway Pattern", url: "#gateway-pattern", depth: 2 },
-  { title: "Why Gateway Files?", url: "#why-gateway-files", depth: 3 },
-  { title: "Public Gateway Example", url: "#public-gateway-example", depth: 3 },
-  { title: "Admin Gateway Example", url: "#admin-gateway-example", depth: 3 },
-  { title: "Custom Function Builders", url: "#custom-function-builders", depth: 2 },
-  { title: "Builder Reference Table", url: "#builder-reference-table", depth: 3 },
-  { title: "Implementation", url: "#implementation", depth: 3 },
-  { title: "Frontend Authentication", url: "#frontend-authentication", depth: 2 },
-  { title: "Progressive Auth UX", url: "#progressive-auth-ux", depth: 3 },
-  { title: "AuthKitProvider Setup", url: "#authkitprovider-setup", depth: 3 },
-  { title: "User Prefilling", url: "#user-prefilling", depth: 3 },
-  { title: "JWT Structure", url: "#jwt-structure", depth: 2 },
-  { title: "Testing Authentication", url: "#testing-authentication", depth: 2 },
-  { title: "Common Issues", url: "#common-issues", depth: 2 },
+  { title: "What the component enforces", url: "#what-the-component-enforces", depth: 2 },
+  { title: "Anonymous booking", url: "#anonymous-booking", depth: 3 },
+  { title: "Management tokens", url: "#management-tokens", depth: 3 },
+  { title: "The guest admin gate", url: "#the-guest-admin-gate", depth: 2 },
+  { title: "Setting up Convex Auth v2", url: "#setting-up-convex-auth-v2", depth: 3 },
+  { title: "The auth module", url: "#the-auth-module", depth: 3 },
+  { title: "Function builders", url: "#function-builders", depth: 3 },
+  { title: "The client provider", url: "#the-client-provider", depth: 3 },
+  { title: "The gate component", url: "#the-gate-component", depth: 3 },
+  { title: "Guest sessions and the hourly reset", url: "#guest-sessions-and-the-hourly-reset", depth: 3 },
+  { title: "Bringing your own auth", url: "#bringing-your-own-auth", depth: 2 },
+  { title: "Trust zones", url: "#trust-zones", depth: 3 },
+  { title: "Gateway pattern", url: "#gateway-pattern", depth: 3 },
+  { title: "Public gateway example", url: "#public-gateway-example", depth: 4 },
+  { title: "Admin gateway example", url: "#admin-gateway-example", depth: 4 },
+  { title: "Custom function builders", url: "#custom-function-builders", depth: 3 },
+  { title: "Swapping the provider", url: "#swapping-the-provider", depth: 3 },
+  { title: "Provider options", url: "#provider-options", depth: 3 },
+  { title: "Testing the gate", url: "#testing-the-gate", depth: 2 },
+  { title: "Common issues", url: "#common-issues", depth: 2 },
 ]}>
 
-# Authentication & Authorization
+# Authentication & guest admin
 
-ConvexBooking uses a **trust zones** pattern to secure the booking system. The API is split into public and admin boundaries with different authentication requirements, providing defense-in-depth security.
+The booking component ships **no authentication**. It never calls `ctx.auth`. Everything it exposes is callable by whatever wrapper you put in front of it — so any Convex auth provider works, and so does no auth at all.
+
+This site runs both halves at once: **booking is anonymous**, and the **admin dashboard is gated** by a real Convex Auth v2 session that anyone can mint with one click.
+
+<Callout type="info" title="This is a public sandbox">
+  Bookings on convexbooking.dev are created without signing in. The dashboard at `/admin` is behind a **guest admin** session — click "Continue as guest admin" and you are in. Data is shared by every visitor and **resets every hour**.
+</Callout>
 
 ## Overview
 
-Authentication in ConvexBooking is designed around **progressive disclosure** - users can browse and explore without signing in, but must authenticate to complete bookings or access administrative functions.
+Two trust zones, and only one of them looks at identity:
 
-Key principles:
+| Zone | Builders | Identity | Used by |
+|------|----------|----------|---------|
+| Public | `publicQuery`, `publicMutation` | none read, none required | Booker: browsing, availability, presence, `createBooking`, token-based cancel/reschedule |
+| Admin | `adminQuery`, `adminMutation` | a Convex Auth v2 session is **required** | Dashboard: resources, schedules, event types, all bookings |
 
-- **Zero friction browsing** - No auth wall for viewing availability
-- **Auth-gated actions** - Sign-in required for booking creation
-- **Role-based admin** - Admin operations require elevated permissions
-- **Defense-in-depth** - Auth enforced at multiple layers (gateway + component)
+The gate is deliberately not about *who* you are — the only login provider on this deployment is the anonymous one. It makes the dashboard an explicit, sessioned step, and it gives audit fields (`changedBy`, `cancelledBy`) a real user id, without dragging an external identity provider into a demo.
 
-## Trust Zones
+## What the component enforces
 
-ConvexBooking organizes operations into three trust zones, each with different authentication requirements:
+Nothing. `@mrfinch/booking` is a Convex component, so it runs in its own sandbox: it has no access to your `ctx.auth`, no access to `process.env`, and no opinion about users. Its functions assume the caller already decided who is allowed to call them.
 
-### Public Zone (Green)
+That is the point. Auth lives in **your** `convex/` directory — the gateway files `convex/public.ts` and `convex/admin.ts` — which means the same component can be dropped into an app with Clerk, an app with WorkOS, an internal tool with no login, or a public sandbox like this one.
 
-**No authentication required** - Anyone can access these operations:
+### Anonymous booking
 
-- **Resource browsing** - View available rooms, studios, equipment
-- **Event type listings** - See what can be booked
-- **Availability checks** - Month dots, day slots, time slots
-- **Presence system** - Slot holds (uses session IDs, not user auth)
+`createBooking` is a `publicMutation`, so nothing is injected into `ctx` and nothing is required from the caller. The booker's details come in as arguments — the React Booker always sends them:
 
-**Use case:** A user visits your booking page, browses resources, checks availability for next week.
-
-```typescript
-// Example: Public availability query - no auth needed
-const slots = await ctx.runQuery(api.public.getDaySlots, {
-  resourceId: "studio-a",
-  date: "2025-12-15",
-  duration: 60,
-});
-```
-
-### Authenticated Zone (Yellow)
-
-**Authentication required** - Users must sign in:
-
-- **Creating bookings** - Confirm a reservation
-- **User profile access** - View/edit personal information
-- **Booking history** - See past and upcoming bookings
-
-**Use case:** User selects a time slot, clicks "Book Now", gets prompted to sign in via WorkOS, then booking is created with their email auto-filled.
-
-```typescript
-// Example: Authenticated booking creation
+```typescript title="convex/public.ts"
 export const createBooking = publicMutation({
+  args: {
+    eventTypeId: v.string(),
+    resourceId: v.string(),
+    start: v.number(),
+    end: v.number(),
+    timezone: v.string(),
+    booker: v.object({
+      name: v.string(),
+      email: v.string(),
+      phone: v.optional(v.string()),
+      notes: v.optional(v.string()),
+    }),
+    location: v.object({
+      type: v.string(),
+      value: v.optional(v.string()),
+    }),
+  },
   handler: async (ctx, args) => {
-    const { user } = ctx; // Auto-populated from JWT by publicMutation
+    assertBookableRange(args.start, args.end);
+    if (!isValidTimezone(args.timezone)) {
+      invalid("INVALID_TIMEZONE", "Unknown timezone.");
+    }
+    const booker = sanitizeBooker(args.booker);
+    const location = { type: args.location.type, value: args.location.value?.slice(0, 300) };
 
-    // Auto-fill booker info from authenticated user
-    const booker = {
-      name: user.name ?? user.email.split("@")[0],
-      email: user.email,
-    };
+    // ... event type + resource + duration + window + offered-slot checks ...
+    await enforceBookingRateLimit(ctx, booker.email);
 
-    return await ctx.runMutation(components.booking.public.createBooking, {
-      ...args,
-      booker,
+    let booking: unknown;
+    try {
+      booking = await ctx.runMutation(components.booking.public.createBooking, {
+        eventTypeId: args.eventTypeId,
+        resourceId: args.resourceId,
+        start: args.start,
+        end: args.end,
+        timezone: args.timezone,
+        booker,
+        location,
+        resendOptions: resendOptions(),
+      });
+    } catch (error) {
+      translateComponentError(error);
+    }
+    return booking;
+  },
+});
+```
+
+Because there is no login to lean on, the wrapper carries the guard the component leaves to its caller: 15-minute grid alignment, past / minimum-notice / horizon windows, the duration whitelist, "the start you sent is a slot we actually offered", and a small per-email rate limit (5 bookings per email per 10 minutes). Every failure is a `ConvexError({ code, message })` so the UI gets a stable code instead of Convex's redacted "Server Error".
+
+<Callout type="tip" title="Anonymous is not unguarded">
+  Dropping the sign-in wall moves work, it does not remove it. Anything an authenticated user could not have done — booking in the past, booking a duration you never offered, hammering the endpoint — has to be rejected server-side in the wrapper.
+</Callout>
+
+### Management tokens
+
+A booker who never signed in still needs to manage their booking. The component issues a per-booking `managementToken` alongside the public `uid`, and the confirmation link carries both:
+
+```
+/book/booking/<uid>?token=<managementToken>
+```
+
+The token *is* the credential. `getBookingByToken` is a `publicQuery`; `cancelBookingByToken` and `rescheduleBookingByToken` are `publicMutation`s. All three load the booking through **both** values before doing anything else:
+
+```typescript title="convex/public.ts"
+export const cancelBookingByToken = publicMutation({
+  args: {
+    uid: v.string(),
+    token: v.string(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { uid, token } = sanitizeTokenArgs(args.uid, args.token);
+    const booking = await loadBookingByToken(ctx, uid, token);
+    // ... idempotent status checks, then the component call ...
+  },
+});
+```
+
+Treat the link like a password reset link: it is unguessable, it is scoped to one booking, and it is the reason cancel and reschedule need no account.
+
+## The guest admin gate
+
+The dashboard uses **Convex Auth v2** with its **Anonymous** login provider — no password, no OAuth, no external provider, no email deliverability to worry about on a demo. One click mints a real session with a real JWT that Convex validates like any other.
+
+<Callout type="warning" title="Convex Auth v2 is alpha">
+  This site pins `@convex-dev/auth` at **`2.0.0-alpha.1`** — an exact version, no caret. The upstream docs say plainly: do not use it in production yet, the APIs may still change. It is a deliberate trade for this sandbox, and the reason the auth layer here is kept as thin as it is (three small files). For a production app, prefer a stable provider — see [Bringing your own auth](#bringing-your-own-auth).
+</Callout>
+
+### Setting up Convex Auth v2
+
+```bash
+npm install --save-exact @convex-dev/auth@2.0.0-alpha.1
+npx @convex-dev/auth
+```
+
+The setup CLI generates an RS256 key pair and sets `AUTH_PRIVATE_KEY` and `AUTH_JWKS` on the deployment (never in a file you commit). Peer requirements at this version: `convex` `^1.43.0` (this app is on `^1.45.0`), `next` `^16`, `react` `^18 || ^19`.
+
+Auth v2 ships as Convex components, so it is mounted next to the booking component:
+
+```typescript title="convex/convex.config.ts"
+import { defineApp } from "convex/server";
+import { v } from "convex/values";
+import auth from "@convex-dev/auth/core/convex.config.js";
+import anonymous from "@convex-dev/auth/providers/anonymous/convex.config.js";
+import booking from "@mrfinch/booking/convex.config";
+
+const app = defineApp({
+  env: {
+    AUTH_PRIVATE_KEY: v.string(),
+    AUTH_JWKS: v.string(),
+  },
+});
+
+app.use(auth, {
+  httpPrefix: "/auth",
+  env: {
+    AUTH_PRIVATE_KEY: app.env.AUTH_PRIVATE_KEY,
+    AUTH_JWKS: app.env.AUTH_JWKS,
+  },
+});
+app.use(anonymous);
+app.use(booking);
+
+export default app;
+```
+
+The component tree ends up as:
+
+```
+app
+├─ auth           Convex Auth v2 core (sessions, JWKS at /auth/.well-known/jwks.json)
+├─ authAnonymous  "Continue as guest admin" login provider
+└─ booking        @mrfinch/booking (nested: resend)
+```
+
+### The auth module
+
+The whole server-side auth surface of this site is one short file:
+
+```typescript title="convex/auth.ts"
+import { components, internal } from "./_generated/api";
+import { setupCore } from "@convex-dev/auth/core/setup";
+import { setupAnonymous } from "@convex-dev/auth/providers/anonymous/setup";
+
+const core = setupCore({ component: components.auth });
+export const { signOut, refreshSession, isAuthenticated } = core;
+
+export const { signInAnonymous } = setupAnonymous(core, {
+  component: components.authAnonymous,
+}).attachUserCallbacks({ createUser: internal.users.createUser });
+```
+
+The auth core stores only the id your `createUser` callback returns — the `users` table stays yours:
+
+```typescript title="convex/users.ts"
+export const createUser = internalMutation({
+  args: {
+    provider: v.literal("anonymous"),
+    providerAccountId: v.string(),
+    profile: v.object({}),
+  },
+  returns: v.id("users"),
+  handler: async (ctx) => {
+    return await ctx.db.insert("users", {});
+  },
+});
+```
+
+There is nothing to store about a guest, so the row is empty. In your own app this is where you would copy the email, name, or organization off the profile.
+
+### Function builders
+
+`convex/functions.ts` turns that identity into the two trust zones, using `convex-helpers`' `customQuery` / `customMutation`. The four builder names are load-bearing — `convex/public.ts` and `convex/admin.ts` use them at roughly 56 call sites:
+
+```typescript title="convex/functions.ts"
+export async function getUserIdentity(
+  ctx: QueryCtx | MutationCtx
+): Promise<UserIdentity | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return {
+    userId: identity.subject,
+    email: identity.email ?? "",
+    name: identity.name,
+  };
+}
+
+/**
+ * Require a signed-in (guest admin) session.
+ */
+export async function requireAuth(
+  ctx: QueryCtx | MutationCtx
+): Promise<UserIdentity> {
+  const user = await getUserIdentity(ctx);
+  if (!user) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Sign in as guest admin to use the dashboard",
     });
-  },
-});
+  }
+  return user;
+}
+
+// Public builders — no auth, nothing injected.
+export const publicQuery = customQuery(
+  query,
+  customCtx(async () => ({}))
+);
+
+export const publicMutation = customMutation(
+  mutation,
+  customCtx(async () => ({}))
+);
+
+// Admin builders — require a Convex Auth identity; inject { user, role }.
+export const adminQuery = customQuery(
+  query,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    return { user, role: "admin" as Role };
+  })
+);
+
+export const adminMutation = customMutation(
+  mutation,
+  customCtx(async (ctx) => {
+    const user = await requireAuth(ctx);
+    return { user, role: "admin" as Role };
+  })
+);
 ```
 
-### Admin Zone (Red)
+| Builder | Auth required? | Injected into `ctx` |
+|---------|----------------|---------------------|
+| `publicQuery` | No | nothing |
+| `publicMutation` | No | nothing |
+| `adminQuery` | **Yes** | `{ user, role: "admin" }` |
+| `adminMutation` | **Yes** | `{ user, role: "admin" }` |
 
-**Admin role required** - Elevated permissions:
+`user.userId` is `identity.subject` — for a guest session, the id of the `users` row minted at sign-in. That is what `convex/admin.ts` records as `changedBy` / `cancelledBy`. Everyone who signs in is an admin of the shared demo org; on this deployment there is nothing else to be.
 
-- **Resource management** - Create/edit/delete resources
-- **Schedule management** - Define availability windows
-- **Event type management** - Configure booking options
-- **Booking administration** - View all bookings, cancel bookings
-- **System configuration** - Organization settings
+### The client provider
 
-**Use case:** Admin logs into dashboard, creates new studio resource, configures availability schedule, links to event types.
+`ConvexAuthProvider` replaces `ConvexProvider`. It wraps `ConvexProviderWithAuth` internally, keeps the session tokens in `localStorage`, and refreshes the short-lived access token on its own:
 
-```typescript
-// Example: Admin-only resource creation
-export const createResource = adminMutation({
-  handler: async (ctx, args) => {
-    const { user, role } = ctx; // role = "admin" (verified by adminMutation)
+```tsx title="components/ConvexClientProvider.tsx"
+'use client';
 
-    return await ctx.runMutation(
-      components.booking.resources.createResource,
-      args
-    );
-  },
-});
+import { ConvexReactClient } from 'convex/react';
+import { ConvexAuthProvider } from '@convex-dev/auth/react';
+import { ConvexQueryCacheProvider } from 'convex-helpers/react/cache/provider';
+import { api } from '@/convex/_generated/api';
+
+export default function ConvexClientProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [convex] = useState(() => {
+    return new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+  });
+
+  return (
+    <ConvexAuthProvider
+      client={convex}
+      api={{ refreshSession: api.auth.refreshSession, signOut: api.auth.signOut }}
+      ambientSignIns={[]}
+    >
+      <ConvexQueryCacheProvider>
+        {children}
+      </ConvexQueryCacheProvider>
+    </ConvexAuthProvider>
+  );
+}
 ```
 
-## Gateway Pattern
+`ambientSignIns={[]}` because the only sign-in flow on this site is the explicit anonymous one — there is no OAuth redirect to pick up on page load. `ConvexQueryCacheProvider` stays inside it: the Booker and the dashboard use the cached `useQuery` hooks from `convex-helpers`.
 
-Authentication is enforced in **gateway files** (`convex/public.ts` and `convex/admin.ts`), not in the booking component itself. This provides a clear security boundary.
+### The gate component
 
-### Why Gateway Files?
+The whole gate is the admin layout. `AuthLoading` / `Unauthenticated` / `Authenticated` from `@convex-dev/auth/react` pick one of three screens, and `useAnonymousAuth` mints the session:
 
-The gateway pattern offers several advantages:
+```tsx title="app/admin/layout.tsx"
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+  useAuthActions,
+} from "@convex-dev/auth/react";
+import { useAnonymousAuth } from "@convex-dev/auth/providers/anonymous/react";
+import { api } from "@/convex/_generated/api";
 
-1. **Defense-in-depth** - Auth checked before reaching component
-2. **Clear boundaries** - Public vs Admin APIs are separate files
-3. **Custom logic** - Add organization-specific auth rules
-4. **User enrichment** - Auto-fill user data from JWT
-5. **Component reusability** - Booking component stays auth-agnostic
+function GuestAdminGate() {
+  const { signInAnonymous } = useAnonymousAuth(api.auth.signInAnonymous);
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleContinue = async () => {
+    setIsPending(true);
+    setError(null);
+    try {
+      await signInAnonymous();
+      // <Authenticated> takes over once the session is established and this
+      // component unmounts, so the pending state is intentionally left set.
+    } catch (err) {
+      console.error("Guest sign-in failed:", err);
+      setError("Could not start a guest session. Please try again.");
+      setIsPending(false);
+    }
+  };
+
+  return (
+    /* card with a "Continue as guest admin" button */
+  );
+}
+
+export default function DemoLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <AuthLoading>
+        <AdminGateSkeleton />
+      </AuthLoading>
+      <Unauthenticated>
+        <GuestAdminGate />
+      </Unauthenticated>
+      <Authenticated>
+        <AdminShell>{children}</AdminShell>
+      </Authenticated>
+    </>
+  );
+}
+```
+
+The `AuthLoading` branch matters more than it looks: without it, a returning visitor with a stored session sees the sign-in card flash before the token is restored. Signing out is `useAuthActions().signOut()`, and `Unauthenticated` takes the screen back.
+
+<Callout type="warning" title="The client gate is UX, not security">
+  Hiding the dashboard behind `Unauthenticated` only hides the pixels. The enforcement is `requireAuth` inside `adminQuery` / `adminMutation` — a browser calling `api.admin.*` directly gets `UNAUTHENTICATED` no matter what the UI shows.
+</Callout>
+
+### Guest sessions and the hourly reset
+
+The sandbox wipes and reseeds itself once an hour, and the guest users go with it:
+
+```typescript title="convex/crons.ts"
+const crons = cronJobs();
+
+// Public sandbox: wipe every booking + setup row, reseed the demo org and
+// purge stale guest-admin users. Nothing public can trigger this.
+crons.interval("reset sandbox", { hours: 1 }, internal.seed.resetSandbox, {});
+
+export default crons;
+```
+
+`internal.seed.resetSandbox` runs three mutations in a fixed order — wipe, reseed, then `cleanupGuestUsers`, which deletes `users` rows older than an hour (and stale rate-limit rows) in batches. Nothing publicly callable can trigger any of it.
+
+## Bringing your own auth
+
+Everything below is **optional guidance** for your own deployment. None of it is required by the component — it is the pattern this project uses, generalized.
+
+### Trust zones
+
+Sort every operation into one of three zones and you have your auth design:
+
+**Public zone (green) — no authentication.**
+
+- Resource browsing, event type listings
+- Availability: month dots, day slots
+- Presence and slot holds (session ids, not user ids)
+
+This zone exists in every deployment. Nobody signs in to look at a calendar.
+
+**Identified zone (yellow) — optional, and where most apps differ.**
+
+- Creating a booking as a known user
+- "My bookings" history, profile data
+
+If your app has accounts, attach them here: read the identity, fill `booker` from it, and store your own user id next to the booking. If it does not, this zone collapses into the public one — which is exactly what this sandbox does, with a management token standing in for the account.
+
+**Admin zone (red) — elevated.**
+
+- Resource, schedule and event type CRUD
+- Viewing and cancelling anyone's bookings
+- Organization settings
+
+Whatever you decide "admin" means: a role claim on the JWT, a row in your `users` table, an email allowlist — or, in a shared demo, simply "has a session".
+
+### Gateway pattern
+
+Enforce auth in gateway files, not inside the component. That gives you one obvious place to audit, and keeps the component reusable:
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                   Frontend (React)                  │
-│  - useQuery(api.public.listResources)              │
-│  - useMutation(api.admin.createResource)           │
+│  useQuery(api.public.getDaySlots)      anonymous    │
+│  useMutation(api.admin.createResource) guest admin  │
 └──────────────────────┬──────────────────────────────┘
                        │
                        ▼
 ┌─────────────────────────────────────────────────────┐
-│              Gateway Layer (Auth Check)             │
+│        Gateway Layer (your app's convex/)           │
 │                                                     │
-│  convex/public.ts          convex/admin.ts         │
-│  ├─ publicQuery             ├─ adminQuery          │
-│  ├─ publicMutation          ├─ adminMutation       │
-│  └─ Auto-fills ctx.user     └─ Checks role="admin" │
+│  convex/public.ts           convex/admin.ts         │
+│  ├─ publicQuery             ├─ adminQuery           │
+│  ├─ publicMutation          ├─ adminMutation        │
+│  └─ booking guard           └─ requireAuth()        │
 └──────────────────────┬──────────────────────────────┘
                        │
                        ▼
 ┌─────────────────────────────────────────────────────┐
-│            Booking Component (Business Logic)       │
-│  - components.booking.resources.listResources      │
-│  - components.booking.public.createBooking         │
+│      Booking component (business logic, no auth)    │
+│  components.booking.public.createBooking            │
+│  components.booking.resources.createResource        │
 └─────────────────────────────────────────────────────┘
 ```
 
-### Public Gateway Example
+And the identity itself only ever travels down the left-hand side:
 
-`convex/public.ts` handles **anonymous browsing** and **authenticated booking**:
+```
+  Browser                    Convex deployment              Component
+ ─────────                  ───────────────────            ───────────
+ provider SDK
+     │  access token
+     ▼
+ ConvexAuthProvider  ──JWT──▶  ctx.auth.getUserIdentity()
+ (or ConvexProviderWithAuth)          │
+                                      ▼
+                                 requireAuth()  ── throws ConvexError
+                                      │            UNAUTHENTICATED
+                                      ▼
+                          adminQuery / adminMutation
+                          ctx.user = { userId, email, name }
+                                      │
+                                      ▼
+                          components.booking.*  ◀── never sees a token
+```
 
-```typescript
+Swap the provider and only the top-left box changes. The component end of the pipe is identical in every deployment.
+
+#### Public gateway example
+
+`convex/public.ts` is the anonymous surface — pass-through reads plus a guarded write:
+
+```typescript title="convex/public.ts"
 import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { publicQuery, publicMutation } from "./functions";
 
-// ============================================
-// ANONYMOUS BROWSING (Green Zone)
-// ============================================
-
-/**
- * List resources - NO AUTH REQUIRED
- * Anyone can browse available resources
- */
+/** Browse resources — no auth. Public callers only see active ones. */
 export const listResources = publicQuery({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
-    // ctx.user may be null (anonymous user)
     return await ctx.runQuery(components.booking.resources.listResources, {
       ...args,
-      activeOnly: true, // Public only sees active resources
+      activeOnly: true,
     });
   },
 });
 
-/**
- * Get day slots - NO AUTH REQUIRED
- * Anyone can check availability
- */
-export const getDaySlots = publicQuery({
-  args: {
-    resourceId: v.string(),
-    date: v.string(),
-    duration: v.number(),
-  },
+/** Create a booking — no auth; the booker comes from the form. */
+export const createBooking = publicMutation({
+  args: { /* ...event type, resource, times, booker, location... */ },
   handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getDaySlots, args);
+    // guard first, component second
+    assertBookableRange(args.start, args.end);
+    await assertStartIsOfferedSlot(ctx, { /* ... */ });
+
+    return await ctx.runMutation(components.booking.public.createBooking, args);
   },
 });
+```
 
-// ============================================
-// AUTHENTICATED BOOKING (Yellow Zone)
-// ============================================
+If your app *does* have accounts, this is the one function that changes — read the identity and derive `booker` from it instead of trusting the form:
 
-/**
- * Create booking - AUTH REQUIRED
- * publicMutation enforces authentication
- */
+```typescript
 export const createBooking = publicMutation({
-  args: {
-    resourceId: v.string(),
-    eventTypeId: v.string(),
-    startTime: v.string(),
-    endTime: v.string(),
-    timezone: v.string(),
-    notes: v.optional(v.string()),
-  },
   handler: async (ctx, args) => {
-    // ctx.user is guaranteed to exist (publicMutation enforces this)
-    const { user } = ctx;
-
-    // Auto-fill booker from authenticated user
+    const user = await requireAuth(ctx); // your identity helper
     const booker = {
       name: user.name ?? user.email.split("@")[0],
       email: user.email,
     };
-
     return await ctx.runMutation(components.booking.public.createBooking, {
       ...args,
       booker,
-      userId: user.userId, // Track who made the booking
     });
   },
 });
 ```
 
-### Admin Gateway Example
+#### Admin gateway example
 
-`convex/admin.ts` handles **admin-only operations**:
+`convex/admin.ts` is the elevated surface. The builder has already thrown if there is no session, so handlers read `ctx.user` freely:
 
-```typescript
+```typescript title="convex/admin.ts"
 import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { adminQuery, adminMutation } from "./functions";
 
-// ============================================
-// ADMIN-ONLY OPERATIONS (Red Zone)
-// ============================================
-
-/**
- * List all resources - ADMIN ONLY
- * Includes inactive resources for management
- */
+/** List all resources — includes inactive ones. */
 export const listResources = adminQuery({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
-    // ctx.user and ctx.role guaranteed by adminQuery
-    // role = "admin" (verified)
-
     return await ctx.runQuery(components.booking.resources.listResources, {
       ...args,
-      activeOnly: false, // Admins see everything
+      activeOnly: false,
     });
   },
 });
 
-/**
- * Create resource - ADMIN ONLY
- * Only admins can create new bookable resources
- */
-export const createResource = adminMutation({
+/** Confirm a pending booking — the acting user id lands in the audit field. */
+export const confirmBooking = adminMutation({
   args: {
-    organizationId: v.string(),
-    name: v.string(),
-    type: v.string(),
-    location: v.optional(v.string()),
+    bookingId: v.string(),
+    reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { user, role } = ctx;
-
-    // Additional custom checks (example)
-    if (args.type === "premium" && user.organizationId !== "enterprise") {
-      throw new Error("Premium resources require enterprise plan");
-    }
+    const { user } = ctx; // guaranteed by adminMutation
 
     return await ctx.runMutation(
-      components.booking.resources.createResource,
+      components.booking.hooks.transitionBookingState,
       {
-        ...args,
-        createdBy: user.userId, // Track who created it
+        bookingId: args.bookingId as any,
+        toStatus: "confirmed",
+        reason: args.reason,
+        changedBy: user.userId,
       }
     );
   },
 });
 ```
 
-## Custom Function Builders
+### Custom function builders
 
-ConvexBooking uses **custom function builders** from `convex-helpers` to create the trust zones. These are defined in `convex/functions.ts`.
+The builders are plain `convex-helpers` wrappers, so the provider-specific part is a single helper. Keep it that way:
 
-### Builder Reference Table
-
-| Builder | Auth Required? | Role Check? | Use Cases |
-|---------|----------------|-------------|-----------|
-| `publicQuery` | No | No | Browse resources, check availability, view event types |
-| `publicMutation` | **Yes** | No | Create booking, update user profile |
-| `adminQuery` | **Yes** | **Yes** | List all bookings, view inactive resources |
-| `adminMutation` | **Yes** | **Yes** | CRUD resources/schedules/event types |
-
-**Key behavior:**
-
-- `publicQuery`: `ctx.user` may be `null` (anonymous allowed)
-- `publicMutation`: `ctx.user` guaranteed to exist (throws if not authenticated)
-- `adminQuery`: `ctx.user` and `ctx.role` guaranteed, role = "admin"
-- `adminMutation`: Same as adminQuery, throws if role is not "admin"
-
-### Implementation
-
-The custom builders are defined in `convex/functions.ts`:
-
-```typescript
+```typescript title="convex/functions.ts"
 import {
   customQuery,
   customMutation,
@@ -326,477 +600,158 @@ import {
 import { query, mutation } from "./_generated/server";
 import { ConvexError } from "convex/values";
 
-// ====================================
-// HELPER FUNCTIONS
-// ====================================
-
-/**
- * Extract user identity from JWT (WorkOS AuthKit)
- * Returns null if not authenticated
- */
+/** The ONLY provider-aware function in the app. */
 async function getUserIdentity(ctx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
-
   return {
-    userId: identity.subject, // WorkOS user ID
-    email: identity.email,
+    userId: identity.subject,          // stable id, every provider has one
+    email: identity.email ?? "",
     name: identity.name,
-    organizationId: identity.org_id, // WorkOS org (if applicable)
+    // provider-specific claims (org ids, roles, ...) go here
   };
 }
 
-/**
- * Require authentication - throws if not authenticated
- */
 async function requireAuth(ctx) {
   const user = await getUserIdentity(ctx);
   if (!user) {
     throw new ConvexError({
       code: "UNAUTHENTICATED",
-      message: "Authentication required",
+      message: "Sign in to continue",
     });
   }
   return user;
 }
 
-/**
- * Get user role
- * Phase 1: Returns "admin" for any authenticated user
- * Phase 2: Will query users table for actual roles
- */
-async function getUserRole(ctx, userId, organizationId) {
-  // TODO: Phase 2 - Query users table for role
-  // For now, all authenticated users are admins
-  return "admin";
+/** Your own rule: a claim, a users-table lookup, an allowlist. */
+async function requireAdmin(ctx) {
+  const user = await requireAuth(ctx);
+  const role = await getUserRole(ctx, user.userId);
+  if (role !== "admin") {
+    throw new ConvexError({ code: "FORBIDDEN", message: "Admin access required" });
+  }
+  return { user, role };
 }
 
-// ====================================
-// PUBLIC FUNCTION BUILDERS
-// ====================================
-
-/**
- * Public Query - No auth required
- * ctx.user may be null
- */
-export const publicQuery = customQuery(
-  query,
-  customCtx(async (ctx) => {
-    const user = await getUserIdentity(ctx);
-    return { user };
-  })
-);
-
-/**
- * Public Mutation - Auth required
- * ctx.user guaranteed to exist
- */
-export const publicMutation = customMutation(
-  mutation,
-  customCtx(async (ctx) => {
-    const user = await requireAuth(ctx);
-    return { user };
-  })
-);
-
-// ====================================
-// ADMIN FUNCTION BUILDERS
-// ====================================
-
-/**
- * Admin Query - Auth + role check
- * ctx.user and ctx.role guaranteed
- */
-export const adminQuery = customQuery(
-  query,
-  customCtx(async (ctx) => {
-    const user = await requireAuth(ctx);
-    const role = await getUserRole(ctx, user.userId, user.organizationId);
-    return { user, role };
-  })
-);
-
-/**
- * Admin Mutation - Auth + admin role required
- * Throws if user is not admin
- */
 export const adminMutation = customMutation(
   mutation,
-  customCtx(async (ctx) => {
-    const user = await requireAuth(ctx);
-    const role = await getUserRole(ctx, user.userId, user.organizationId);
-
-    if (role !== "admin") {
-      throw new ConvexError({
-        code: "FORBIDDEN",
-        message: "Admin access required",
-      });
-    }
-
-    return { user, role };
-  })
+  customCtx(async (ctx) => requireAdmin(ctx))
 );
 ```
 
-**How it works:**
+`customCtx` runs before your handler, so by the time the handler body executes the caller is already known-good and `ctx` carries whatever you returned.
 
-1. `customCtx` runs before your handler
-2. It extracts user identity from JWT via `ctx.auth.getUserIdentity()`
-3. For mutations/admin operations, it throws if auth fails
-4. Your handler receives enriched `ctx` with `user` (and `role` for admin)
+### Swapping the provider
 
-## Frontend Authentication
+Because the component is auth-agnostic and the gateway funnels everything through one helper, changing providers touches exactly two places:
 
-The frontend uses **WorkOS AuthKit** for authentication, integrated with Convex's `ConvexProviderWithAuth`.
+1. **`requireAuth` / `getUserIdentity`** in `convex/functions.ts` — how claims are read, and (if you want roles) where the role comes from. Providers other than Convex Auth also need a `convex/auth.config.ts` naming the issuer.
+2. **The client provider** in `components/ConvexClientProvider.tsx` — `ConvexAuthProvider` for Convex Auth, or `ConvexProviderWithAuth` plus a small hook that returns `{ isLoading, isAuthenticated, fetchAccessToken }` for everyone else.
 
-### Progressive Auth UX
+That is the whole surface. `convex/public.ts`, `convex/admin.ts`, the dashboard pages and the Booker do not change.
 
-Users experience a **seamless flow** from browsing to booking:
-
-1. **Anonymous browsing** - View resources and availability (no prompt)
-2. **Slot selection** - Choose time and date (no prompt)
-3. **Click "Book Now"** - Auth check triggers
-4. **Sign-in prompt** - If not authenticated, redirect to WorkOS sign-in
-5. **Return to booking** - After sign-in, user returns to booking form
-6. **Auto-filled form** - Name and email pre-populated from JWT
-7. **Complete booking** - Submit with one click
-
-This approach **maximizes conversion** - users explore freely, only authenticate when committed.
-
-### AuthKitProvider Setup
-
-Configure the providers in your root layout:
-
-```tsx title="components/ConvexClientProvider.tsx"
-'use client';
-
-import { ReactNode, useCallback, useRef, useState } from 'react';
-import { ConvexReactClient } from 'convex/react';
+```tsx
+// Generic bridge for a non-Convex-Auth provider
 import { ConvexProviderWithAuth } from 'convex/react';
-import { AuthKitProvider, useAuth, useAccessToken } from '@workos-inc/authkit-nextjs/components';
 
-export default function ConvexClientProvider({ children }: { children: ReactNode }) {
-  const [convex] = useState(() => {
-    return new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-  });
-
-  return (
-    <AuthKitProvider>
-      <ConvexProviderWithAuth client={convex} useAuth={useAuthFromAuthKit}>
-        {children}
-      </ConvexProviderWithAuth>
-    </AuthKitProvider>
+function useAuthFromProvider() {
+  const { user, isLoading } = useYourProviderSession();
+  const fetchAccessToken = useCallback(
+    async ({ forceRefreshToken }: { forceRefreshToken: boolean }) =>
+      await getTokenFromYourProvider({ forceRefreshToken }),
+    []
   );
-}
-
-/**
- * Bridge between WorkOS AuthKit and Convex auth
- */
-function useAuthFromAuthKit() {
-  const { user, loading: isLoading } = useAuth();
-  const { accessToken, loading: tokenLoading, error: tokenError } = useAccessToken();
-
-  // Combine loading states
-  const loading = (isLoading ?? false) || (tokenLoading ?? false);
-
-  // Only authenticated when we have BOTH user AND token AND not loading
-  const authenticated = !!user && !!accessToken && !loading;
-
-  // Stable token reference to avoid re-renders
-  const stableAccessToken = useRef<string | null>(null);
-  if (accessToken && !tokenError) {
-    stableAccessToken.current = accessToken;
-  }
-
-  const fetchAccessToken = useCallback(async () => {
-    if (stableAccessToken.current && !tokenError) {
-      return stableAccessToken.current;
-    }
-    return null;
-  }, [tokenError]);
 
   return {
-    isLoading: loading,
-    isAuthenticated: authenticated,
+    isLoading,
+    isAuthenticated: !!user,
     fetchAccessToken,
   };
 }
 ```
 
-Then wrap your app:
+### Provider options
 
-```tsx title="app/layout.tsx"
-import ConvexClientProvider from '@/components/ConvexClientProvider';
+All of these plug into the same two places:
 
-export default function RootLayout({ children }) {
-  return (
-    <html>
-      <body>
-        <ConvexClientProvider>
-          {children}
-        </ConvexClientProvider>
-      </body>
-    </html>
-  );
-}
-```
+- **Convex Auth** — password, magic link and OAuth providers alongside the anonymous one used here. Same `ConvexAuthProvider`, extra providers in `convex/auth.ts`.
+- **[WorkOS AuthKit](/docs/integrations/workos)** — hosted sign-in, organizations, SSO/SAML on paid tiers. The dedicated guide on this site walks through the component, the webhook user sync and the AuthKit bridge.
+- **Clerk** — hosted components, organizations, first-class Convex integration via `ConvexProviderWithClerk`.
+- **Auth0** — enterprise connections and rules, wired through `ConvexProviderWithAuth0`.
+- **Custom JWT** — anything that can issue a JWT you describe in `convex/auth.config.ts`.
 
-### User Prefilling
+Pick on the merits of the identity product; the booking side is unaffected.
 
-When a user is authenticated, their information is automatically extracted from the JWT and used to pre-fill forms:
-
-```typescript title="convex/public.ts"
-export const createBooking = publicMutation({
-  handler: async (ctx, args) => {
-    const { user } = ctx; // From JWT
-
-    // Auto-fill booker info
-    const booker = {
-      name: user.name ?? user.email.split("@")[0], // Use name or email prefix
-      email: user.email,
-    };
-
-    return await ctx.runMutation(components.booking.public.createBooking, {
-      ...args,
-      booker,
-      userId: user.userId, // Track booking owner
-    });
-  },
-});
-```
-
-This provides a **1-click booking experience** once authenticated - no manual form filling required.
-
-## JWT Structure
-
-WorkOS AuthKit issues JWTs with the following claims:
-
-```typescript
-{
-  "sub": "user_01HQXE23ABCDEF", // User ID (subject)
-  "email": "user@example.com",  // User's email address
-  "name": "John Doe",            // Display name (optional)
-  "org_id": "org_01ABC123",      // Organization ID (optional, if multi-tenant)
-  "iss": "https://api.workos.com",
-  "aud": "client_123abc",
-  "iat": 1701234567,
-  "exp": 1701238167
-}
-```
-
-**How ConvexBooking uses these claims:**
-
-| Claim | Used For | Example |
-|-------|----------|---------|
-| `sub` | User ID (`ctx.user.userId`) | Track booking owner, audit logs |
-| `email` | Auto-fill booker email | Pre-populate booking form |
-| `name` | Display name | Show "Welcome, John" in UI |
-| `org_id` | Multi-tenancy | Filter resources by organization |
-
-The `getUserIdentity()` helper extracts these claims from `ctx.auth.getUserIdentity()`.
-
-## Testing Authentication
-
-Follow these steps to verify authentication is working correctly:
-
-### 1. Start Development Servers
+## Testing the gate
 
 ```bash
-# Terminal 1: Start Convex
+# Terminal 1
 npx convex dev
 
-# Terminal 2: Start Next.js
+# Terminal 2
 npm run dev
 ```
 
-### 2. Test Anonymous Browsing
+**1. Anonymous booking works end to end.** Open `/book`, pick a resource, a day and a slot, fill in name and email, confirm. No sign-in prompt should ever appear. The confirmation page is `/book/booking/<uid>?token=<managementToken>` — cancel and reschedule from there, still signed out.
 
-1. Open `http://localhost:3000/book` (or your booking route)
-2. Browse resources - should work without sign-in
-3. Select a resource
-4. View calendar and availability - should work without sign-in
-5. Select a time slot - should work without sign-in
+**2. The dashboard is gated.** Open `/admin` in a fresh private window. You should get the "Guest admin access" card, not the dashboard.
 
-**Expected:** No auth prompts, full browsing capability
+**3. The backend is gated too.** With the same signed-out window, call an admin function directly from the browser console (or any Convex client). It must fail with `UNAUTHENTICATED` and the message `Sign in as guest admin to use the dashboard` — proof that the gate is server-side, not just a hidden route.
 
-### 3. Test Sign-In Prompt
+**4. One click, and you are an admin.** Click "Continue as guest admin". The card is replaced by the dashboard shell, the header shows the guest badge, and create/edit/delete work. `api.users.viewer` now returns a `userId` and a `signedInAt`. Sign out with the header button and you are back to step 2.
 
-1. After selecting a time slot, click "Continue" or "Book Now"
-2. Should see WorkOS sign-in page (or redirect to WorkOS)
-3. Sign in with test credentials
-4. Should redirect back to booking form
+## Common issues
 
-**Expected:** Seamless redirect flow
+### `UNAUTHENTICATED` from a dashboard query
 
-### 4. Test User Prefilling
+**Symptom:** The dashboard renders but every panel errors with `Sign in as guest admin to use the dashboard`.
 
-1. After signing in, observe the booking form
-2. Name field should be pre-filled with your name (from JWT)
-3. Email field should be pre-filled with your email (from JWT)
-4. Submit booking
+**Cause:** `requireAuth` found no identity — the session token is not reaching Convex.
 
-**Expected:** Form auto-filled, 1-click submission
+**Checks:**
 
-### 5. Verify Backend Auth
+1. `ConvexAuthProvider` wraps the tree (see `app/layout.tsx`), and the admin content is inside `Authenticated`.
+2. `NEXT_PUBLIC_CONVEX_URL` points at the deployment you are running functions on.
+3. `AUTH_PRIVATE_KEY` and `AUTH_JWKS` are set **on the deployment** (`npx convex env list`), not in `.env.local`. Re-run `npx @convex-dev/auth` if either is missing.
 
-Check Convex logs for:
+### Sign-in fails or the button spins forever
 
-```
-✓ createBooking called with user: { userId: "user_01...", email: "..." }
-✓ Booking created successfully
-```
+**Symptom:** "Could not start a guest session" appears, or the pending state never resolves.
 
-**Expected:** User identity captured in backend
+**Cause:** Usually the anonymous provider is not mounted, or `api.auth.signInAnonymous` is not exported.
 
-### 6. Test Admin Access
+**Checks:** `app.use(anonymous)` in `convex/convex.config.ts`, `setupAnonymous(...).attachUserCallbacks({ createUser })` in `convex/auth.ts`, and a `createUser` internal mutation that returns an id from your `users` table. Re-run `npx convex dev` so codegen picks up the new component.
 
-1. Navigate to `/demo` (or your admin route)
-2. Should be able to create resources, schedules, event types
-3. Log out and try accessing `/demo`
-4. Should redirect to sign-in (if properly protected)
+### A guest session outlives its user row
 
-**Expected:** Admin routes protected by auth
+**Symptom:** The dashboard still works, but "signed in as" data is empty — `api.users.viewer` returns `null`.
 
-## Common Issues
+**Cause:** The hourly reset deleted `users` rows older than an hour while the browser still held a valid session token. The identity is real, the row it pointed at is gone.
 
-### Issue 1: "Authentication required" error on booking
+**Fix:** Sign out and click "Continue as guest admin" again. In an app with real accounts, do not delete user rows out from under live sessions — that is a sandbox-only behavior.
 
-**Symptom:** User can browse but gets error when trying to book
+### An admin wrapper rejects a legitimate admin
 
-**Cause:** JWT not being passed to Convex, or `useAuthFromAuthKit` not working
+**Symptom:** A signed-in user gets `FORBIDDEN` / "Admin access required" in your own deployment.
 
-**Solution:**
+**Cause:** Your `getUserRole` did not return `"admin"`. On this sandbox the role is a constant, so the failure can only come from a customized builder.
 
-1. Check `ConvexClientProvider` is wrapping your app
-2. Verify `NEXT_PUBLIC_CONVEX_URL` environment variable is set
-3. Check browser DevTools Network tab - JWT should be in WebSocket frames
-4. Verify WorkOS AuthKit is configured correctly
+**Fix:** Log the identity and the resolved role inside `customCtx` before the throw, and confirm the claim you are reading actually exists on the JWT — optional claims (name, organization) vary by provider, so always keep a fallback such as `user.name ?? user.email.split("@")[0]`.
 
-```typescript
-// Debug: Log auth state
-const { user } = useAuth();
-console.log("WorkOS user:", user);
-```
+### A booking is rejected with a code you do not recognize
 
-### Issue 2: JWT claims missing (name, org_id)
+**Symptom:** `createBooking` throws `ConvexError` with codes like `SLOT_NOT_AVAILABLE`, `SLOT_NOT_ALIGNED`, `TOO_SOON`, `TOO_FAR_AHEAD` or `RATE_LIMITED`.
 
-**Symptom:** `ctx.user.name` or `ctx.user.organizationId` is undefined
+**Cause:** That is the wrapper's booking guard, not auth. Anonymous booking means these checks run for everyone.
 
-**Cause:** WorkOS may not include optional claims depending on configuration
-
-**Solution:**
-
-1. These fields are **optional** - always provide fallbacks:
-
-```typescript
-const displayName = user.name ?? user.email.split("@")[0];
-```
-
-2. To get organization claims, ensure user is part of an organization in WorkOS
-
-### Issue 3: Admin mutations failing for legitimate admin
-
-**Symptom:** Admin user gets "Admin access required" error
-
-**Cause:** `getUserRole()` not returning "admin" role
-
-**Solution:**
-
-Currently, `getUserRole()` in `convex/functions.ts` returns "admin" for ALL authenticated users (Phase 1 implementation). If you've modified it:
-
-1. Check your custom role logic
-2. Verify user has admin role in your users table
-3. Debug log:
-
-```typescript
-const role = await getUserRole(ctx, user.userId);
-console.log("User role:", role);
-```
-
-### Issue 4: Infinite redirect loop on sign-in
-
-**Symptom:** After signing in, user gets redirected back to WorkOS repeatedly
-
-**Cause:** Callback URL misconfigured or AuthKitProvider setup issue
-
-**Solution:**
-
-1. Verify `NEXT_PUBLIC_WORKOS_REDIRECT_URI` matches your app's callback route
-2. Check WorkOS Dashboard - Redirect URI should match exactly
-3. Ensure `useAuthFromAuthKit` returns correct `isAuthenticated` value
-
-```typescript
-// Debug: Log auth state
-console.log("isAuthenticated:", isAuthenticated);
-console.log("accessToken:", !!accessToken);
-```
-
-### Issue 5: Booking form not auto-filling user data
-
-**Symptom:** User is authenticated but form fields are empty
-
-**Cause:** Gateway not extracting user from JWT or not passing to component
-
-**Solution:**
-
-Check `convex/public.ts` has user prefilling logic:
-
-```typescript
-export const createBooking = publicMutation({
-  handler: async (ctx, args) => {
-    const { user } = ctx; // Must extract user
-
-    const booker = {
-      name: user.name ?? user.email.split("@")[0],
-      email: user.email,
-    };
-
-    return await ctx.runMutation(components.booking.public.createBooking, {
-      ...args,
-      booker, // Must pass booker
-    });
-  },
-});
-```
-
-### Issue 6: Admin dashboard accessible without sign-in
-
-**Symptom:** Can access `/demo` routes without authentication
-
-**Cause:** Admin routes not protected with `adminQuery`/`adminMutation` in backend, or missing auth check in frontend
-
-**Solution:**
-
-1. **Backend:** Ensure all admin operations use `adminQuery`/`adminMutation`
-
-```typescript
-// convex/admin.ts
-export const listResources = adminQuery({ ... }); // NOT publicQuery
-```
-
-2. **Frontend:** Add auth check to admin pages:
-
-```tsx
-// app/demo/layout.tsx
-import { useAuth } from '@workos-inc/authkit-nextjs/components';
-import { redirect } from 'next/navigation';
-
-export default function AdminLayout({ children }) {
-  const { user, loading } = useAuth();
-
-  if (loading) return <div>Loading...</div>;
-  if (!user) redirect('/sign-in');
-
-  return <>{children}</>;
-}
-```
+**Fix:** Render `error.data.message` in the UI — the codes are stable and safe to branch on. See the [API Reference](/docs/api) for the full list.
 
 ---
 
 **Next Steps:**
 
-- [WorkOS Integration Guide](/docs/integrations/workos) - Detailed WorkOS setup
-- [API Reference](/docs/api) - See which operations require auth
-- [Getting Started](/docs/getting-started) - Complete setup walkthrough
+- [WorkOS AuthKit](/docs/integrations/workos) — wiring an external provider instead of the guest gate
+- [API Reference](/docs/api) — which operations sit in which zone
+- [Getting Started](/docs/getting-started) — complete setup walkthrough
 
 </DocPage>

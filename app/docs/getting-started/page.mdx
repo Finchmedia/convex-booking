@@ -2,18 +2,19 @@
   { title: "Option A: Add to Existing App", url: "#option-a-add-to-existing-app-recommended", depth: 2 },
   { title: "Install the Package", url: "#1-install-the-package", depth: 3 },
   { title: "Configure Convex", url: "#2-configure-convex", depth: 3 },
-  { title: "Set Up Authentication", url: "#3-set-up-authentication", depth: 3 },
+  { title: "Create Function Builders", url: "#3-create-function-builders", depth: 3 },
   { title: "Create API Gateways", url: "#4-create-api-gateways", depth: 3 },
   { title: "Configure Environment Variables", url: "#5-configure-environment-variables", depth: 3 },
-  { title: "Set Up WorkOS Dashboard", url: "#6-set-up-workos-dashboard", depth: 3 },
-  { title: "Add Query Cache Provider", url: "#7-add-query-cache-provider", depth: 3 },
-  { title: "Use the Booker Component", url: "#8-use-the-booker-component", depth: 3 },
+  { title: "Add the Convex Provider", url: "#6-add-the-convex-provider", depth: 3 },
+  { title: "Use the Booker Component", url: "#7-use-the-booker-component", depth: 3 },
+  { title: "Gate the Dashboard (Optional)", url: "#8-gate-the-dashboard-optional", depth: 3 },
   { title: "Option B: Fork the Demo", url: "#option-b-fork-the-demo", depth: 2 },
   { title: "Clone the Repository", url: "#1-clone-the-repository", depth: 3 },
   { title: "Install Dependencies", url: "#2-install-dependencies", depth: 3 },
   { title: "Set Up Convex", url: "#3-set-up-convex", depth: 3 },
-  { title: "Start the Dev Server", url: "#4-start-the-dev-server", depth: 3 },
-  { title: "Explore the Demo", url: "#5-explore-the-demo", depth: 3 },
+  { title: "Generate the Auth Keys", url: "#4-generate-the-auth-keys", depth: 3 },
+  { title: "Start the Dev Server", url: "#5-start-the-dev-server", depth: 3 },
+  { title: "Explore the Demo", url: "#6-explore-the-demo", depth: 3 },
   { title: "Customize for Your Project", url: "#customize-for-your-project", depth: 2 },
   { title: "Next Steps", url: "#next-steps", depth: 2 },
 ]}>
@@ -25,6 +26,13 @@ There are two ways to get started with ConvexBooking:
 - **Option A:** Install the npm package into your existing Convex app (recommended)
 - **Option B:** Fork the demo repo for a complete starter with Admin UI
 
+<Callout type="info">
+  **Booking is anonymous.** The component never looks at an identity: a visitor
+  picks a slot, types a name and an email, and the booking is written. Auth is
+  something *you* add on top, and only where you want it — on this site that is
+  the admin dashboard (see [step 8](#8-gate-the-dashboard-optional)).
+</Callout>
+
 ## Option A: Add to Existing App (Recommended)
 
 If you already have a Convex project, add ConvexBooking in just a few steps.
@@ -35,231 +43,280 @@ If you already have a Convex project, add ConvexBooking in just a few steps.
 npm install @mrfinch/booking convex-helpers
 ```
 
+<Callout type="warning">
+  **Requires `@mrfinch/booking` 0.3.0 or newer.** The availability wrappers
+  below pass `scheduleId` to `getMonthAvailability` and `excludeBookingUid` to
+  both availability queries; those arguments — like `resources.metadata` and the
+  `maintenance` module — only exist from 0.3.0 on. On 0.2.x they are rejected by
+  the component's argument validator at runtime.
+</Callout>
+
+The component peers on `convex` (1.17 or newer), `convex-helpers`, `react`,
+`react-hook-form`, `zod` and `lucide-react` — all of which a typical Next.js +
+Convex app already has.
+
 ### 2. Configure Convex
 
-Create or update your `convex/convex.config.ts` to mount both the WorkOS AuthKit and Booking components:
+Create or update your `convex/convex.config.ts` to mount the booking component:
 
 ```typescript title="convex/convex.config.ts"
 import { defineApp } from "convex/server";
-import workOSAuthKit from "@convex-dev/workos-authkit/convex.config";
 import booking from "@mrfinch/booking/convex.config";
 
 const app = defineApp();
-app.use(workOSAuthKit);  // Authentication component
-app.use(booking);         // Booking component
+app.use(booking);
 
 export default app;
 ```
 
-### 3. Set Up Authentication
+That is the whole installation. The component brings its own isolated tables
+(resources, schedules, event types, bookings, presence, availability bitmaps)
+and a nested Resend component for emails.
 
-ConvexBooking requires WorkOS AuthKit for authentication. Install the dependencies:
+<Callout type="info">
+  This site mounts two more components — the Convex Auth v2 core and its
+  anonymous login provider — purely to gate `/admin`. That is optional and shown
+  in [step 8](#8-gate-the-dashboard-optional).
+</Callout>
 
-```bash
-npm install @convex-dev/workos-authkit convex-helpers
-```
+### 3. Create Function Builders
 
-#### Create Auth Client
-
-Create `convex/authClient.ts` to wrap the WorkOS component:
-
-```typescript title="convex/authClient.ts"
-import { AuthKit } from "@convex-dev/workos-authkit";
-import { components } from "./_generated/api";
-
-export const authKit = new AuthKit(components.workOSAuthKit);
-```
-
-#### Register Webhook Routes
-
-Create `convex/http.ts` for WorkOS webhook endpoints:
-
-```typescript title="convex/http.ts"
-import { httpRouter } from "convex/server";
-import { authKit } from "./authClient";
-
-const http = httpRouter();
-authKit.registerRoutes(http);  // Registers /workos/webhook
-
-export default http;
-```
-
-#### Create Custom Function Builders
-
-Create `convex/functions.ts` to define trust zones (public, authenticated, admin):
+Create `convex/functions.ts` to define your trust zones. Two are enough:
+anonymous (`publicQuery` / `publicMutation`) and signed-in (`adminQuery` /
+`adminMutation`). Built with `convex-helpers`' custom functions:
 
 ```typescript title="convex/functions.ts"
-import { customQuery, customMutation, customCtx } from "convex-helpers/server/customFunctions";
+import {
+  customQuery,
+  customMutation,
+  customCtx,
+} from "convex-helpers/server/customFunctions";
 import { query, mutation } from "./_generated/server";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
+import { ConvexError } from "convex/values";
 
-// Helper: Get user from JWT
-async function getUserIdentity(ctx: any) {
+export type UserIdentity = { userId: string; email: string; name?: string };
+
+/** Read the auth identity, or null when the caller is not signed in. */
+export async function getUserIdentity(
+  ctx: QueryCtx | MutationCtx
+): Promise<UserIdentity | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
   return {
     userId: identity.subject,
-    email: identity.email,
+    email: identity.email ?? "",
     name: identity.name,
   };
 }
 
-// Helper: Require authentication
-async function requireAuth(ctx: any) {
+/** Require a signed-in session. */
+export async function requireAuth(ctx: QueryCtx | MutationCtx) {
   const user = await getUserIdentity(ctx);
-  if (!user) throw new Error("Authentication required");
+  if (!user) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Sign in as guest admin to use the dashboard",
+    });
+  }
   return user;
 }
 
-// Public query - no auth required (anonymous browsing)
-export const publicQuery = customQuery(
-  query,
-  customCtx(async (ctx) => {
-    const user = await getUserIdentity(ctx);
-    return { user };
-  })
-);
-
-// Public mutation - auth required (booking creation)
+// Anonymous: nothing is read from the identity, nothing is injected.
+// Use for: availability, resource browsing, presence, booking creation.
+export const publicQuery = customQuery(query, customCtx(async () => ({})));
 export const publicMutation = customMutation(
   mutation,
-  customCtx(async (ctx) => {
-    const user = await requireAuth(ctx);
-    return { user };
-  })
+  customCtx(async () => ({}))
 );
 
-// Admin query - auth + admin role required
+// Signed in: injects { user, role } — user.userId is what you record as
+// changedBy / cancelledBy on admin writes.
 export const adminQuery = customQuery(
   query,
   customCtx(async (ctx) => {
     const user = await requireAuth(ctx);
-    return { user, role: "admin" };
+    return { user, role: "admin" as const };
   })
 );
 
-// Admin mutation - auth + admin role required
 export const adminMutation = customMutation(
   mutation,
   customCtx(async (ctx) => {
     const user = await requireAuth(ctx);
-    return { user, role: "admin" };
+    return { user, role: "admin" as const };
   })
 );
 ```
 
+<Callout type="info">
+  `requireAuth` reads whatever identity your Convex deployment is configured
+  with — Convex Auth, Clerk, Auth0, WorkOS AuthKit, a custom JWT. The builders
+  above are provider-agnostic; only [step 8](#8-gate-the-dashboard-optional)
+  picks one. Until then, `adminQuery` / `adminMutation` simply reject every
+  call, which is the safe default.
+</Callout>
+
 ### 4. Create API Gateways
 
-ConvexBooking uses a **gateway pattern** to separate public (anonymous + authenticated) from admin operations.
+ConvexBooking uses a **gateway pattern**: your app owns thin wrappers around the
+component, and that is where env vars, guards and auth checks live.
 
 #### Public API Gateway
 
-Create `convex/public.ts` for public-facing booking operations:
+Create `convex/public.ts` for the anonymous surface. Reads mostly pass through —
+except availability, which is resolved **schedule-aware on the server**, because
+the React Booker only sends `resourceId` / `date` / `eventLength` /
+`slotInterval`:
 
 ```typescript title="convex/public.ts"
 import { v } from "convex/values";
 import { components } from "./_generated/api";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
 import { publicQuery, publicMutation } from "./functions";
 
-// Anonymous browsing - no auth required
-export const listResources = publicQuery({
-  args: { organizationId: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.resources.listResources, {
-      organizationId: args.organizationId,
-      activeOnly: true,  // Public users only see active resources
-    });
-  },
-});
+type Ctx = QueryCtx | MutationCtx;
 
-export const getDaySlots = publicQuery({
-  args: {
-    resourceId: v.string(),
-    date: v.string(),
-    duration: v.number(),
-    slotInterval: v.optional(v.number()),
-    timezone: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getDaySlots, args);
-  },
-});
+/**
+ * Resolve a resource to the schedule that governs it:
+ * the event type's own scheduleId, else the organization's default schedule,
+ * else none (the component's legacy 09:00-17:00 UTC path).
+ */
+async function resolveAvailabilityContext(
+  ctx: Ctx,
+  resourceId: string,
+  eventTypeId?: string
+) {
+  const resource = await ctx.runQuery(components.booking.resources.getResource, {
+    id: resourceId,
+  });
+  if (!resource || resource.isActive === false) return null;
 
+  const eventType = eventTypeId
+    ? await ctx.runQuery(components.booking.public.getEventType, { eventTypeId })
+    : null;
+
+  const schedule =
+    (eventType?.scheduleId &&
+      (await ctx.runQuery(components.booking.schedules.getSchedule, {
+        id: eventType.scheduleId,
+      }))) ||
+    (await ctx.runQuery(components.booking.schedules.getDefaultSchedule, {
+      organizationId: resource.organizationId,
+    }));
+
+  return {
+    resource,
+    eventType,
+    scheduleId: schedule?.id,   // external id, not the Convex _id
+    timezone: schedule?.timezone,
+  };
+}
+
+/** Month view: Record<"YYYY-MM-DD", boolean> for the calendar. */
 export const getMonthAvailability = publicQuery({
   args: {
     resourceId: v.string(),
     dateFrom: v.string(),
     dateTo: v.string(),
-    duration: v.number(),
-    timezone: v.optional(v.string()),
+    eventLength: v.number(),
+    slotInterval: v.optional(v.number()),
+    eventTypeId: v.optional(v.string()),
+    excludeBookingUid: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getMonthAvailability, args);
-  },
-});
+    const avail = await resolveAvailabilityContext(
+      ctx,
+      args.resourceId,
+      args.eventTypeId
+    );
+    if (!avail) return {};
 
-export const getDatePresence = publicQuery({
-  args: {
-    resourceId: v.string(),
-    date: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.presence.getDatePresence, args);
-  },
-});
-
-// Authenticated booking - auth required, user auto-filled
-export const createBooking = publicMutation({
-  args: {
-    resourceId: v.string(),
-    start: v.string(),
-    end: v.string(),
-    booker: v.optional(
-      v.object({
-        name: v.string(),
-        email: v.string(),
-        phone: v.optional(v.string()),
-      })
-    ),
-    organizationId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const { user } = ctx;  // Auto-populated from JWT by publicMutation
-
-    // Auto-fill booker from authenticated user
-    const booker = args.booker ?? {
-      name: user.name ?? user.email.split("@")[0],
-      email: user.email,
-    };
-
-    return await ctx.runMutation(components.booking.public.createBooking, {
-      ...args,
-      booker,
-      resendOptions: process.env.RESEND_API_KEY
-        ? {
-            apiKey: process.env.RESEND_API_KEY,
-            fromEmail: process.env.RESEND_FROM_EMAIL ?? "bookings@yourdomain.com",
-          }
-        : undefined,
+    return await ctx.runQuery(components.booking.public.getMonthAvailability, {
+      resourceId: args.resourceId,
+      dateFrom: args.dateFrom,
+      dateTo: args.dateTo,
+      eventLength: args.eventLength,
+      slotInterval: args.slotInterval,
+      // Both or neither — otherwise the component silently takes the
+      // legacy 09:00-17:00 UTC path.
+      resourceTimezone: avail.scheduleId ? avail.timezone : undefined,
+      scheduleId: avail.scheduleId,
+      excludeBookingUid: args.excludeBookingUid,
     });
   },
 });
 
-// Presence system - no auth required (anonymous slot holds)
-export const heartbeat = publicQuery({
+/** Day view: the concrete slots, in the schedule's window. */
+export const getDaySlots = publicQuery({
   args: {
     resourceId: v.string(),
-    slot: v.string(),
+    date: v.string(),
+    eventLength: v.number(),
+    slotInterval: v.optional(v.number()),
+    eventTypeId: v.optional(v.string()),
+    excludeBookingUid: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const avail = await resolveAvailabilityContext(
+      ctx,
+      args.resourceId,
+      args.eventTypeId
+    );
+    if (!avail) return [];
+
+    let availableSlots: number[] | undefined;
+    if (avail.scheduleId && avail.timezone) {
+      const effective = await ctx.runQuery(
+        components.booking.schedules.getEffectiveAvailability,
+        { scheduleId: avail.scheduleId, date: args.date }
+      );
+      availableSlots = effective.availableSlots;
+      // Weekend or an "unavailable" date override: nothing to offer.
+      if (availableSlots.length === 0) return [];
+    }
+
+    return await ctx.runQuery(components.booking.public.getDaySlots, {
+      resourceId: args.resourceId,
+      date: args.date,
+      eventLength: args.eventLength,
+      slotInterval: args.slotInterval,
+      resourceTimezone: availableSlots ? avail.timezone : undefined,
+      availableSlots,
+      excludeBookingUid: args.excludeBookingUid,
+    });
+  },
+});
+
+/** Anonymous browsing — active resources only. */
+export const listResources = publicQuery({
+  args: { organizationId: v.string(), type: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.booking.resources.listResources, {
+      organizationId: args.organizationId,
+      type: args.type,
+      activeOnly: true,
+    });
+  },
+});
+
+/** Presence — client-generated session id, no auth. Both are mutations. */
+export const heartbeat = publicMutation({
+  args: {
+    resourceId: v.string(),
+    slots: v.array(v.string()),
     user: v.string(),
+    eventTypeId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.runMutation(components.booking.presence.heartbeat, args);
   },
 });
 
-export const leave = publicQuery({
+export const leave = publicMutation({
   args: {
     resourceId: v.string(),
-    slot: v.string(),
+    slots: v.array(v.string()),
     user: v.string(),
   },
   handler: async (ctx, args) => {
@@ -268,23 +325,107 @@ export const leave = publicQuery({
 });
 ```
 
+<Callout type="tip">
+  `resourceTimezone` and `availableSlots` (day view) — and `resourceTimezone`
+  and `scheduleId` (month view) — must be passed **together or not at all**. If
+  only one arrives, the component falls back to its legacy 09:00-17:00 UTC
+  business hours without an error, and the two views start disagreeing.
+</Callout>
+
+#### Creating a Booking
+
+`createBooking` takes the booker **explicitly** — whatever your form collected.
+No identity is involved:
+
+```typescript title="convex/public.ts"
+export const createBooking = publicMutation({
+  args: {
+    eventTypeId: v.string(),
+    resourceId: v.string(),
+    start: v.number(),
+    end: v.number(),
+    timezone: v.string(),
+    booker: v.object({
+      name: v.string(),
+      email: v.string(),
+      phone: v.optional(v.string()),
+      notes: v.optional(v.string()),
+    }),
+    location: v.object({ type: v.string(), value: v.optional(v.string()) }),
+  },
+  handler: async (ctx, args) => {
+    // Host-side guard — the component only checks slot collisions.
+    assertBookableRange(args.start, args.end);          // 15-minute grid, end > start
+    const booker = sanitizeBooker(args.booker);         // trim + length + email shape
+    const eventType = await loadBookableEventType(ctx, args.eventTypeId);
+    const resource = await loadBookableResource(
+      ctx,
+      args.resourceId,
+      args.eventTypeId
+    );                                                  // active + linked + standalone
+    const duration = assertAllowedDuration(eventType, args.start, args.end);
+    assertBookingWindow(eventType, args.start, Date.now()); // past / notice / horizon
+    await assertStartIsOfferedSlot(ctx, {
+      resource,
+      eventType,
+      start: args.start,
+      durationMinutes: duration,
+    });                                                 // must be a slot getDaySlots offers
+    await enforceBookingRateLimit(ctx, booker.email);   // 5 per email per 10 minutes
+
+    try {
+      return await ctx.runMutation(components.booking.public.createBooking, {
+        eventTypeId: args.eventTypeId,
+        resourceId: args.resourceId,
+        start: args.start,
+        end: args.end,
+        timezone: args.timezone,
+        booker,
+        location: args.location,
+        resendOptions: process.env.RESEND_API_KEY
+          ? {
+              apiKey: process.env.RESEND_API_KEY,
+              fromEmail: process.env.RESEND_FROM_EMAIL,
+              baseUrl: process.env.NEXT_PUBLIC_APP_URL,
+            }
+          : undefined,
+      });
+    } catch (error) {
+      // Map component messages onto stable ConvexError codes for the client.
+      translateComponentError(error);
+    }
+  },
+});
+```
+
 <Callout type="warning">
-  **Authentication Required**: `createBooking` requires users to be signed in. The mutation automatically fills user information from the JWT token.
+  **The guard is yours, not the component's.** `components.booking.public.createBooking`
+  validates the time range, that the event type and resource exist and are
+  active, that they are linked, and that the slots are free. It deliberately
+  does **not** consult the schedule, `minNoticeMinutes` or `maxFutureMinutes` —
+  those are the caller's job. Without a guard like the one above, anyone can
+  call your mutation from the browser console and book 03:00 on a Sunday, or a
+  date in 2099. The full implementation lives in
+  `convex/public.ts` of the
+  [demo repository](https://github.com/Finchmedia/convex-booking).
 </Callout>
 
 #### Admin API Gateway
 
-Create `convex/admin.ts` for admin-only management operations:
+Create `convex/admin.ts` for management operations. Same wrappers, different
+builder — the identity check happens once, in `adminMutation`:
 
 ```typescript title="convex/admin.ts"
 import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { adminQuery, adminMutation } from "./functions";
 
-// All operations require authentication + admin role
-
 export const listResources = adminQuery({
-  args: { organizationId: v.string() },
+  args: {
+    organizationId: v.string(),
+    type: v.optional(v.string()),
+    activeOnly: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     return await ctx.runQuery(components.booking.resources.listResources, args);
   },
@@ -292,126 +433,328 @@ export const listResources = adminQuery({
 
 export const createResource = adminMutation({
   args: {
-    name: v.string(),
+    id: v.string(),
     organizationId: v.string(),
-    location: v.optional(v.string()),
-    capacity: v.optional(v.number()),
+    name: v.string(),
+    type: v.string(),
+    timezone: v.string(),
+    description: v.optional(v.string()),
+    quantity: v.optional(v.number()),
+    isFungible: v.optional(v.boolean()),
+    isStandalone: v.optional(v.boolean()),
+    isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    return await ctx.runMutation(components.booking.resources.createResource, args);
-  },
-});
-
-export const updateResource = adminMutation({
-  args: {
-    resourceId: v.id("resources"),
-    name: v.optional(v.string()),
-    location: v.optional(v.string()),
-    capacity: v.optional(v.number()),
-    active: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.runMutation(components.booking.resources.updateResource, args);
+    return await ctx.runMutation(
+      components.booking.resources.createResource,
+      args
+    );
   },
 });
 
 export const deleteResource = adminMutation({
-  args: { resourceId: v.id("resources") },
+  args: { id: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.runMutation(components.booking.resources.deleteResource, args);
+    return await ctx.runMutation(
+      components.booking.resources.deleteResource,
+      args
+    );
   },
 });
 
-// Add similar wrappers for schedules, event types, bookings...
+// Add similar wrappers for schedules, event types and bookings...
 ```
 
 <Callout type="info">
-  The full admin API includes wrappers for schedules, event types, and bookings. See the [demo repository](https://github.com/Finchmedia/convex-booking) for complete examples.
+  The full admin API includes wrappers for schedules, event types and bookings.
+  See the [API Reference](/docs/api) or the
+  [demo repository](https://github.com/Finchmedia/convex-booking) for complete
+  examples.
 </Callout>
 
 ### 5. Configure Environment Variables
 
-Create or update `.env.local` with your credentials:
+Two places, and they are easy to mix up. `.env.local` is read by **Next.js** and
+is generated by `npx convex dev`:
 
 ```bash title=".env.local"
-# Convex (generated by npx convex dev)
 CONVEX_DEPLOYMENT=your-deployment
 NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
-
-# WorkOS AuthKit (get from dashboard.workos.com)
-WORKOS_API_KEY=sk_live_...
-WORKOS_CLIENT_ID=client_...
-WORKOS_WEBHOOK_SECRET=whsec_...
-NEXT_PUBLIC_WORKOS_REDIRECT_URI=http://localhost:3000/callback
-
-# Resend (Optional - for email notifications)
-RESEND_API_KEY=re_...
-RESEND_FROM_EMAIL=bookings@yourdomain.com
 ```
 
-### 6. Set Up WorkOS Dashboard
+Everything a Convex function reads at runtime lives on the **deployment**, not
+in that file:
 
-1. Go to [WorkOS Dashboard](https://dashboard.workos.com)
-2. Create a new application
-3. Configure the webhook endpoint:
-   - **URL**: `https://your-deployment.convex.site/workos/webhook`
-   - **Events**: Select `user.created`, `user.updated`, `user.deleted`
-4. Copy the webhook secret to your `WORKOS_WEBHOOK_SECRET` environment variable
-5. Test the sign-in flow
+```bash
+# Optional — booking confirmation / cancellation emails via Resend.
+# Without RESEND_API_KEY no email is sent.
+npx convex env set RESEND_API_KEY re_...
+npx convex env set RESEND_FROM_EMAIL bookings@example.com
+npx convex env set NEXT_PUBLIC_APP_URL https://example.com
+```
 
-### 7. Add Query Cache Provider
+<Callout type="info">
+  The component itself cannot read `process.env` — component code is isolated.
+  That is why the keys are injected as `resendOptions` by your wrapper, as shown
+  in [step 4](#4-create-api-gateways). See
+  [Email (Resend)](/docs/integrations/email) for the full setup.
+</Callout>
 
-Wrap your Convex provider with `ConvexQueryCacheProvider` for optimal caching:
+### 6. Add the Convex Provider
+
+Wrap your app in a Convex client and — this part matters — in
+`ConvexQueryCacheProvider`. The Booker and the admin pages use
+`convex-helpers`' cached `useQuery`, so availability queries are not refetched
+every time the calendar re-renders:
 
 ```tsx title="components/ConvexClientProvider.tsx"
+"use client";
+
+import { ReactNode, useState } from "react";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { ConvexQueryCacheProvider } from "convex-helpers/react/cache/provider";
 
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+export default function ConvexClientProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [convex] = useState(
+    () => new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!)
+  );
 
-export default function ConvexClientProvider({ children }: { children: React.ReactNode }) {
   return (
     <ConvexProvider client={convex}>
-      <ConvexQueryCacheProvider>
-        {children}
-      </ConvexQueryCacheProvider>
+      <ConvexQueryCacheProvider>{children}</ConvexQueryCacheProvider>
     </ConvexProvider>
   );
 }
 ```
 
-### 8. Use the Booker Component
+### 7. Use the Booker Component
 
-Now you can use the Booker in your app:
+`BookingProvider` tells the Booker which public API to call — the gateway module
+from [step 4](#4-create-api-gateways), passed as a whole:
 
-```tsx title="app/book/page.tsx"
-import { Booker } from "@/components/booker/booker";
+```tsx title="app/book/[resourceId]/page.tsx"
+"use client";
+
+import { Booker, BookingProvider } from "@mrfinch/booking/react";
+import { api } from "@/convex/_generated/api";
 
 export default function BookingPage() {
   return (
-    <Booker
-      eventTypeId="studio-session"
-      resourceId="studio-a"
-      title="Book a Recording Session"
-      description="Select a time that works for you"
-    />
+    <BookingProvider publicApi={api.public}>
+      <Booker
+        eventTypeId="studio-session"
+        resourceId="studio-a"
+        title="Book a Recording Session"
+        description="Select a time that works for you"
+        organizerName="Studio Team"
+        onBookingComplete={(booking) => console.log("Booked:", booking)}
+      />
+    </BookingProvider>
   );
 }
 ```
 
-<Callout type="warning">
-  **Authentication Required**: Users must be signed in to complete a booking. The Booker component automatically prompts for sign-in when the user tries to confirm their booking.
-</Callout>
+The Booker walks the visitor through duration, date, slot and a details form,
+holds the selected slot with presence heartbeats while they type, and calls
+`api.public.createBooking` with the booker they entered. No sign-in, no
+redirect.
 
 <Callout type="info">
-  You'll need to create resources, schedules, and event types first using the admin API. See the [API Reference](/docs/api) or fork the [demo repository](https://github.com/Finchmedia/convex-booking) for a ready-made Admin UI.
+  You'll need resources, schedules and event types before anything is bookable.
+  Create them with the admin API, or fork the
+  [demo repository](https://github.com/Finchmedia/convex-booking) for a
+  ready-made Admin UI.
 </Callout>
+
+### 8. Gate the Dashboard (Optional)
+
+Booking stays anonymous, but the dashboard should not be. This site uses
+[Convex Auth v2](https://auth-v2.previews.convex.dev/) with its **anonymous
+provider**: one click mints a throw-away session, so `/admin` is an explicit,
+sessioned step and audit fields get a real user id — without an external
+identity provider.
+
+<Callout type="warning">
+  Convex Auth v2 is an **alpha**. Pin the exact version, keep the auth layer
+  thin, and expect the API to move. For production, swap in a password or OAuth
+  provider — or a different vendor entirely; the builders from
+  [step 3](#3-create-function-builders) do not change. See
+  [Authentication](/docs/authentication) for the provider-agnostic picture and
+  [WorkOS AuthKit](/docs/integrations/workos) for a hosted alternative.
+</Callout>
+
+Install the package — it peers on `convex` 1.43 or newer, so bump that first —
+and run the setup CLI once per deployment. The CLI generates an RS256 key pair
+and sets `AUTH_PRIVATE_KEY` and `AUTH_JWKS` on the deployment:
+
+```bash
+npm install @convex-dev/auth@2.0.0-alpha.1
+npx @convex-dev/auth
+```
+
+Mount the auth core and the anonymous provider next to the booking component:
+
+```typescript title="convex/convex.config.ts"
+import { defineApp } from "convex/server";
+import { v } from "convex/values";
+import auth from "@convex-dev/auth/core/convex.config.js";
+import anonymous from "@convex-dev/auth/providers/anonymous/convex.config.js";
+import booking from "@mrfinch/booking/convex.config";
+
+const app = defineApp({
+  env: {
+    AUTH_PRIVATE_KEY: v.string(),
+    AUTH_JWKS: v.string(),
+  },
+});
+
+app.use(auth, {
+  httpPrefix: "/auth",
+  env: {
+    AUTH_PRIVATE_KEY: app.env.AUTH_PRIVATE_KEY,
+    AUTH_JWKS: app.env.AUTH_JWKS,
+  },
+});
+app.use(anonymous);
+app.use(booking);
+
+export default app;
+```
+
+Wire the provider to your own `users` table. The auth core stores only the id
+your callback returns:
+
+```typescript title="convex/auth.ts"
+import { components, internal } from "./_generated/api";
+import { setupCore } from "@convex-dev/auth/core/setup";
+import { setupAnonymous } from "@convex-dev/auth/providers/anonymous/setup";
+
+const core = setupCore({ component: components.auth });
+export const { signOut, refreshSession, isAuthenticated } = core;
+
+export const { signInAnonymous } = setupAnonymous(core, {
+  component: components.authAnonymous,
+}).attachUserCallbacks({ createUser: internal.users.createUser });
+```
+
+```typescript title="convex/users.ts"
+import { v } from "convex/values";
+import { internalMutation } from "./_generated/server";
+
+export const createUser = internalMutation({
+  args: {
+    provider: v.literal("anonymous"),
+    providerAccountId: v.string(),
+    profile: v.object({}),
+  },
+  returns: v.id("users"),
+  handler: async (ctx) => {
+    return await ctx.db.insert("users", {});
+  },
+});
+```
+
+```typescript title="convex/schema.ts"
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  // One row per signed-in session. The booking component owns its own tables.
+  users: defineTable({
+    email: v.optional(v.string()),
+    name: v.optional(v.string()),
+  }),
+});
+```
+
+On the client, `ConvexAuthProvider` replaces `ConvexProvider` from
+[step 6](#6-add-the-convex-provider) — it wraps `ConvexProviderWithAuth`, keeps
+the session tokens in localStorage and refreshes the short-lived access token
+itself. `ConvexQueryCacheProvider` stays inside it:
+
+```tsx title="components/ConvexClientProvider.tsx"
+"use client";
+
+import { ReactNode, useState } from "react";
+import { ConvexReactClient } from "convex/react";
+import { ConvexAuthProvider } from "@convex-dev/auth/react";
+import { ConvexQueryCacheProvider } from "convex-helpers/react/cache/provider";
+import { api } from "@/convex/_generated/api";
+
+export default function ConvexClientProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [convex] = useState(
+    () => new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!)
+  );
+
+  return (
+    <ConvexAuthProvider
+      client={convex}
+      api={{ refreshSession: api.auth.refreshSession, signOut: api.auth.signOut }}
+      ambientSignIns={[]}
+    >
+      <ConvexQueryCacheProvider>{children}</ConvexQueryCacheProvider>
+    </ConvexAuthProvider>
+  );
+}
+```
+
+Finally, gate the admin route. `Authenticated` / `Unauthenticated` /
+`AuthLoading` decide what renders, and `useAnonymousAuth` performs the one-click
+sign-in:
+
+```tsx title="app/admin/layout.tsx"
+"use client";
+
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+} from "@convex-dev/auth/react";
+import { useAnonymousAuth } from "@convex-dev/auth/providers/anonymous/react";
+import { api } from "@/convex/_generated/api";
+
+function GuestAdminGate() {
+  const { signInAnonymous } = useAnonymousAuth(api.auth.signInAnonymous);
+
+  return (
+    <button onClick={() => signInAnonymous()}>Continue as guest admin</button>
+  );
+}
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <AuthLoading>
+        <p>Loading...</p>
+      </AuthLoading>
+      <Unauthenticated>
+        <GuestAdminGate />
+      </Unauthenticated>
+      <Authenticated>{children}</Authenticated>
+    </>
+  );
+}
+```
+
+Every `adminQuery` / `adminMutation` from [step 3](#3-create-function-builders)
+now works, and every unauthenticated call fails with the
+`UNAUTHENTICATED` ConvexError instead of leaking data.
 
 ---
 
 ## Option B: Fork the Demo
 
-Want a complete starter with Admin UI, landing page, and documentation? Fork the demo repository.
+Want a complete starter with Admin UI, landing page, and documentation? Fork the
+demo repository — it is exactly the site you are reading, running the setup from
+Option A.
 
 ### 1. Clone the Repository
 
@@ -426,9 +769,17 @@ cd my-booking-app
 npm install
 ```
 
+<Callout type="info">
+  The demo pins `@mrfinch/booking` to a vendored tarball
+  (`vendor/mrfinch-booking-0.3.0.tgz`) so the deployed sandbox is reproducible.
+  For your own project, replace that dependency with the registry version:
+  `npm install @mrfinch/booking@latest`.
+</Callout>
+
 ### 3. Set Up Convex
 
-Run the Convex dev command. If you don't have a Convex project yet, it will prompt you to create one:
+Run the Convex dev command. If you don't have a Convex project yet, it will
+prompt you to create one:
 
 ```bash
 npx convex dev
@@ -442,9 +793,23 @@ This will:
 
 Keep this terminal running.
 
-### 4. Start the Dev Server
+### 4. Generate the Auth Keys
 
-In a new terminal, start the Next.js development server:
+The admin dashboard is gated by Convex Auth v2 (see
+[step 8](#8-gate-the-dashboard-optional)), which needs a signing key pair on the
+deployment. Run this once, in a second terminal:
+
+```bash
+npx @convex-dev/auth
+```
+
+It sets `AUTH_PRIVATE_KEY` and `AUTH_JWKS` on your deployment. Skip it and
+`/admin` will refuse every sign-in; `/book` keeps working, because booking is
+anonymous.
+
+### 5. Start the Dev Server
+
+Start the Next.js development server:
 
 ```bash
 npm run dev
@@ -452,16 +817,25 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) to see the landing page.
 
-### 5. Explore the Demo
+### 6. Explore the Demo
 
 The project includes a complete demo setup:
 
 - **Landing Page** (`/`) - Marketing page with features overview
 - **Documentation** (`/docs`) - You're reading it!
-- **Admin Dashboard** (`/admin`) - Manage resources, schedules, event types, and bookings
-- **Public Booking** (`/book`) - The booking flow your users will see
+- **Admin Dashboard** (`/admin`) - Manage resources, schedules, event types and bookings, behind the guest-admin gate
+- **Public Booking** (`/book`) - The booking flow your users will see, no sign-in
 
-Try creating a resource and event type in the Admin, then book a slot in the public booking flow.
+Try creating a resource and event type in the Admin, then book a slot in the
+public booking flow.
+
+<Callout type="info">
+  The hosted sandbox at [convexbooking.dev](https://convexbooking.dev) shares one
+  demo organization between all visitors and **resets every hour**: a cron wipes
+  the component's data, reseeds the demo resources and purges stale guest
+  sessions. Your own fork has no such cron unless you keep
+  `convex/crons.ts`.
+</Callout>
 
 ---
 
@@ -469,14 +843,15 @@ Try creating a resource and event type in the Admin, then book a slot in the pub
 
 Once you have it running, you can customize:
 
-1. **Remove what you don't need** - Delete the landing page, docs, or demo data
+1. **Remove what you don't need** - Delete the landing page, docs, the hourly reset cron or the demo data
 2. **Modify the Booker component** - Customize styles, add fields, change the flow
-3. **Update the schema** - Add custom fields to bookings, resources, etc.
-4. **Connect your auth** - Integrate with your existing authentication
+3. **Update the schema** - Add custom fields to bookings and resources via `resources.metadata`
+4. **Swap the auth provider** - Replace the anonymous guest gate with a real login; only `convex/auth.ts` and the admin layout change
 
 ### Stripping the Docs (Optional)
 
-If you're using the demo as a starting point and don't need the documentation site:
+If you're using the demo as a starting point and don't need the documentation
+site:
 
 ```bash
 # Remove docs-related files
@@ -495,6 +870,7 @@ Then remove these dependencies from `package.json`:
 ## Next Steps
 
 - [Core Concepts](/docs/concepts) - Understand the architecture
+- [Authentication](/docs/authentication) - Trust zones and bringing your own provider
 - [Components](/docs/components) - Learn about Booker and Admin UI
 - [API Reference](/docs/api) - Full API documentation
 - [Guides](/docs/guides) - Common patterns and recipes

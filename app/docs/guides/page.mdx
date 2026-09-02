@@ -1,5 +1,9 @@
 <DocPage toc={[
   { title: "Basic Booking Flow", url: "#basic-booking-flow", depth: 2 },
+  { title: "Guarding Bookings in the Host Wrapper", url: "#guarding-bookings-in-the-host-wrapper", depth: 2 },
+  { title: "Guard Order and Error Codes", url: "#guard-order-and-error-codes", depth: 3 },
+  { title: "Handling Guard Errors in the UI", url: "#handling-guard-errors-in-the-ui", depth: 3 },
+  { title: "Reschedule with excludeBookingUid", url: "#reschedule-with-excludebookinguid", depth: 2 },
   { title: "Multi-Duration Bookings", url: "#multi-duration-bookings", depth: 2 },
   { title: "Configuring Durations", url: "#configuring-durations", depth: 3 },
   { title: "Duration Locking", url: "#duration-locking", depth: 3 },
@@ -9,6 +13,7 @@
   { title: "User Timezone Selection", url: "#user-timezone-selection", depth: 3 },
   { title: "Building an Admin Dashboard", url: "#building-an-admin-dashboard", depth: 2 },
   { title: "Custom Function Builders", url: "#custom-function-builders", depth: 2 },
+  { title: "Sandbox Resets with the Maintenance API", url: "#sandbox-resets-with-the-maintenance-api", depth: 2 },
   { title: "Real-Time Booking Updates", url: "#real-time-booking-updates", depth: 2 },
 ]}>
 
@@ -17,16 +22,17 @@
 Practical patterns and recipes for common booking scenarios.
 
 > **API Organization**: ConvexBooking uses a trust-zone pattern:
-> - `api.public.*` - Public operations (anyone can browse, auth required for booking)
-> - `api.admin.*` - Admin operations (auth + role check required)
+> - `api.public.*` - Anonymous: browsing, availability, booking, token-based cancel/reschedule
+> - `api.admin.*` - Dashboard operations: require a signed-in session
 
 ## Basic Booking Flow
 
 The simplest setup: one resource, one event type, fixed duration.
 
 <Callout type="info">
-  **Admin Operations**: Creating resources, schedules, and event types requires authentication and admin role.
-  These operations use `api.admin.*` functions that perform automatic auth checks.
+  **Setup vs. booking**: Creating resources, schedules and event types goes either through `api.admin.*`
+  (which requires a signed-in session) or through an `internalMutation` that talks to the component directly,
+  the way `convex/seed.ts` does. Booking itself is anonymous — no account, no sign-in.
 </Callout>
 
 ### 1. Create a Resource
@@ -36,7 +42,7 @@ import { internalMutation } from "./_generated/server";
 import { components } from "./_generated/api";
 
 export const seedResources = internalMutation(async (ctx) => {
-  // Direct component call (bypass auth for seeding)
+  // Internal mutation: talks to the component directly
   await ctx.runMutation(components.booking.resources.createResource, {
     id: "meeting-room",
     name: "Meeting Room",
@@ -52,7 +58,7 @@ For admin UI operations, use the admin API:
 ```typescript title="app/admin/resources/actions.ts"
 import { api } from "@/convex/_generated/api";
 
-// This automatically checks auth + admin role
+// adminMutation requires a signed-in session before it forwards to the component
 await ctx.runMutation(api.admin.createResource, {
   id: "meeting-room",
   name: "Meeting Room",
@@ -85,7 +91,7 @@ From admin UI:
 
 ```typescript
 await ctx.runMutation(api.admin.createSchedule, {
-  // same args - auth check is automatic
+  // same args - the session check happens in adminMutation
 });
 ```
 
@@ -110,38 +116,286 @@ From admin UI:
 
 ```typescript
 await ctx.runMutation(api.admin.createEventType, {
-  // same args - auth + admin check is automatic
+  // same args - the session check happens in adminMutation
 });
 ```
 
 ### 4. Add the Booker
 
-The Booker component handles the complete booking flow. Anonymous users can browse availability, but must sign in to confirm the booking.
+The Booker component handles the complete booking flow: browsing availability, holding a slot, collecting name and email, and creating the booking. No account and no sign-in — the form is the identity.
 
 ```tsx title="app/book/page.tsx"
-import { Booker } from "@/components/booker/booker";
+"use client";
+
+import { Booker, BookingProvider } from "@mrfinch/booking/react";
+import { api } from "@/convex/_generated/api";
 
 export default function BookingPage() {
   return (
-    <Booker
-      eventTypeId="quick-meeting"
-      resourceId="meeting-room"
-      title="Book a Meeting"
-    />
+    // BookingProvider tells the Booker which wrapper module to call
+    <BookingProvider publicApi={api.public}>
+      <Booker
+        eventTypeId="quick-meeting"
+        resourceId="meeting-room"
+        title="Book a Meeting"
+      />
+    </BookingProvider>
   );
 }
 ```
 
 **How it works:**
-1. User browses slots → `api.public.getDaySlots` (no auth required)
-2. User selects slot → presence hold created (session-based)
+1. User browses slots → `api.public.getDaySlots` (anonymous, schedule-aware)
+2. User selects slot → presence hold created (client-generated session id)
 3. User fills form → data validated locally
-4. User clicks "Book" → `api.public.createBooking` (auth required)
-5. Booking created → user details auto-filled from JWT
+4. User clicks "Book" → `api.public.createBooking`, with the form as the required `booker` argument
+5. Booking created → confirmation code plus a management token for cancel/reschedule
+
+<Callout type="info">
+  **Anonymous is not unchecked**: `api.public.createBooking` re-validates every booking server-side before it
+  reaches the component — grid alignment, booking window, duration whitelist, "is this start actually an offered
+  slot", plus a per-email rate limit. See [Guarding Bookings in the Host Wrapper](#guarding-bookings-in-the-host-wrapper).
+</Callout>
+
+## Guarding Bookings in the Host Wrapper
+
+The component validates only what it owns: the event type and the resource exist and are active, the two are
+linked, and the requested slots are not already busy. Opening hours, notice periods, duration whitelists and
+abuse limits are left to the caller by design — so an anonymous `createBooking` needs a guard in the host
+wrapper. `convex/public.ts` runs one before it forwards the write, and every failure is a
+`ConvexError({ code, message })`, so the UI gets a stable code instead of Convex's redacted "Server Error".
+
+```typescript title="convex/public.ts"
+export const createBooking = publicMutation({
+  args: {
+    eventTypeId: v.string(),
+    resourceId: v.string(),
+    start: v.number(),
+    end: v.number(),
+    timezone: v.string(),
+    booker: v.object({
+      name: v.string(),
+      email: v.string(),
+      phone: v.optional(v.string()),
+      notes: v.optional(v.string()),
+    }),
+    location: v.object({
+      type: v.string(),
+      value: v.optional(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    assertBookableRange(args.start, args.end);
+    if (!isValidTimezone(args.timezone)) {
+      invalid("INVALID_TIMEZONE", "Unknown timezone.");
+    }
+    const booker = sanitizeBooker(args.booker);
+    const location = {
+      type: args.location.type,
+      value: args.location.value?.slice(0, 300),
+    };
+
+    const eventType = await loadBookableEventType(ctx, args.eventTypeId);
+    const resource = await loadBookableResource(
+      ctx,
+      args.resourceId,
+      args.eventTypeId
+    );
+    const durationMinutes = assertAllowedDuration(eventType, args.start, args.end);
+    assertBookingWindow(eventType, args.start, Date.now());
+    await assertStartIsOfferedSlot(ctx, {
+      resource,
+      eventType,
+      start: args.start,
+      durationMinutes,
+    });
+
+    await enforceBookingRateLimit(ctx, booker.email);
+
+    let booking: unknown;
+    try {
+      booking = await ctx.runMutation(components.booking.public.createBooking, {
+        eventTypeId: args.eventTypeId,
+        resourceId: args.resourceId,
+        start: args.start,
+        end: args.end,
+        timezone: args.timezone,
+        booker,
+        location,
+        resendOptions: resendOptions(),
+      });
+    } catch (error) {
+      translateComponentError(error);
+    }
+    if (!booking) {
+      invalid("BOOKING_FAILED", "Booking failed — please try again.");
+    }
+    return booking;
+  },
+});
+```
+
+`booker` is a **required** argument: name and email always travel with the request, nothing is derived from a
+session. `resendOptions` is the opposite — it is injected from the server's environment, never accepted from
+the client.
+
+### Guard Order and Error Codes
+
+Cheap checks first, database reads next, the component write last:
+
+- **Range** — safe integers, both ends on the 15-minute grid, `end > start` → `INVALID_TIME`, `SLOT_NOT_ALIGNED`, `INVALID_RANGE`
+- **Timezone** — parses as an IANA zone → `INVALID_TIMEZONE`
+- **Booker** — name present and ≤ 120 chars, an email with `@` and ≤ 254 chars, phone ≤ 30, notes ≤ 1000 → `NAME_REQUIRED`, `NAME_TOO_LONG`, `INVALID_EMAIL`, `PHONE_TOO_LONG`, `NOTES_TOO_LONG`
+- **Event type** — exists and is active → `EVENT_TYPE_NOT_FOUND`, `EVENT_TYPE_INACTIVE`
+- **Resource** — exists, is active, is standalone, and is linked to the event type → `RESOURCE_NOT_FOUND`, `RESOURCE_INACTIVE`, `RESOURCE_NOT_STANDALONE`, `NOT_LINKED`
+- **Duration** — `(end - start) / 60000` minutes is one of `lengthInMinutesOptions`, or `lengthInMinutes` when no options are configured → `INVALID_DURATION`
+- **Window** — not in the past (5 minutes of clock-skew grace), respects `minNoticeMinutes`, inside `maxFutureMinutes` (60 days when unset) → `IN_PAST`, `TOO_SOON`, `TOO_FAR_AHEAD`
+- **Offered slot** — the start is one of the slots `getDaySlots` would show for this resource, event type and duration → `SLOT_NOT_AVAILABLE`
+- **Rate limit** — 5 bookings per email address per 10 minutes → `RATE_LIMITED`
+- **Component errors** — mapped by message into the same shape, falling back to `BOOKING_FAILED`
+
+The offered-slot check is the master guard. Rather than re-deriving opening hours, date overrides, "runs past
+closing" and busy collisions, it asks the same schedule-aware query the calendar uses and requires the start to
+be in the answer:
+
+```typescript title="convex/public.ts"
+async function assertStartIsOfferedSlot(
+  ctx: Ctx,
+  opts: {
+    resource: ResourceDoc;
+    eventType: EventTypeDoc;
+    start: number;
+    durationMinutes: number;
+    excludeBookingUid?: string;
+  }
+): Promise<void> {
+  const avail = await resolveAvailabilityContext(ctx, opts.resource.id, {
+    eventType: opts.eventType,
+  });
+  if (!avail) {
+    invalid("RESOURCE_INACTIVE", "This resource is no longer available.");
+  }
+  const date = dayKeyFor(opts.start, avail.timezone);
+  const slots = await offeredDaySlots(ctx, avail, {
+    date,
+    eventLength: opts.durationMinutes,
+    slotInterval: effectiveSlotInterval(opts.eventType),
+    excludeBookingUid: opts.excludeBookingUid,
+  });
+  if (!slots.some((s) => slotTimeMs(s.time) === opts.start)) {
+    invalid(
+      "SLOT_NOT_AVAILABLE",
+      "This time slot is no longer available — please pick another one."
+    );
+  }
+}
+```
+
+`offeredDaySlots` resolves the resource's schedule server-side and passes `resourceTimezone` plus
+`availableSlots` (from `components.booking.schedules.getEffectiveAvailability`) into the component, so a 3 AM
+Sunday booking posted straight to the API fails exactly the way it would fail in the UI.
 
 <Callout type="warning">
-  **Authentication Gate**: The `createBooking` mutation uses `publicMutation`, which requires authentication.
-  If the user is not signed in, they'll see an error. Implement auth gate UI in your Booker to redirect to sign-in.
+  **The day key follows the schedule, not UTC.** `dayKeyFor(start, timezone)` formats the timestamp in the
+  schedule's timezone before asking for that day's slots. Using `toISOString().slice(0, 10)` here would look at
+  the wrong day for any booking near midnight in a non-UTC zone.
+</Callout>
+
+### Handling Guard Errors in the UI
+
+Every rejection carries a machine-readable `code` in `error.data`. Match on the code, show the message:
+
+```tsx
+import { ConvexError } from "convex/values";
+
+type GuardError = { code: string; message: string };
+
+function describe(error: unknown): string {
+  if (error instanceof ConvexError) {
+    const data = error.data as GuardError;
+    if (data.code === "SLOT_NOT_AVAILABLE") {
+      return "Someone just took that slot. Pick another time.";
+    }
+    if (data.code === "RATE_LIMITED") {
+      return "Too many bookings from this address — try again in a few minutes.";
+    }
+    return data.message;
+  }
+  return "Booking failed — please try again.";
+}
+```
+
+<Callout type="tip">
+  Throw `ConvexError` for anything the visitor should read. A plain `Error` from a Convex mutation reaches the
+  browser as "Server Error" in production, with the real message only in the deployment logs.
+</Callout>
+
+## Reschedule with excludeBookingUid
+
+A booking blocks its own slots. The moment someone reschedules, that self-conflict has to be ignored — otherwise
+the current time, and every start overlapping it, reads as busy. `@mrfinch/booking` 0.3.0 adds an optional
+`excludeBookingUid` to both availability queries: pass a booking's `uid` and availability is computed as if that
+booking did not exist.
+
+The wrapper forwards it on reads and uses it on the write path. `rescheduleBookingByToken` runs the same guard
+as `createBooking`, with the booking's own slots treated as free:
+
+```typescript title="convex/public.ts"
+    assertBookableRange(args.newStart, args.newEnd);
+    const eventType = await loadBookableEventType(ctx, booking.eventTypeId);
+    const resource = await loadBookableResource(
+      ctx,
+      booking.resourceId,
+      booking.eventTypeId
+    );
+    const durationMinutes = assertAllowedDuration(
+      eventType,
+      args.newStart,
+      args.newEnd
+    );
+    assertBookingWindow(eventType, args.newStart, now);
+    await assertStartIsOfferedSlot(ctx, {
+      resource,
+      eventType,
+      start: args.newStart,
+      durationMinutes,
+      excludeBookingUid: booking.uid,
+    });
+```
+
+When you build your own "pick a new time" calendar, pass the same uid to the reads so the UI agrees with the
+guard — `api.public.getDaySlots` and `api.public.getMonthAvailability` both accept it:
+
+```tsx
+const slots = useQuery(api.public.getDaySlots, {
+  resourceId: booking.resourceId,
+  date: selectedDate,
+  eventLength: duration,
+  excludeBookingUid: booking.uid,
+});
+
+const month = useQuery(api.public.getMonthAvailability, {
+  resourceId: booking.resourceId,
+  dateFrom,
+  dateTo,
+  eventLength: duration,
+  excludeBookingUid: booking.uid,
+});
+```
+
+Reschedule behaviour worth knowing:
+
+- Only `pending` and `confirmed` bookings can move → `INVALID_STATE`
+- A booking that has already started cannot be moved → `ALREADY_STARTED`
+- Rescheduling to the identical start and end is rejected → `SAME_SLOT`
+- The component performs the move as cancel + create, so the result is a **new** booking with a new `uid` and the same management token
+- `excludeBookingUid` only relaxes *reads*; the write path re-validates and still refuses a collision with anybody else
+
+<Callout type="info">
+  This site's `/book/booking/[uid]/reschedule` page renders the bundled Booker in reschedule mode
+  (`originalBooking` plus `reuseBookerInfo`). That path re-confirms a slot and calls
+  `api.public.rescheduleBookingByToken` with the management token, but it does not send `excludeBookingUid` to
+  the availability queries — pass it yourself when you build your own calendar.
 </Callout>
 
 ## Multi-Duration Bookings
@@ -318,72 +572,109 @@ User in New York views Tokyo room:
 
 ```typescript
 // Creating a booking - use Unix timestamps (UTC)
-// Note: This requires authentication
 await ctx.runMutation(api.public.createBooking, {
   resourceId: "tokyo-office",
   eventTypeId: "meeting",
-  start: 1705312800000,  // Unix ms - always UTC
+  start: 1705312800000,  // Unix ms - always UTC, on the 15-minute grid
   end: 1705316400000,
-  timezone: "America/New_York",  // User's display timezone for emails/UI
-  attendee: {
+  timezone: "America/New_York",  // Booker's display timezone for emails/UI
+  booker: {
     name: "John Doe",
     email: "john@example.com",
-    // Additional fields auto-filled from JWT
+    // phone and notes are optional
   },
-  resendOptions: process.env.RESEND_API_KEY ? {
-    apiKey: process.env.RESEND_API_KEY,
-    fromEmail: process.env.RESEND_FROM_EMAIL,
-  } : undefined,
+  location: { type: "address", value: "Tokyo Conference Room" },
 });
 ```
 
 <Callout type="info">
-  **Auto-filling User Data**: The `createBooking` mutation uses `publicMutation`, which automatically fills booker details from the authenticated user's JWT (WorkOS). You don't need to pass `booker` explicitly.
+  **`booker` is required**: the wrapper never derives it from a session — the object your form collects is the
+  object that gets stored. If your app does have a signed-in user, prefill the fields through the Booker's
+  `currentUser` prop; the values still travel in `booker`.
 </Callout>
 
 ---
 
 ## Building an Admin Dashboard
 
-Admin operations (CRUD for resources, event types, schedules) require authentication and admin role checks. ConvexBooking provides pre-built `api.admin.*` functions that handle this automatically.
+Admin operations (CRUD for resources, event types, schedules) run through `api.admin.*`, built on `adminQuery` / `adminMutation`. Those builders require a Convex Auth session and inject `{ user, role }` into the handler — the dashboard never checks auth itself.
 
-### Pattern: Protected Admin Pages
+### Pattern: Gating the Dashboard
+
+This demo has no accounts. `/admin` is gated by Convex Auth v2's anonymous provider: one click mints a
+throw-away session, which is enough to satisfy `adminQuery` / `adminMutation` and to stamp audit fields with a
+user id. There is no redirect and no user-lookup round-trip — the three state components render off the
+provider's own token state.
 
 ```tsx title="app/admin/layout.tsx"
 "use client";
 
-import { useQuery } from "convex/react";
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+} from "@convex-dev/auth/react";
+import { useAnonymousAuth } from "@convex-dev/auth/providers/anonymous/react";
 import { api } from "@/convex/_generated/api";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const user = useQuery(api.public.getCurrentUser);
-  const router = useRouter();
-
-  useEffect(() => {
-    if (user === null) {
-      // Not authenticated - redirect to sign in
-      router.push("/sign-in");
-    }
-    // TODO Phase 2: Check user.role === "admin"
-  }, [user, router]);
-
-  if (user === undefined) return <div>Loading...</div>;
-  if (user === null) return null; // Redirecting
+function GuestAdminGate() {
+  const { signInAnonymous } = useAnonymousAuth(api.auth.signInAnonymous);
 
   return (
-    <div className="flex h-screen">
-      <aside className="w-64 border-r">
-        {/* Admin sidebar */}
-      </aside>
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
-    </div>
+    <Button onClick={() => signInAnonymous()}>
+      Continue as guest admin
+    </Button>
+  );
+}
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <AuthLoading>
+        <AdminGateSkeleton />
+      </AuthLoading>
+      <Unauthenticated>
+        <GuestAdminGate />
+      </Unauthenticated>
+      <Authenticated>
+        <AdminShell>{children}</AdminShell>
+      </Authenticated>
+    </>
   );
 }
 ```
+
+The provider replaces `ConvexProvider` at the root and keeps the session's tokens itself:
+
+```tsx title="components/ConvexClientProvider.tsx"
+<ConvexAuthProvider
+  client={convex}
+  api={{ refreshSession: api.auth.refreshSession, signOut: api.auth.signOut }}
+  ambientSignIns={[]}
+>
+  <ConvexQueryCacheProvider>{children}</ConvexQueryCacheProvider>
+</ConvexAuthProvider>
+```
+
+The backend half is a handful of lines. `signInAnonymous` is what the button calls; `createUser` writes the app's own
+`users` row and returns its id, which becomes `identity.subject`:
+
+```typescript title="convex/auth.ts"
+import { components, internal } from "./_generated/api";
+import { setupCore } from "@convex-dev/auth/core/setup";
+import { setupAnonymous } from "@convex-dev/auth/providers/anonymous/setup";
+
+const core = setupCore({ component: components.auth });
+export const { signOut, refreshSession, isAuthenticated } = core;
+
+export const { signInAnonymous } = setupAnonymous(core, {
+  component: components.authAnonymous,
+}).attachUserCallbacks({ createUser: internal.users.createUser });
+```
+
+Signing out is the mirror image: `useAuthActions().signOut()` from the same package. Swapping in a real
+provider (OAuth, passwords, [WorkOS AuthKit](/docs/integrations/workos)) changes this file and the sign-in
+button — not `api.admin.*`, and not the dashboard pages, which only ever see the identity through `ctx.user`.
 
 ### Pattern: Admin CRUD Operations
 
@@ -400,7 +691,7 @@ export default function NewResourcePage() {
 
   async function handleSubmit(data: FormData) {
     try {
-      // Auth + admin check happens automatically in api.admin.createResource
+      // adminMutation resolves the session before this handler runs
       await createResource({
         id: data.get("id") as string,
         name: data.get("name") as string,
@@ -410,7 +701,7 @@ export default function NewResourcePage() {
       });
       router.push("/admin/resources");
     } catch (error) {
-      // Handle errors (e.g., "Admin access required")
+      // ConvexError with code "UNAUTHENTICATED" when the session is gone
       console.error(error);
     }
   }
@@ -470,7 +761,10 @@ api.admin.getBookingHistory     // View state history
 ```
 
 <Callout type="warning">
-  **Phase 1 Auth**: Currently, any authenticated user is treated as admin. Phase 2 will add role-based access control (RBAC) with proper `users` table and role checking. See `convex/functions.ts` for implementation.
+  **Everyone who signs in is an admin here.** The sandbox has a single shared demo organization and only the
+  anonymous provider, so `adminQuery` / `adminMutation` check *that* you have a session, not *who* you are — and
+  the data resets every hour anyway. In a real app, replace `requireAuth` in `convex/functions.ts` with a role
+  lookup and throw `ConvexError({ code: "FORBIDDEN" })` when it fails.
 </Callout>
 
 ---
@@ -486,21 +780,21 @@ ConvexBooking uses a trust-zone pattern with custom function builders. You can e
 │  GREEN ZONE: Internal                                       │
 │  - Direct component access: components.booking.*            │
 │  - No auth checks (trust Convex's internal boundary)        │
-│  - Used for: Seeding, migrations, scheduled jobs           │
+│  - Used for: Seeding, sandbox resets, scheduled jobs        │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
 │  BLUE ZONE: Public                                          │
 │  - api.public.* (publicQuery, publicMutation)               │
-│  - Queries: No auth (anonymous browsing)                    │
-│  - Mutations: Auth required (user auto-filled from JWT)     │
-│  - Used for: Booking flow, availability checks              │
+│  - No identity read, none required - anonymous              │
+│  - Guarded by explicit checks in the handler                │
+│  - Used for: Booking flow, availability, presence           │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
 │  YELLOW ZONE: Admin                                         │
 │  - api.admin.* (adminQuery, adminMutation)                  │
-│  - All operations: Auth + admin role check                  │
+│  - Convex Auth session required, injects user + role        │
 │  - Used for: CRUD operations, dashboard                     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -508,48 +802,55 @@ ConvexBooking uses a trust-zone pattern with custom function builders. You can e
 ### Creating Custom Builders
 
 ```typescript title="convex/functions.ts"
-import { customQuery, customMutation, customCtx } from "convex-helpers/server/customFunctions";
+import {
+  customQuery,
+  customMutation,
+  customCtx,
+} from "convex-helpers/server/customFunctions";
 import { query, mutation } from "./_generated/server";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
+import { ConvexError } from "convex/values";
+
+/** Read the Convex Auth identity, or null when the caller is not signed in. */
+export async function getUserIdentity(ctx: QueryCtx | MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return {
+    userId: identity.subject,
+    email: identity.email ?? "",
+    name: identity.name,
+  };
+}
+
+/** Require a signed-in (guest admin) session. */
+export async function requireAuth(ctx: QueryCtx | MutationCtx) {
+  const user = await getUserIdentity(ctx);
+  if (!user) {
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Sign in as guest admin to use the dashboard",
+    });
+  }
+  return user;
+}
 
 /**
- * Public Query - No auth required
+ * Public Query / Mutation - no auth, nothing injected.
+ * Use for: availability, browsing, anonymous booking, presence heartbeats.
  */
-export const publicQuery = customQuery(
-  query,
-  customCtx(async (ctx) => {
-    const user = await getUserIdentity(ctx); // Optional
-    return { user };
-  })
-);
+export const publicQuery = customQuery(query, customCtx(async () => ({})));
+
+export const publicMutation = customMutation(mutation, customCtx(async () => ({})));
 
 /**
- * Public Mutation - Auth required
- */
-export const publicMutation = customMutation(
-  mutation,
-  customCtx(async (ctx) => {
-    const user = await requireAuth(ctx); // Throws if not authenticated
-    return { user };
-  })
-);
-
-/**
- * Admin Mutation - Auth + admin role
+ * Admin Mutation - requires a Convex Auth identity; injects { user, role }.
+ * `user.userId` is what admin.ts records as changedBy / cancelledBy.
  */
 export const adminMutation = customMutation(
   mutation,
   customCtx(async (ctx) => {
     const user = await requireAuth(ctx);
-    const role = await getUserRole(ctx, user.userId, user.organizationId);
-
-    if (role !== "admin") {
-      throw new ConvexError({
-        code: "FORBIDDEN",
-        message: "Admin access required",
-      });
-    }
-
-    return { user, role };
+    return { user, role: "admin" as Role };
   })
 );
 ```
@@ -560,55 +861,164 @@ export const adminMutation = customMutation(
 import { publicQuery, publicMutation } from "./functions";
 
 /**
- * List resources - anyone can view
+ * List resources - anyone can view, active only
  */
 export const listResources = publicQuery({
-  args: { organizationId: v.string() },
+  args: {
+    organizationId: v.string(),
+    type: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
-    // ctx.user is available (optional, may be null)
     return await ctx.runQuery(components.booking.resources.listResources, {
       organizationId: args.organizationId,
-      activeOnly: true, // Always filter for public
+      type: args.type,
+      activeOnly: true, // Always filter to active for public
     });
   },
 });
 
 /**
- * Create booking - auth required, user auto-filled
+ * Heartbeat - anonymous, but still bounded
  */
-export const createBooking = publicMutation({
+export const heartbeat = publicMutation({
   args: {
     resourceId: v.string(),
-    eventTypeId: v.string(),
-    start: v.number(),
-    end: v.number(),
-    // ... other fields
+    slots: v.array(v.string()),
+    user: v.string(), // Client-generated session ID
+    eventTypeId: v.optional(v.string()),
+    data: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    // ctx.user is guaranteed (requireAuth was called)
-    const { user } = ctx;
-
-    return await ctx.runMutation(components.booking.public.createBooking, {
-      ...args,
-      booker: {
-        name: user.name ?? user.email,
-        email: user.email,
-        userId: user.userId,
-      },
-    });
+    if (args.slots.length > MAX_PRESENCE_SLOTS) {
+      invalid("TOO_MANY_SLOTS", "Too many slots in one hold.");
+    }
+    return await ctx.runMutation(components.booking.presence.heartbeat, args);
   },
 });
 ```
+
+`createBooking` is the long one — see
+[Guarding Bookings in the Host Wrapper](#guarding-bookings-in-the-host-wrapper) for its full guard.
 
 ### Benefits of This Pattern
 
 1. **Type Safety**: Custom builders provide typed `ctx.user` and `ctx.role`
 2. **Reusability**: Write auth logic once, reuse everywhere
 3. **Clarity**: Function name signals auth requirements (`publicQuery` vs `adminMutation`)
-4. **Security**: Auth checks happen automatically, can't be bypassed
+4. **Security**: The zone is visible in the function name — an admin function cannot forget its check, and a public one carries its guard explicitly
 5. **Composability**: Builders wrap standard Convex functions, work with all features
 
 For more details, see [Ian White's Convex Authorization article](https://stack.convex.dev/authorizing-mutations) and the [convex-helpers documentation](https://github.com/get-convex/convex-helpers).
+
+---
+
+## Sandbox Resets with the Maintenance API
+
+`@mrfinch/booking` 0.3.0 ships a `maintenance` module for exactly this job — giving a demo deployment a clean
+slate on a schedule:
+
+- `components.booking.maintenance.wipeAllBookingData` — deletes bookings, history, booking items and slot occupancy; keeps resources, schedules, event types, links and hooks
+- `components.booking.maintenance.wipeAllData` — the above **plus** the setup tables (this site uses it, because the reset reseeds everything)
+- `components.booking.maintenance.getDailyAvailability` — the raw `busySlots` array for one resource and day, for verification
+
+<Callout type="danger">
+  These are unauthenticated at the component boundary — the component trusts its host. Never re-export them from
+  `convex/public.ts` or `convex/admin.ts`. Wrap them in an `internalMutation` so only crons and other server code
+  can reach them.
+</Callout>
+
+convexbooking.dev resets **every hour**. One cron entry drives it:
+
+```typescript title="convex/crons.ts"
+import { cronJobs } from "convex/server";
+import { internal } from "./_generated/api";
+
+const crons = cronJobs();
+
+// Public sandbox: wipe every booking + setup row, reseed the demo org and
+// purge stale guest-admin users. Nothing public can trigger this.
+crons.interval("reset sandbox", { hours: 1 }, internal.seed.resetSandbox, {});
+
+export default crons;
+```
+
+The wipe itself is a one-liner; the reset is an `internalAction` that sequences three separate mutations:
+
+```typescript title="convex/seed.ts"
+/**
+ * Wipe every booking AND setup row in the booking component.
+ * Internal only — never expose this through public.ts / admin.ts.
+ */
+export const wipeSandbox = internalMutation({
+  args: {},
+  returns: wipeResult,
+  handler: async (ctx) => {
+    return await ctx.runMutation(components.booking.maintenance.wipeAllData, {});
+  },
+});
+
+/**
+ * Hourly sandbox reset (crons.ts). Three separate mutations so a large wipe
+ * cannot drag the reseed into one oversized transaction.
+ */
+export const resetSandbox = internalAction({
+  args: {},
+  returns: v.object({
+    wiped: wipeResult,
+    seeded: seedResult,
+    cleanup: v.object({
+      deletedUsers: v.number(),
+      deletedRateLimits: v.number(),
+      batches: v.number(),
+    }),
+  }),
+  handler: async (ctx): Promise<ResetResult> => {
+    const wiped = await ctx.runMutation(internal.seed.wipeSandbox, {});
+    const seeded = await ctx.runMutation(internal.seed.seedDemoData, {});
+
+    let deletedUsers = 0;
+    let deletedRateLimits = 0;
+    let batches = 0;
+    for (;;) {
+      const r = await ctx.runMutation(internal.seed.cleanupGuestUsers, {});
+      deletedUsers += r.deletedUsers;
+      deletedRateLimits += r.deletedRateLimits;
+      batches += 1;
+      if (!r.hasMore || batches >= 50) break;
+    }
+
+    return {
+      wiped,
+      seeded,
+      cleanup: { deletedUsers, deletedRateLimits, batches },
+    };
+  },
+});
+```
+
+Three details that matter:
+
+1. **Wipe before reseed.** `createSchedule` and `createResource` throw on duplicate ids, so reseeding on top of surviving setup rows fails. The order in `resetSandbox` is not cosmetic.
+2. **Separate mutations, driven by an action.** A wipe of a busy sandbox can touch a lot of rows; keeping it out of the reseed's transaction keeps both of them small. The cleanup loop runs until it reports `hasMore: false` (or hits 50 batches).
+3. **The component cannot clean your tables.** `wipeAllData` only knows the component's own data. App-side rows — the anonymous guest-admin `users` and the booking rate-limit rows — are deleted by `cleanupGuestUsers`, in batches of 200:
+
+```typescript title="convex/seed.ts"
+const staleUsers = await ctx.db
+  .query("users")
+  .withIndex("by_creation_time", (q) => q.lt("_creationTime", userCutoff))
+  .take(CLEANUP_BATCH);
+for (const user of staleUsers) {
+  await ctx.db.delete(user._id);
+}
+```
+
+Presence rows are deliberately left alone — they carry a 10-second timeout and disappear on their own. Guest
+sessions are not revoked either (the auth core exposes no per-user session API); they expire.
+
+<Callout type="tip">
+  Seeding runs in the same file. `seedDemoData` is an `internalMutation` around a plain `seedAll(ctx)` helper, so
+  the cron and a manual `npx convex run seed:seedDemoData` share one code path.
+</Callout>
 
 ---
 
@@ -791,8 +1201,9 @@ export function TimeSlotsPanel({ available, reserved }: Props) {
 
 ## Related Documentation
 
-- [Architecture Overview](/docs/architecture) - Deep dive into the Traffic Controller Pattern
-- [API Reference](/docs/api-reference) - Complete API documentation
+- [Core Concepts](/docs/concepts) - Deep dive into the Traffic Controller Pattern
+- [API Reference](/docs/api) - Complete API documentation, including the maintenance module
+- [Authentication](/docs/authentication) - The guest-admin gate and how to swap in your own provider
 - [Component Development](https://docs.convex.dev/production/components) - Convex components guide
 
 </DocPage>
