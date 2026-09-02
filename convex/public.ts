@@ -15,11 +15,13 @@
  *   the host-side guard the component deliberately leaves to the caller:
  *   15-minute grid, past / min-notice / horizon windows, duration whitelist,
  *   "start is an offered slot" (the same list getDaySlots shows), plus a small
- *   per-email rate limit. Component errors are translated to
- *   `ConvexError({ code, message })` so clients get stable codes instead of
- *   Convex's redacted "Server Error".
+ *   per-email rate limit and a sandbox-wide hourly cap. Component errors are
+ *   translated to `ConvexError({ code, message })` so clients get stable codes
+ *   instead of Convex's redacted "Server Error".
  *
  * - cancel / reschedule are authenticated by the booking's management token.
+ *   Reschedule runs the full createBooking guard (including both limits) on
+ *   the new time, since it writes a fresh booking row.
  *
  * Nothing here can wipe or reset the sandbox — that is internal.seed.* (cron).
  */
@@ -45,6 +47,20 @@ const DEFAULT_MAX_FUTURE_MINUTES = 60 * 24 * 60;
 /** Anonymous createBooking: 5 bookings per email per 10 minutes. */
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * Sandbox-wide cap on booking writes (create + reschedule) per hour.
+ *
+ * Every booking leaves rows behind (bookings, booking_history, …) until the
+ * hourly wipe in seed.ts — and that wipe is ONE Convex transaction, bounded by
+ * the per-transaction write limit (16k documents). A create → cancel → create
+ * loop on a single slot would otherwise grow the tables without limit and
+ * eventually make every reset fail. 500/h keeps the worst case (two windows
+ * between two wipes, ~4 rows per booking) far below the limit. The counter
+ * row is deleted by the reset, so each sandbox hour starts fresh.
+ */
+const SANDBOX_BOOKINGS_PER_HOUR = 500;
+const SANDBOX_WINDOW_MS = 60 * 60 * 1000;
+const SANDBOX_COUNTER_KEY = "sandbox:bookings";
 /** Presence: max slots a single heartbeat may hold. */
 const MAX_PRESENCE_SLOTS = 32;
 /** The component's own reschedule-artifact cancellation reason. */
@@ -386,6 +402,32 @@ async function offeredDaySlots(
   return slots;
 }
 
+/**
+ * `offeredDaySlots` narrowed to what createBooking's window guard accepts
+ * right now: nothing inside the minimum notice, nothing past the horizon.
+ * Filtered PER SLOT, not per day — `now + maxFutureMinutes` lands at the
+ * current wall-clock time of its day, so that day is only partly bookable.
+ */
+async function windowedDaySlots(
+  ctx: Ctx,
+  avail: AvailabilityContext,
+  opts: {
+    date: string;
+    eventLength: number;
+    slotInterval: number | undefined;
+    excludeBookingUid?: string;
+    now: number;
+  }
+): Promise<DaySlot[]> {
+  const notBefore = opts.now + avail.minNoticeMinutes * 60_000;
+  const notAfter = opts.now + avail.maxFutureMinutes * 60_000;
+  const slots = await offeredDaySlots(ctx, avail, opts);
+  return slots.filter((s) => {
+    const t = slotTimeMs(s.time);
+    return t >= notBefore && t <= notAfter;
+  });
+}
+
 // ============================================
 // BOOKING GUARD (shared by create / reschedule)
 // ============================================
@@ -558,19 +600,22 @@ async function assertStartIsOfferedSlot(
   }
 }
 
-/** Fixed window per booker email. Rolled back with the transaction on failure. */
-async function enforceBookingRateLimit(
+/**
+ * Fixed-window counter in `bookingRateLimits`. Throws `code` once `max` hits
+ * are inside the window; the increment rolls back with the transaction.
+ */
+async function bumpFixedWindow(
   ctx: MutationCtx,
-  email: string
+  key: string,
+  opts: { windowMs: number; max: number; code: string; message: string }
 ): Promise<void> {
-  const key = `email:${email.toLowerCase()}`;
   const now = Date.now();
   const row = await ctx.db
     .query("bookingRateLimits")
     .withIndex("by_key", (q) => q.eq("key", key))
     .unique();
 
-  if (!row || row.windowStart + RATE_LIMIT_WINDOW_MS <= now) {
+  if (!row || row.windowStart + opts.windowMs <= now) {
     if (row) {
       await ctx.db.patch(row._id, { windowStart: now, count: 1 });
     } else {
@@ -578,13 +623,35 @@ async function enforceBookingRateLimit(
     }
     return;
   }
-  if (row.count >= RATE_LIMIT_MAX) {
-    invalid(
-      "RATE_LIMITED",
-      "Too many bookings from this email address — please try again in a few minutes."
-    );
+  if (row.count >= opts.max) {
+    invalid(opts.code, opts.message);
   }
   await ctx.db.patch(row._id, { count: row.count + 1 });
+}
+
+/**
+ * Per-email window first, then the sandbox-wide cap. Called after the guard
+ * and before the component write by createBooking AND reschedule (both add a
+ * booking row).
+ */
+async function enforceBookingRateLimit(
+  ctx: MutationCtx,
+  email: string
+): Promise<void> {
+  await bumpFixedWindow(ctx, `email:${email.toLowerCase()}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    max: RATE_LIMIT_MAX,
+    code: "RATE_LIMITED",
+    message:
+      "Too many bookings from this email address — please try again in a few minutes.",
+  });
+  await bumpFixedWindow(ctx, SANDBOX_COUNTER_KEY, {
+    windowMs: SANDBOX_WINDOW_MS,
+    max: SANDBOX_BOOKINGS_PER_HOUR,
+    code: "SANDBOX_BUSY",
+    message:
+      "The sandbox has reached its hourly booking limit — everything resets every hour, please try again later.",
+  });
 }
 
 async function loadBookingByToken(
@@ -721,9 +788,10 @@ export const listEventTypes = publicQuery({
  *
  * Schedule-aware: resolves the resource's schedule server-side and passes
  * resourceTimezone + scheduleId to the component. Past days are forced to
- * false; days beyond the booking horizon are false; malformed input yields {}.
- * `eventTypeId` / `excludeBookingUid` are optional so a future Booker can send
- * them (the current one does not).
+ * false; days beyond the booking horizon are false; today and the horizon day
+ * are checked against the windowed slot list (they are only partly bookable);
+ * malformed input yields {}. `eventTypeId` / `excludeBookingUid` are optional
+ * so a future Booker can send them (the current one does not).
  */
 export const getMonthAvailability = publicQuery({
   args: {
@@ -748,39 +816,62 @@ export const getMonthAvailability = publicQuery({
     });
     if (!avail) return {};
 
+    const slotInterval =
+      args.slotInterval ??
+      (avail.eventType ? effectiveSlotInterval(avail.eventType) : undefined);
+    const excludeBookingUid = sanitizeUid(args.excludeBookingUid);
+
+    // Day keys in the schedule's zone (UTC on the legacy path) — the same
+    // calendar the component's month view is computed in.
     const now = Date.now();
-    const horizonMs = now + avail.maxFutureMinutes * 60_000;
-    const effectiveTo = Math.min(toMs, horizonMs);
+    const todayKey = dayKeyFor(now, avail.timezone);
+    const horizonKey = dayKeyFor(
+      now + avail.maxFutureMinutes * 60_000,
+      avail.timezone
+    );
+    const effectiveTo = args.dateTo < horizonKey ? args.dateTo : horizonKey;
 
     const result: Record<string, boolean> = {};
-    if (fromMs <= effectiveTo) {
+    if (args.dateFrom <= effectiveTo) {
       const fromComponent = (await ctx.runQuery(
         components.booking.public.getMonthAvailability,
         {
           resourceId: args.resourceId,
           dateFrom: args.dateFrom,
-          dateTo: toIsoDateUtc(effectiveTo),
+          dateTo: effectiveTo,
           eventLength: args.eventLength,
-          slotInterval:
-            args.slotInterval ??
-            (avail.eventType ? effectiveSlotInterval(avail.eventType) : undefined),
+          slotInterval,
           // Both or neither — otherwise the component silently takes the legacy path.
           resourceTimezone: avail.scheduleId ? avail.timezone : undefined,
           scheduleId: avail.scheduleId,
-          excludeBookingUid: sanitizeUid(args.excludeBookingUid),
+          excludeBookingUid,
         }
       )) as Record<string, boolean>;
       Object.assign(result, fromComponent);
     }
 
     // Past days and days beyond the horizon read as unavailable.
-    const todayKey = dayKeyFor(now, avail.timezone);
     for (let ms = fromMs; ms <= toMs; ms += 24 * 60 * 60 * 1000) {
       const key = toIsoDateUtc(ms);
-      if (key < todayKey || ms > effectiveTo) {
+      if (key < todayKey || key > horizonKey || !(key in result)) {
         result[key] = false;
-      } else if (!(key in result)) {
-        result[key] = false;
+      }
+    }
+
+    // The two edge days are only partly bookable (minimum notice on today,
+    // the horizon on its own day). The component marks a day true when ANY
+    // slot is free, so ask for the windowed list — otherwise the calendar
+    // would offer a day whose every slot createBooking rejects.
+    for (const edge of new Set([todayKey, horizonKey])) {
+      if (result[edge]) {
+        const slots = await windowedDaySlots(ctx, avail, {
+          date: edge,
+          eventLength: args.eventLength,
+          slotInterval,
+          excludeBookingUid,
+          now,
+        });
+        result[edge] = slots.length > 0;
       }
     }
     return result;
@@ -791,9 +882,9 @@ export const getMonthAvailability = publicQuery({
  * Detailed slots for a single (resource-local) day: [{ time }].
  *
  * Schedule-aware: passes resourceTimezone + availableSlots (from the resolved
- * schedule) to the component. Past days, days beyond the horizon and slots
- * inside the minimum-notice window are not offered — matching what
- * createBooking accepts.
+ * schedule) to the component. Past days and days beyond the horizon return [];
+ * within a day every slot inside the minimum-notice window or past the horizon
+ * is dropped — so the list matches what createBooking accepts, slot by slot.
  */
 export const getDaySlots = publicQuery({
   args: {
@@ -816,21 +907,21 @@ export const getDaySlots = publicQuery({
 
     const now = Date.now();
     const todayKey = dayKeyFor(now, avail.timezone);
-    if (args.date < todayKey) return [];
-    const dayStartMs = Date.parse(`${args.date}T00:00:00.000Z`);
-    if (dayStartMs > now + avail.maxFutureMinutes * 60_000) return [];
+    const horizonKey = dayKeyFor(
+      now + avail.maxFutureMinutes * 60_000,
+      avail.timezone
+    );
+    if (args.date < todayKey || args.date > horizonKey) return [];
 
-    const slots = await offeredDaySlots(ctx, avail, {
+    return await windowedDaySlots(ctx, avail, {
       date: args.date,
       eventLength: args.eventLength,
       slotInterval:
         args.slotInterval ??
         (avail.eventType ? effectiveSlotInterval(avail.eventType) : undefined),
       excludeBookingUid: sanitizeUid(args.excludeBookingUid),
+      now,
     });
-
-    const notBefore = now + avail.minNoticeMinutes * 60_000;
-    return slots.filter((s) => slotTimeMs(s.time) >= notBefore);
   },
 });
 
@@ -1132,6 +1223,10 @@ export const rescheduleBookingByToken = publicMutation({
       durationMinutes,
       excludeBookingUid: booking.uid,
     });
+
+    // A reschedule writes a new booking row (the old one is kept, marked
+    // rescheduled), so it counts like a create.
+    await enforceBookingRateLimit(ctx, booking.bookerEmail);
 
     try {
       return await ctx.runMutation(

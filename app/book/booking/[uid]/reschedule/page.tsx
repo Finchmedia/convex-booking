@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, AlertCircle, Calendar, Clock } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BookingErrorToaster } from "@/components/booking-error-toaster";
 import { Booker, BookingProvider, type Booking } from "@mrfinch/booking/react";
 
 export default function RescheduleBookingPage() {
@@ -164,21 +165,23 @@ export default function RescheduleBookingPage() {
           </CardContent>
         </Card>
 
-        {/* Booker Component in Reschedule Mode */}
-        <BookingProvider publicApi={api.public}>
-          <Booker
-            eventTypeId={booking.eventTypeId}
-            resourceId={booking.resourceId}
-            showHeader={false}
-            originalBooking={originalBooking}
-            reuseBookerInfo={false}
-            onBookingComplete={(newBooking) => {
-              // Redirect back to view page after reschedule
-              // Use the NEW booking's uid (reschedule creates a new booking)
-              router.push(`/book/booking/${newBooking.uid}?token=${encodeURIComponent(token)}`);
-            }}
-          />
-        </BookingProvider>
+        {/* Booker Component in Reschedule Mode (errors toasted by BookingErrorToaster) */}
+        <BookingErrorToaster>
+          <BookingProvider publicApi={api.public}>
+            <Booker
+              eventTypeId={booking.eventTypeId}
+              resourceId={booking.resourceId}
+              showHeader={false}
+              originalBooking={originalBooking}
+              reuseBookerInfo={false}
+              onBookingComplete={(newBooking) => {
+                // Redirect back to view page after reschedule
+                // Use the NEW booking's uid (reschedule creates a new booking)
+                router.push(`/book/booking/${newBooking.uid}?token=${encodeURIComponent(token)}`);
+              }}
+            />
+          </BookingProvider>
+        </BookingErrorToaster>
       </div>
     </div>
   );

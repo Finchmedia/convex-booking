@@ -6,12 +6,20 @@
  * - wipeSandbox:      components.booking.maintenance.wipeAllData (bookings AND
  *                     setup rows; presence is left to expire).
  * - cleanupGuestUsers: deletes app `users` (anonymous guest admins) older than
- *                     an hour plus stale rate-limit rows, in batches.
+ *                     an hour plus every rate-limit row (per-email windows and
+ *                     the sandbox-wide booking counter), in batches.
  * - resetSandbox:     internalAction run by crons.ts every hour:
  *                     wipe → seed → cleanup, each as its own mutation.
  *
  * Order is mandatory: createSchedule / createResource throw on duplicate ids,
  * so the wipe must precede the reseed. Nothing here is publicly callable.
+ *
+ * The wipe is a single transaction (a component mutation called from a
+ * mutation joins the caller's transaction) and @mrfinch/booking 0.3.0 offers
+ * no bounded/resumable variant, so the INPUT is bounded instead: public.ts
+ * caps booking writes per hour (SANDBOX_BUSY). Should the wipe still fail,
+ * resetSandbox logs it distinctly and re-throws — the reseed is skipped on
+ * purpose (it would throw on duplicate ids) and the cron run shows as failed.
  */
 import { v } from "convex/values";
 import {
@@ -26,8 +34,6 @@ const TZ = "Europe/Berlin";
 
 /** Guest users older than this are deleted by the reset. */
 const GUEST_MAX_AGE_MS = 60 * 60 * 1000;
-/** Rate-limit rows older than this are deleted by the reset. */
-const RATE_LIMIT_MAX_AGE_MS = 10 * 60 * 1000;
 const CLEANUP_BATCH = 200;
 
 // ============================================
@@ -220,9 +226,11 @@ const cleanupResult = v.object({
 });
 
 /**
- * Delete guest-admin `users` rows older than an hour and expired rate-limit
- * rows, one batch per call. Their auth sessions are not revoked (the auth core
- * exposes no per-user session API); they expire on their own.
+ * Delete guest-admin `users` rows older than an hour and ALL rate-limit rows
+ * (the wipe just removed the bookings they counted, and the sandbox-wide
+ * counter must restart with the fresh hour), one batch per call. Auth sessions
+ * are not revoked (the auth core exposes no per-user session API); they expire
+ * on their own.
  */
 export const cleanupGuestUsers = internalMutation({
   args: { olderThanMs: v.optional(v.number()) },
@@ -241,9 +249,6 @@ export const cleanupGuestUsers = internalMutation({
 
     const staleLimits = await ctx.db
       .query("bookingRateLimits")
-      .withIndex("by_windowStart", (q) =>
-        q.lt("windowStart", now - RATE_LIMIT_MAX_AGE_MS)
-      )
       .take(CLEANUP_BATCH);
     for (const row of staleLimits) {
       await ctx.db.delete(row._id);
@@ -286,7 +291,8 @@ type ResetResult = {
 
 /**
  * Hourly sandbox reset (crons.ts). Three separate mutations so a large wipe
- * cannot drag the reseed into one oversized transaction.
+ * cannot drag the reseed into one oversized transaction. A failed wipe is
+ * logged with a recognisable prefix and re-thrown (see the module comment).
  */
 export const resetSandbox = internalAction({
   args: {},
@@ -300,7 +306,18 @@ export const resetSandbox = internalAction({
     }),
   }),
   handler: async (ctx): Promise<ResetResult> => {
-    const wiped = await ctx.runMutation(internal.seed.wipeSandbox, {});
+    let wiped: ResetResult["wiped"];
+    try {
+      wiped = await ctx.runMutation(internal.seed.wipeSandbox, {});
+    } catch (error) {
+      console.error(
+        "[resetSandbox] WIPE FAILED — the sandbox was NOT reset and the reseed was skipped. " +
+          "If this repeats, the booking tables have outgrown one transaction: clear the " +
+          "booking component's tables in the dashboard, then run `npx convex run seed:resetSandbox`.",
+        error
+      );
+      throw error;
+    }
     const seeded = await ctx.runMutation(internal.seed.seedDemoData, {});
 
     let deletedUsers = 0;

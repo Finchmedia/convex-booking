@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Calendar, Clock, MapPin, ChevronRight, ExternalLink } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BookingErrorToaster } from "@/components/booking-error-toaster";
 
 // Demo organization ID - in production, this would come from URL or auth
 const DEMO_ORG_ID = "demo-org";
@@ -117,21 +118,25 @@ export default function ResourceBookingPage() {
             Back to Event Types
           </button>
 
-          {/* Booker Component */}
+          {/* Booker Component. BookingErrorToaster surfaces rejected bookings
+              (slot taken, rate limit, …) as toasts — the 0.3.0 Booker itself
+              never renders them. */}
           <div className="container max-w-5xl mx-auto">
-            <BookingProvider publicApi={api.public}>
-              <Booker
-                eventTypeId={selectedEventType.id}
-                resourceId={resourceId}
-                title={resource.name}
-                description={selectedEventType.description || resource.description}
-                organizerName="Studio Team"
-                onBookingComplete={(booking) => {
-                  console.log("Booking completed:", booking);
-                }}
-                onEventTypeReset={() => setSelectedEventType(null)}
-              />
-            </BookingProvider>
+            <BookingErrorToaster>
+              <BookingProvider publicApi={api.public}>
+                <Booker
+                  eventTypeId={selectedEventType.id}
+                  resourceId={resourceId}
+                  title={resource.name}
+                  description={selectedEventType.description || resource.description}
+                  organizerName="Studio Team"
+                  onBookingComplete={(booking) => {
+                    console.log("Booking completed:", booking);
+                  }}
+                  onEventTypeReset={() => setSelectedEventType(null)}
+                />
+              </BookingProvider>
+            </BookingErrorToaster>
           </div>
 
           {/* Timezone + booking-window hint (the Booker shows browser-local times) */}
@@ -139,6 +144,11 @@ export default function ResourceBookingPage() {
             Times are shown in your browser&apos;s timezone; {resource.name} is in{" "}
             {resource.timezone}.
             {bookingWindowHint && <> {bookingWindowHint}</>}
+            {" "}This sandbox sends no confirmation emails — your booking shows up in the{" "}
+            <Link href="/admin/bookings" className="underline hover:text-foreground">
+              admin dashboard
+            </Link>{" "}
+            until the hourly reset.
           </p>
 
           {/* Real-time presence demo */}

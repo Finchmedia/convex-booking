@@ -252,7 +252,11 @@ Cheap checks first, database reads next, the component write last:
 - **Window** — not in the past (5 minutes of clock-skew grace), respects `minNoticeMinutes`, inside `maxFutureMinutes` (60 days when unset) → `IN_PAST`, `TOO_SOON`, `TOO_FAR_AHEAD`
 - **Offered slot** — the start is one of the slots `getDaySlots` would show for this resource, event type and duration → `SLOT_NOT_AVAILABLE`
 - **Rate limit** — 5 bookings per email address per 10 minutes → `RATE_LIMITED`
+- **Sandbox cap** — 500 booking writes (create + reschedule) per hour across the whole sandbox, so the hourly wipe always fits in one transaction → `SANDBOX_BUSY`
 - **Component errors** — mapped by message into the same shape, falling back to `BOOKING_FAILED`
+
+`rescheduleBookingByToken` runs the same guard (with the booking's own slots treated as free) and both limits,
+because a reschedule writes a new booking row.
 
 The offered-slot check is the master guard. Rather than re-deriving opening hours, date overrides, "runs past
 closing" and busy collisions, it asks the same schedule-aware query the calendar uses and requires the start to

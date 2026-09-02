@@ -23,6 +23,7 @@ const CODE_MESSAGES: Record<string, string> = {
   NOTES_TOO_LONG: "Notes are too long.",
   RESERVED_REASON: "That cancellation reason is reserved.",
   RATE_LIMITED: "Too many bookings for this email — please try again in a few minutes.",
+  SANDBOX_BUSY: "The sandbox has reached its hourly booking limit — please try again later.",
   SAME_SLOT: "The booking is already at that time.",
   INVALID_STATE: "This booking can no longer be changed.",
   INVALID_TOKEN: "Invalid booking link.",

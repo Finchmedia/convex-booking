@@ -13,12 +13,12 @@ export default defineSchema({
     name: v.optional(v.string()),
   }),
 
-  // Fixed-window rate limit for anonymous createBooking (per booker email).
+  // Fixed-window counters for anonymous booking writes: one row per booker
+  // email (`email:<address>`) and one sandbox-wide row (`sandbox:bookings`).
+  // All rows are deleted by the hourly reset (seed.ts).
   bookingRateLimits: defineTable({
     key: v.string(),
     windowStart: v.number(),
     count: v.number(),
-  })
-    .index("by_key", ["key"])
-    .index("by_windowStart", ["windowStart"]),
+  }).index("by_key", ["key"]),
 });

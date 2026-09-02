@@ -272,7 +272,7 @@ const availability = await ctx.runQuery(api.public.getMonthAvailability, {
 
 **Returns:** `Record<string, boolean>` — map of ISO dates to availability
 
-**Behaviour of the sandbox wrapper:** malformed input returns `{}` (never an error), ranges longer than 62 days are rejected, past days and days beyond the booking horizon are forced to `false`, and the resource's schedule is resolved server-side before the component is called.
+**Behaviour of the sandbox wrapper:** malformed input returns `{}` (never an error), ranges longer than 62 days are rejected, past days and days beyond the booking horizon are forced to `false`, today and the horizon day are `true` only if a slot inside the notice/horizon window is actually free, and the resource's schedule is resolved server-side before the component is called.
 
 **Use Case:** showing calendar dots indicating which days have availability.
 
@@ -304,7 +304,7 @@ const slots = await ctx.runQuery(api.public.getDaySlots, {
 
 **Returns:** array of slot objects (`{ time }`) — the same list `createBooking` validates against
 
-**Behaviour of the sandbox wrapper:** a day in the past, a day beyond the horizon or a malformed argument returns `[]`; slots inside the minimum-notice window are filtered out, so what the picker shows is exactly what the booking guard accepts.
+**Behaviour of the sandbox wrapper:** a day in the past, a day beyond the horizon or a malformed argument returns `[]`; within a day, slots inside the minimum-notice window and slots past the horizon (`now + maxFutureMinutes`, which falls mid-day) are filtered out slot by slot, so what the picker shows is exactly what the booking guard accepts.
 
 ---
 
@@ -647,7 +647,8 @@ const booking = await ctx.runMutation(api.public.createBooking, {
 7. Not in the past, respects `minNoticeMinutes` and `maxFutureMinutes` — `IN_PAST`, `TOO_SOON`, `TOO_FAR_AHEAD`
 8. `start` is one of the slots `getDaySlots` offers — schedule window, date overrides and collisions in one check — `SLOT_NOT_AVAILABLE`
 9. Rate limit: 5 bookings per email per 10 minutes — `RATE_LIMITED`
-10. The component write itself, with its errors translated — `SLOT_NOT_AVAILABLE`, `EVENT_TYPE_*`, `RESOURCE_*`, otherwise `BOOKING_FAILED`
+10. Sandbox cap: 500 booking writes per hour across all visitors (keeps the hourly wipe inside one transaction) — `SANDBOX_BUSY`
+11. The component write itself, with its errors translated — `SLOT_NOT_AVAILABLE`, `EVENT_TYPE_*`, `RESOURCE_*`, otherwise `BOOKING_FAILED`
 
 **Behaviour:**
 - Sends a confirmation email if `RESEND_API_KEY` is set (it is not, on this sandbox)
