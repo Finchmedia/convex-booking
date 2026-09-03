@@ -65,7 +65,7 @@ Queries in parent → Props to child form (prevents infinite loops from useQuery
 App (convex/convex.config.ts)
 ├─ auth (Convex Auth v2 core, httpPrefix /auth)
 ├─ authAnonymous (guest-admin login)
-└─ booking (vendored tarball vendor/mrfinch-booking-0.3.0.tgz)
+└─ booking (@mrfinch/booking 0.3.1 from npm)
    └─ resend (nested)
 ```
 

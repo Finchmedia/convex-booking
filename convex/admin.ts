@@ -455,7 +455,7 @@ export const listDateOverrides = adminQuery({
   },
   handler: async (ctx, args) => {
     return await ctx.runQuery(components.booking.schedules.listDateOverrides, {
-      scheduleId: args.scheduleId as any,
+      scheduleId: args.scheduleId,
       dateFrom: args.dateFrom,
       dateTo: args.dateTo,
     });
@@ -483,7 +483,7 @@ export const createDateOverride = adminMutation({
     return await ctx.runMutation(
       components.booking.schedules.createDateOverride,
       {
-        scheduleId: args.scheduleId as any,
+        scheduleId: args.scheduleId,
         date: args.date,
         type: args.type,
         customHours: args.customHours,
@@ -501,7 +501,7 @@ export const deleteDateOverride = adminMutation({
     return await ctx.runMutation(
       components.booking.schedules.deleteDateOverride,
       {
-        overrideId: args.overrideId as any,
+        overrideId: args.overrideId,
       }
     );
   },
@@ -536,7 +536,7 @@ export const getBooking = adminQuery({
   args: { bookingId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.runQuery(components.booking.public.getBooking, {
-      bookingId: args.bookingId as any,
+      bookingId: args.bookingId,
     });
   },
 });
@@ -555,7 +555,7 @@ export const transitionBookingState = adminMutation({
     return await ctx.runMutation(
       components.booking.hooks.transitionBookingState,
       {
-        bookingId: args.bookingId as any,
+        bookingId: args.bookingId,
         toStatus: args.toStatus,
         reason: args.reason,
         changedBy: user.userId, // Track who made the change
@@ -584,7 +584,7 @@ export const confirmBooking = adminMutation({
     return await ctx.runMutation(
       components.booking.hooks.transitionBookingState,
       {
-        bookingId: args.bookingId as any,
+        bookingId: args.bookingId,
         toStatus: "confirmed",
         reason: args.reason,
         changedBy: user.userId,
@@ -613,7 +613,7 @@ export const declineBooking = adminMutation({
     return await ctx.runMutation(
       components.booking.hooks.transitionBookingState,
       {
-        bookingId: args.bookingId as any,
+        bookingId: args.bookingId,
         toStatus: "declined",
         reason: args.reason,
         changedBy: user.userId,
@@ -636,7 +636,7 @@ export const cancelReservation = adminMutation({
   args: { reservationId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.runMutation(components.booking.public.cancelReservation, {
-      reservationId: args.reservationId as any,
+      reservationId: args.reservationId,
       resendOptions: process.env.RESEND_API_KEY
         ? {
             apiKey: process.env.RESEND_API_KEY,
@@ -662,7 +662,7 @@ export const rescheduleBooking = adminMutation({
     return await ctx.runMutation(
       components.booking.public.rescheduleBooking,
       {
-        bookingId: args.bookingId as any,
+        bookingId: args.bookingId,
         newStart: args.newStart,
         newEnd: args.newEnd,
         reason: args.reason,
@@ -685,7 +685,7 @@ export const getBookingHistory = adminQuery({
   args: { bookingId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.runQuery(components.booking.hooks.getBookingHistory, {
-      bookingId: args.bookingId as any,
+      bookingId: args.bookingId,
     });
   },
 });
@@ -736,7 +736,7 @@ export const unregisterHook = adminMutation({
   args: { hookId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.runMutation(components.booking.hooks.unregisterHook, {
-      hookId: args.hookId as any,
+      hookId: args.hookId,
     });
   },
 });
@@ -758,7 +758,7 @@ export const cancelMultiResourceBooking = adminMutation({
     return await ctx.runMutation(
       components.booking.multi_resource.cancelMultiResourceBooking,
       {
-        bookingId: args.bookingId as any,
+        bookingId: args.bookingId,
         reason: args.reason,
         cancelledBy: user.userId,
         resendOptions: process.env.RESEND_API_KEY

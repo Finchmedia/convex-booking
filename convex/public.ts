@@ -26,6 +26,7 @@
  * Nothing here can wipe or reset the sandbox — that is internal.seed.* (cron).
  */
 import { v, ConvexError } from "convex/values";
+import type { FunctionReturnType } from "convex/server";
 import { components } from "./_generated/api";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { publicQuery, publicMutation } from "./functions";
@@ -68,71 +69,24 @@ const RESCHEDULE_SENTINEL = "Rescheduled to new time";
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ============================================
-// LOCAL TYPES (component returns are `any`)
+// TYPES — component documents come from the generated ComponentApi
 // ============================================
 
-type EventTypeDoc = {
-  id: string;
-  title: string;
-  lengthInMinutes: number;
-  lengthInMinutesOptions?: number[];
-  slotInterval?: number;
-  timezone: string;
-  scheduleId?: string;
-  minNoticeMinutes?: number;
-  maxFutureMinutes?: number;
-  isActive?: boolean;
-};
-
-type ResourceDoc = {
-  id: string;
-  organizationId: string;
-  timezone: string;
-  isActive: boolean;
-  isStandalone?: boolean;
-};
-
-type ScheduleDoc = {
-  id: string;
-  timezone: string;
-};
-
-/** Mirrors the component's `bookings` table (dist/component/schema.js). */
-type BookingDoc = {
-  _id: string;
-  _creationTime: number;
-  resourceId: string;
-  actorId: string;
-  start: number;
-  end: number;
-  status:
-    | "provisional"
-    | "pending"
-    | "confirmed"
-    | "cancelled"
-    | "completed"
-    | "declined"
-    | "rescheduled";
-  uid: string;
-  managementToken?: string;
-  eventTypeId: string;
-  organizationId?: string;
-  timezone: string;
-  bookerName: string;
-  bookerEmail: string;
-  bookerPhone?: string;
-  bookerNotes?: string;
-  eventTitle: string;
-  eventDescription?: string;
-  location: { type: string; value?: string };
-  createdAt: number;
-  updatedAt: number;
-  cancelledAt?: number;
-  rescheduleUid?: string;
-  cancellationReason?: string;
-};
-
-type DaySlot = { time: string | number };
+type EventTypeDoc = FunctionReturnType<
+  typeof components.booking.public.getEventType
+>;
+type ResourceDoc = NonNullable<
+  FunctionReturnType<typeof components.booking.resources.getResource>
+>;
+type ScheduleDoc = NonNullable<
+  FunctionReturnType<typeof components.booking.schedules.getSchedule>
+>;
+type BookingDoc = FunctionReturnType<
+  typeof components.booking.public.getBookingByToken
+>;
+type DaySlot = FunctionReturnType<
+  typeof components.booking.public.getDaySlots
+>[number];
 
 type BookerInput = {
   name: string;
@@ -304,17 +258,17 @@ async function resolveAvailabilityContext(
   resourceId: string,
   opts: { eventTypeId?: string; eventType?: EventTypeDoc } = {}
 ): Promise<AvailabilityContext | null> {
-  const resource = (await ctx.runQuery(components.booking.resources.getResource, {
+  const resource = await ctx.runQuery(components.booking.resources.getResource, {
     id: resourceId,
-  })) as ResourceDoc | null;
+  });
   if (!resource || resource.isActive === false) return null;
 
   let eventType: EventTypeDoc | null = opts.eventType ?? null;
   if (!eventType && opts.eventTypeId) {
     try {
-      eventType = (await ctx.runQuery(components.booking.public.getEventType, {
+      eventType = await ctx.runQuery(components.booking.public.getEventType, {
         eventTypeId: opts.eventTypeId,
-      })) as EventTypeDoc;
+      });
     } catch {
       eventType = null;
     }
@@ -324,23 +278,23 @@ async function resolveAvailabilityContext(
   const windowTypes: EventTypeDoc[] = eventType
     ? [eventType]
     : (
-        (await ctx.runQuery(
+        await ctx.runQuery(
           components.booking.resource_event_types.getEventTypesForResource,
           { resourceId }
-        )) as Array<EventTypeDoc | null>
-      ).filter((et): et is EventTypeDoc => !!et && et.isActive !== false);
+        )
+      ).filter((et) => et.isActive !== false);
 
   let schedule: ScheduleDoc | null = null;
   if (eventType?.scheduleId) {
-    schedule = (await ctx.runQuery(components.booking.schedules.getSchedule, {
+    schedule = await ctx.runQuery(components.booking.schedules.getSchedule, {
       id: eventType.scheduleId,
-    })) as ScheduleDoc | null;
+    });
   }
   if (!schedule) {
-    schedule = (await ctx.runQuery(
+    schedule = await ctx.runQuery(
       components.booking.schedules.getDefaultSchedule,
       { organizationId: resource.organizationId }
-    )) as ScheduleDoc | null;
+    );
   }
 
   const minNoticeMinutes = windowTypes.length
@@ -381,16 +335,16 @@ async function offeredDaySlots(
 ): Promise<DaySlot[]> {
   let availableSlots: number[] | undefined;
   if (avail.scheduleId && avail.timezone) {
-    const effective = (await ctx.runQuery(
+    const effective = await ctx.runQuery(
       components.booking.schedules.getEffectiveAvailability,
       { scheduleId: avail.scheduleId, date: opts.date }
-    )) as { availableSlots: number[] };
+    );
     availableSlots = effective.availableSlots;
     // Empty window (weekend, "unavailable" override): no slots, skip the call.
     if (availableSlots.length === 0) return [];
   }
 
-  const slots = (await ctx.runQuery(components.booking.public.getDaySlots, {
+  return await ctx.runQuery(components.booking.public.getDaySlots, {
     resourceId: avail.resource.id,
     date: opts.date,
     eventLength: opts.eventLength,
@@ -398,8 +352,7 @@ async function offeredDaySlots(
     resourceTimezone: availableSlots ? avail.timezone : undefined,
     availableSlots,
     excludeBookingUid: opts.excludeBookingUid,
-  })) as DaySlot[];
-  return slots;
+  });
 }
 
 /**
@@ -471,9 +424,9 @@ async function loadBookableEventType(
 ): Promise<EventTypeDoc> {
   let eventType: EventTypeDoc | null = null;
   try {
-    eventType = (await ctx.runQuery(components.booking.public.getEventType, {
+    eventType = await ctx.runQuery(components.booking.public.getEventType, {
       eventTypeId,
-    })) as EventTypeDoc;
+    });
   } catch (error) {
     translateComponentError(error);
   }
@@ -494,9 +447,9 @@ async function loadBookableResource(
   resourceId: string,
   eventTypeId: string
 ): Promise<ResourceDoc> {
-  const resource = (await ctx.runQuery(components.booking.resources.getResource, {
+  const resource = await ctx.runQuery(components.booking.resources.getResource, {
     id: resourceId,
-  })) as ResourceDoc | null;
+  });
   if (!resource) {
     invalid("RESOURCE_NOT_FOUND", "This resource no longer exists.");
   }
@@ -509,10 +462,10 @@ async function loadBookableResource(
       "This resource can only be booked as an add-on."
     );
   }
-  const linked = (await ctx.runQuery(
+  const linked = await ctx.runQuery(
     components.booking.resource_event_types.hasResourceEventTypeLink,
     { resourceId, eventTypeId }
-  )) as boolean;
+  );
   if (!linked) {
     invalid("NOT_LINKED", "This resource is not available for this event type.");
   }
@@ -660,10 +613,10 @@ async function loadBookingByToken(
   token: string
 ): Promise<BookingDoc> {
   try {
-    return (await ctx.runQuery(components.booking.public.getBookingByToken, {
+    return await ctx.runQuery(components.booking.public.getBookingByToken, {
       uid,
       token,
-    })) as BookingDoc;
+    });
   } catch (error) {
     translateComponentError(error);
   }
@@ -833,7 +786,7 @@ export const getMonthAvailability = publicQuery({
 
     const result: Record<string, boolean> = {};
     if (args.dateFrom <= effectiveTo) {
-      const fromComponent = (await ctx.runQuery(
+      const fromComponent = await ctx.runQuery(
         components.booking.public.getMonthAvailability,
         {
           resourceId: args.resourceId,
@@ -846,7 +799,7 @@ export const getMonthAvailability = publicQuery({
           scheduleId: avail.scheduleId,
           excludeBookingUid,
         }
-      )) as Record<string, boolean>;
+      );
       Object.assign(result, fromComponent);
     }
 
@@ -1066,7 +1019,7 @@ export const createBooking = publicMutation({
 
     await enforceBookingRateLimit(ctx, booker.email);
 
-    let booking: unknown;
+    let booking: BookingDoc | undefined;
     try {
       booking = await ctx.runMutation(components.booking.public.createBooking, {
         eventTypeId: args.eventTypeId,

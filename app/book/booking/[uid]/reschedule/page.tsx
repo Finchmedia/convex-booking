@@ -12,6 +12,21 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { BookingErrorToaster } from "@/components/booking-error-toaster";
 import { Booker, BookingProvider, type Booking } from "@mrfinch/booking/react";
 
+/**
+ * Only pending/confirmed bookings can be rescheduled. The component reports
+ * `status` as a plain `string`; this guard is the one runtime check the page
+ * makes and also narrows the row to the literal union the React `Booking`
+ * type (and therefore the Booker) expects.
+ */
+const RESCHEDULABLE_STATUSES = ["pending", "confirmed"] as const;
+type ReschedulableStatus = (typeof RESCHEDULABLE_STATUSES)[number];
+
+function isReschedulable<T extends { status: string }>(
+  booking: T
+): booking is T & { status: ReschedulableStatus } {
+  return (RESCHEDULABLE_STATUSES as readonly string[]).includes(booking.status);
+}
+
 export default function RescheduleBookingPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -92,7 +107,7 @@ export default function RescheduleBookingPage() {
   }
 
   // Check if booking can be rescheduled
-  if (!["pending", "confirmed"].includes(booking.status)) {
+  if (!isReschedulable(booking)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-card to-background flex items-center justify-center p-4">
         <div className="fixed top-4 right-4 z-50">

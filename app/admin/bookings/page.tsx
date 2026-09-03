@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useMutation } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
-import type { Booking } from "@mrfinch/booking/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -38,6 +38,9 @@ import { toast } from "sonner";
 
 type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "declined";
 
+/** One row of the admin list, typed from the query result (status is `string`). */
+type BookingRow = FunctionReturnType<typeof api.admin.listBookings>[number];
+
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "All Bookings" },
   { value: "pending", label: "Pending" },
@@ -49,7 +52,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 
 export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<BookingRow | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
   const bookings = useQuery(api.admin.listBookings, {
@@ -101,7 +104,7 @@ export default function BookingsPage() {
     }
   };
 
-  const openDetail = (booking: Booking) => {
+  const openDetail = (booking: BookingRow) => {
     setSelectedBooking(booking);
     setShowDetailModal(true);
   };
@@ -202,7 +205,7 @@ export default function BookingsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bookings.map((booking: Booking) => {
+                {bookings.map((booking) => {
                   const { date, time } = formatDateTime(booking.start);
                   const isPast = booking.start < Date.now();
                   return (

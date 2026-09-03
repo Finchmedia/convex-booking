@@ -21,13 +21,13 @@ An open-source, real-time booking system built as a [Convex component](https://d
 npm install @mrfinch/booking convex-helpers
 ```
 
-Current version: **0.3.0** (see the package [CHANGELOG](https://github.com/Finchmedia/convex-booking/blob/main/booking-component/CHANGELOG.md) — optional `excludeBookingUid` / `resourceTimezone` / `scheduleId` / `availableSlots` on the availability queries, resource `metadata`, a `maintenance` module, strict schedule validation, cross-midnight/DST fixes).
+Current version: **0.3.1** (see the package [CHANGELOG](https://github.com/Finchmedia/convex-booking/blob/main/booking-component/CHANGELOG.md) — 0.3.1 declares return validators on every component function, so the generated `ComponentApi` result types are concrete instead of `any`; 0.3.0 added optional `excludeBookingUid` / `resourceTimezone` / `scheduleId` / `availableSlots` on the availability queries, resource `metadata`, a `maintenance` module, strict schedule validation, cross-midnight/DST fixes).
 
-**Peer Dependencies (0.3.0):**
-- `convex` ^1.17.0
+**Peer Dependencies (0.3.1):**
+- `convex` ^1.29.0 (hard floor — the component's validators call `VObject.extend()` at module load)
 - `convex-helpers` ^0.1.106
 - `react` ^18 || ^19
-- React layer only: `react-hook-form`, `@hookform/resolvers`, `zod`, `lucide-react`
+- React layer only (optional peers — install them yourself when you use `@mrfinch/booking/react`): `react-hook-form`, `@hookform/resolvers`, `zod`, `lucide-react`
 
 ## Quick Start
 
@@ -184,7 +184,7 @@ Full documentation available at [convexbooking.dev/docs](https://convexbooking.d
 
 This repository contains both the npm package (`booking-component/`) and a demo Next.js app (`convexbooking/`).
 
-The demo app runs on `@mrfinch/booking` 0.3.0 from npm. Booking is anonymous; the admin dashboard is gated by **Convex Auth v2** with its *anonymous* login provider only ("Continue as guest admin" mints a throw-away session — no external auth provider). A cron wipes and reseeds the sandbox every hour and deletes guest users older than an hour.
+The demo app runs on `@mrfinch/booking` 0.3.1 from npm. Booking is anonymous; the admin dashboard is gated by **Convex Auth v2** with its *anonymous* login provider only ("Continue as guest admin" mints a throw-away session — no external auth provider). A cron wipes and reseeds the sandbox every hour and deletes guest users older than an hour.
 
 > **Convex Auth v2 is alpha.** The demo pins `@convex-dev/auth@2.0.0-alpha.1` exactly. Its APIs may still change and it is not recommended for production yet; the auth layer here is deliberately thin (`convex/auth.ts`, `convex/users.ts`, `convex/functions.ts`, the gate in `app/admin/layout.tsx`).
 
