@@ -216,7 +216,7 @@ export const transitionBookingState = adminMutation({
   handler: async (ctx, args) => {
     const { user } = ctx; // injected by adminMutation
     return await ctx.runMutation(components.booking.hooks.transitionBookingState, {
-      bookingId: args.bookingId as any,
+      bookingId: args.bookingId,
       toStatus: args.toStatus,
       reason: args.reason,
       changedBy: user.userId, // Track who made the change
@@ -1156,6 +1156,8 @@ const bookings = await ctx.runQuery(api.admin.listBookings, {
 ```
 
 **Note (0.3.0):** filters that do not pick the index are applied as post-filters, so combinations such as organization + resource now work. Bookings written before 0.3.0 carry no `organizationId` and are invisible to that filter until backfilled — on this sandbox the point is moot, everything is reseeded hourly.
+
+**Note (0.3.1):** a call with neither `organizationId` nor `resourceId` reads the 1000 most recently created bookings and applies `status` / `dateFrom` / `dateTo` after that bound. Pass one of the two selectors for an exhaustive listing — those branches range on the `by_org_start` / `by_resource_start` indexes. The admin pages on this site pass `organizationId: "demo-org"` for that reason.
 
 ---
 

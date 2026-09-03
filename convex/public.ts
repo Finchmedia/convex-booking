@@ -622,6 +622,21 @@ async function loadBookingByToken(
   }
 }
 
+/** The two codes that mean "this link does not resolve to a booking". */
+const UNRESOLVABLE_LINK_CODES = new Set(["NOT_FOUND", "INVALID_TOKEN"]);
+
+function isUnresolvableLink(error: unknown): boolean {
+  if (!(error instanceof ConvexError)) return false;
+  const data: unknown = error.data;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "code" in data &&
+    typeof data.code === "string" &&
+    UNRESOLVABLE_LINK_CODES.has(data.code)
+  );
+}
+
 function sanitizeTokenArgs(uid: string, token: string) {
   const u = uid.trim();
   const t = token.trim();
@@ -1066,13 +1081,23 @@ export const getBookingByUid = publicQuery({
 
 /**
  * Get booking by token (for public management)
- * Requires both UID and management token for access
+ * Requires both UID and management token for access.
+ *
+ * Resolves to `null` for a stale or tampered link (unknown uid, wrong or
+ * malformed token) so the management pages render their "Booking Not Found"
+ * state instead of throwing out of `useQuery`; every other failure still
+ * throws. The token mutations keep throwing NOT_FOUND / INVALID_TOKEN.
  */
 export const getBookingByToken = publicQuery({
   args: { uid: v.string(), token: v.string() },
-  handler: async (ctx, args) => {
-    const { uid, token } = sanitizeTokenArgs(args.uid, args.token);
-    return await loadBookingByToken(ctx, uid, token);
+  handler: async (ctx, args): Promise<BookingDoc | null> => {
+    try {
+      const { uid, token } = sanitizeTokenArgs(args.uid, args.token);
+      return await loadBookingByToken(ctx, uid, token);
+    } catch (error) {
+      if (isUnresolvableLink(error)) return null;
+      throw error;
+    }
   },
 });
 

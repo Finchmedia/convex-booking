@@ -8,9 +8,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, CalendarDays, Clock, Users } from "lucide-react";
 import Link from "next/link";
 
+const DEMO_ORG_ID = "demo-org";
+
 export default function DemoDashboard() {
   const eventTypes = useQuery(api.admin.listEventTypes, {});
-  const bookings = useQuery(api.admin.listBookings, { limit: 10 });
+  const bookings = useQuery(api.admin.listBookings, {
+    organizationId: DEMO_ORG_ID,
+    limit: 10,
+  });
 
   const stats = [
     {

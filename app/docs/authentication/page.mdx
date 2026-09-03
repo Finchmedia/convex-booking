@@ -136,6 +136,8 @@ export const cancelBookingByToken = publicMutation({
 
 Treat the link like a password reset link: it is unguessable, it is scoped to one booking, and it is the reason cancel and reschedule need no account.
 
+The read and the writes fail differently on purpose: `getBookingByToken` resolves to `null` for an unknown `uid` or a wrong token, so the management pages can render a "Booking Not Found" state from `useQuery` instead of crashing on a stale link. The two mutations throw `NOT_FOUND` / `INVALID_TOKEN` as `ConvexError`s, which the pages surface as a toast.
+
 ## The guest admin gate
 
 The dashboard uses **Convex Auth v2** with its **Anonymous** login provider — no password, no OAuth, no external provider, no email deliverability to worry about on a demo. One click mints a real session with a real JWT that Convex validates like any other.
@@ -577,7 +579,7 @@ export const confirmBooking = adminMutation({
     return await ctx.runMutation(
       components.booking.hooks.transitionBookingState,
       {
-        bookingId: args.bookingId as any,
+        bookingId: args.bookingId,
         toStatus: "confirmed",
         reason: args.reason,
         changedBy: user.userId,

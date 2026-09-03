@@ -38,6 +38,8 @@ import { toast } from "sonner";
 
 type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "declined";
 
+const DEMO_ORG_ID = "demo-org";
+
 /** One row of the admin list, typed from the query result (status is `string`). */
 type BookingRow = FunctionReturnType<typeof api.admin.listBookings>[number];
 
@@ -55,7 +57,10 @@ export default function BookingsPage() {
   const [selectedBooking, setSelectedBooking] = useState<BookingRow | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
+  // The org selector ranges the by_org_start index; without it 0.3.1 reads only
+  // the 1000 most recently created bookings and applies `status` after that cap.
   const bookings = useQuery(api.admin.listBookings, {
+    organizationId: DEMO_ORG_ID,
     status: statusFilter === "all" ? undefined : statusFilter,
   });
 
