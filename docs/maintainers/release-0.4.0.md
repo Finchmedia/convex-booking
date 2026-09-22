@@ -2,7 +2,8 @@
 
 The implementation audit is complete. Version 0.4.0 is published on npm under
 `latest`; the downloaded registry archive is byte-identical to the tested
-candidate. Production deployment is a separate check in the release workflow.
+candidate. The registry-backed demo and docs are deployed at
+https://convexbooking.dev, including the Convex production backend.
 
 ## Package
 
@@ -29,14 +30,21 @@ passed.
 - 16 complete examples compile against the packaged 0.4.0 component.
 - A clean isolated copy, with no deployment state or secrets, passes strict
   installation, lint, production build and 223 documentation links across 11 pages.
+- Production verification passes on 13 routes, 223 internal documentation links,
+  62 anchors and all nine Markdown tables. Table rendering is now checked in CI.
+- Visual checks cover 390 px, 768 px and 1280 px layouts. The desktop TOC uses a
+  separate grid column; long inline API names wrap on mobile, and the mobile
+  header retains navigation without the redundant Home link.
 - Website Vitest currently has no standalone test files; this is recorded as
   no-tests, not claimed test coverage.
 - Browser: public booking, guest sign-in/admin cancellation, token management,
   rescheduling to a replacement UID and cancellation after rescheduling pass.
 - Fixed the completion callback to open management instead of logging the booking.
   Fixed the previous-booking pointer being mistaken for a forward reschedule link.
-- All live test data used the development backend and isolated test bookings.
-  No production reset or outbound email was performed.
+- Development checks use isolated fixtures. A separate production browser check
+  created one test booking, rescheduled it to a replacement UID, then cancelled it
+  and verified the cancellation reason. No production reset or outbound email
+  was performed.
 
 ## Deliberate limits
 
