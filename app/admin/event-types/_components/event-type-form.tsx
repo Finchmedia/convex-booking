@@ -4,7 +4,7 @@ import { useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useForm, Controller, useFieldArray, useWatch } from "react-hook-form";
+import { useForm, Controller, useFieldArray, useWatch, type Control } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { convexErrorMessage } from "@/lib/convex-error-message";
 import { X, Plus, Loader2, Users } from "lucide-react";
 
 // Zod Schema
@@ -86,6 +87,8 @@ interface EventTypeFormProps {
   initialResourceIds?: string[];
 }
 
+const EMPTY_RESOURCE_IDS: string[] = [];
+
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120, 180, 240, 300];
 const LOCATION_TYPES = [
   { value: "in_person", label: "In Person" },
@@ -109,7 +112,7 @@ function LocationField({
   canRemove
 }: {
   index: number;
-  control: any;
+  control: Control<EventTypeFormData>;
   onRemove: () => void;
   canRemove: boolean;
 }) {
@@ -207,7 +210,7 @@ export function EventTypeForm({ eventType, availableResources, initialResourceId
 
   // Use useWatch instead of watch for isolated re-renders
   const durations = useWatch({ control, name: "durations" }) ?? [];
-  const resourceIds = useWatch({ control, name: "resourceIds" }) ?? [];
+  const resourceIds = useWatch({ control, name: "resourceIds" }) ?? EMPTY_RESOURCE_IDS;
 
   // Auto-generate slug from title (only for new event types)
   const handleTitleChange = (value: string, onChange: (value: string) => void) => {
@@ -263,7 +266,7 @@ export function EventTypeForm({ eventType, availableResources, initialResourceId
         eventTypeId = eventType.id;
         toast.success("Event type updated");
       } else {
-        eventTypeId = `et_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        eventTypeId = `et_${crypto.randomUUID()}`;
         await createEventType({ id: eventTypeId, ...payload });
         toast.success("Event type created");
       }
@@ -275,8 +278,8 @@ export function EventTypeForm({ eventType, availableResources, initialResourceId
       });
 
       router.push("/admin/event-types");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save event type");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to save event type"));
     }
   };
 

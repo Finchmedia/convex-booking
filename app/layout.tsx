@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ConvexBooking",
-  description: "Real-time booking system with presence-aware slot locking and O(1) availability queries",
+  description: "Open-source booking for Convex apps: live availability, flexible durations, and atomic reservations for rooms, people, and equipment.",
 };
 
 export default function RootLayout({

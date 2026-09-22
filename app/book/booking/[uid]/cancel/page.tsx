@@ -7,7 +7,6 @@ import { api } from "@/convex/_generated/api";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -85,7 +84,7 @@ export default function CancelBookingPage() {
   };
 
   // Loading state
-  if (booking === undefined) {
+  if (token && booking === undefined) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-card to-background p-4">
         <div className="fixed top-4 right-4 z-50">
@@ -100,7 +99,7 @@ export default function CancelBookingPage() {
   }
 
   // Error state - booking not found or invalid token
-  if (booking === null || !token) {
+  if (!booking || !token) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-card to-background flex items-center justify-center p-4">
         <div className="fixed top-4 right-4 z-50">
@@ -175,7 +174,7 @@ export default function CancelBookingPage() {
               <div>
                 <p className="font-medium text-foreground mb-1">This action cannot be undone</p>
                 <p className="text-sm text-muted-foreground">
-                  Once cancelled, you'll need to create a new booking if you change your mind.
+                  Once cancelled, you will need to create a new booking if you change your mind.
                 </p>
               </div>
             </div>
@@ -214,7 +213,7 @@ export default function CancelBookingPage() {
           <CardHeader>
             <CardTitle className="text-lg">Cancellation Reason (Optional)</CardTitle>
             <CardDescription>
-              Let us know why you're cancelling. This helps us improve our service.
+              Let us know why you are cancelling. This helps us improve our service.
             </CardDescription>
           </CardHeader>
           <CardContent>

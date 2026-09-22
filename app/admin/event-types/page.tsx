@@ -38,6 +38,7 @@ import {
 import { Calendar, Copy, ExternalLink, MoreHorizontal, Pencil, Plus, Trash } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { convexErrorMessage } from "@/lib/convex-error-message";
 
 export default function EventTypesPage() {
   const [pendingToggle, setPendingToggle] = useState<{ id: string; isActive: boolean } | null>(null);
@@ -56,8 +57,8 @@ export default function EventTypesPage() {
       await toggleActive({ id, isActive });
       toast.success(isActive ? "Event type activated" : "Event type deactivated");
       setPendingToggle(null);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update event type");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to update event type"));
       setPendingToggle(null);
     }
   };
@@ -67,8 +68,8 @@ export default function EventTypesPage() {
     try {
       await deleteEventType({ id });
       toast.success("Event type deleted");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete event type");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to delete event type"));
     }
   };
 

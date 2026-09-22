@@ -47,23 +47,23 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
       return <figure {...props}>{processed}</figure>;
     },
     // Default heading styles
-    h1: ({ children }) => (
-      <h1 className="scroll-m-20 text-4xl font-bold tracking-tight mb-6">
+    h1: ({ children, ...props }) => (
+      <h1 {...props} className="scroll-m-20 text-4xl font-bold tracking-tight mb-6">
         {children}
       </h1>
     ),
-    h2: ({ children }) => (
-      <h2 className="scroll-m-20 border-b border-border pb-2 text-3xl font-semibold tracking-tight mt-10 mb-4 first:mt-0">
+    h2: ({ children, ...props }) => (
+      <h2 {...props} className="scroll-m-20 border-b border-border pb-2 text-3xl font-semibold tracking-tight mt-10 mb-4 first:mt-0">
         {children}
       </h2>
     ),
-    h3: ({ children }) => (
-      <h3 className="scroll-m-20 text-2xl font-semibold tracking-tight mt-8 mb-4">
+    h3: ({ children, ...props }) => (
+      <h3 {...props} className="scroll-m-20 text-2xl font-semibold tracking-tight mt-8 mb-4">
         {children}
       </h3>
     ),
-    h4: ({ children }) => (
-      <h4 className="scroll-m-20 text-xl font-semibold tracking-tight mt-6 mb-3">
+    h4: ({ children, ...props }) => (
+      <h4 {...props} className="scroll-m-20 text-xl font-semibold tracking-tight mt-6 mb-3">
         {children}
       </h4>
     ),

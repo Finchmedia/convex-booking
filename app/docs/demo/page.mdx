@@ -1,0 +1,56 @@
+<DocPage toc={[
+  { title: "Run locally", url: "#run-locally", depth: 2 },
+  { title: "What the demo includes", url: "#what-the-demo-includes", depth: 2 },
+  { title: "Use it as a starting point", url: "#use-it-as-a-starting-point", depth: 2 },
+]}>
+
+# Run the demo
+
+The demo is a complete Next.js app using the npm component. It includes a booking
+page and a dashboard for resources, schedules, event types and bookings.
+
+## Run locally
+
+Use Node 24 LTS:
+
+```bash
+git clone https://github.com/Finchmedia/convex-booking.git
+cd convex-booking
+npm ci
+npx convex dev
+```
+
+Keep the Convex process running. In another terminal, generate the development
+auth signing keys, create demo data, and start Next.js:
+
+```bash
+npx @convex-dev/auth@2.0.0-alpha.1
+npx convex run seed:resetSandbox
+npm run dev
+```
+
+The seed command resets this demo deployment. Run it only against a deployment
+whose booking data you intend to replace. Open [localhost:3000](http://localhost:3000).
+
+## What the demo includes
+
+- `/book`: anonymous booking with a name and email address.
+- `/admin`: a guest-admin session for editing the shared demo setup.
+- `/docs`: these documentation pages.
+
+The hosted sandbox and the demo's default cron reset and reseed booking data
+every hour. Guest administrators share the same organization; the dashboard is
+intentionally open for exploration. Convex Auth v2 is pinned to an alpha release
+for this demo and is not required by the booking component.
+
+## Use it as a starting point
+
+Replace guest access with your own [authorization policy](/docs/authentication).
+Remove the sandbox reset cron before storing real bookings. Adapt the public
+gateway's rate limits and resource visibility, and set optional
+[email credentials](/docs/integrations/email) on your Convex deployment.
+
+Deployment details for maintaining this particular website live in the
+[repository README](https://github.com/Finchmedia/convex-booking#deploy).
+
+</DocPage>

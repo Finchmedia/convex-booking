@@ -1,0 +1,54 @@
+name: Check docs and demo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
+        with:
+          node-version: "24.x"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --strict-peer-deps
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Compile documentation examples
+        run: npm run docs:check
+
+      # There are currently no standalone website tests. This still runs any
+      # tests added later; package regressions run in booking-component's CI.
+      - name: Run website tests
+        run: npm run test:run -- --passWithNoTests
+
+      - name: Build documentation and demo
+        env:
+          # Build-time client construction needs a valid URL, not a deployment.
+          # Rendering the site does not query a live Convex backend.
+          NEXT_PUBLIC_CONVEX_URL: https://ci-placeholder.convex.cloud
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+      - name: Check rendered documentation links
+        run: npm run docs:links

@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Clock, Plus, Pencil, Trash, Star } from "lucide-react";
 import { toast } from "sonner";
+import { convexErrorMessage } from "@/lib/convex-error-message";
 
 // Demo organization ID - in production, this would come from your auth system
 const DEMO_ORG_ID = "demo-org";
@@ -163,8 +164,8 @@ export default function SchedulesPage() {
         toast.success("Schedule created");
       }
       setShowCreateModal(false);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save schedule");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to save schedule"));
     }
   };
 
@@ -173,8 +174,8 @@ export default function SchedulesPage() {
     try {
       await deleteSchedule({ id });
       toast.success("Schedule deleted");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete schedule");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to delete schedule"));
     }
   };
 

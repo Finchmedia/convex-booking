@@ -67,7 +67,7 @@ export default function RescheduleBookingPage() {
   };
 
   // Loading state
-  if (booking === undefined) {
+  if (token && booking === undefined) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-card to-background p-4">
         <div className="fixed top-4 right-4 z-50">
@@ -82,7 +82,7 @@ export default function RescheduleBookingPage() {
   }
 
   // Error state - booking not found or invalid token
-  if (booking === null || !token) {
+  if (!booking || !token) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-card to-background flex items-center justify-center p-4">
         <div className="fixed top-4 right-4 z-50">

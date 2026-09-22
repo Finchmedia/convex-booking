@@ -34,19 +34,20 @@ const navigation: NavItem[] = [
     items: [
       { title: "Introduction", href: "/docs" },
       { title: "Quick Start", href: "/docs/getting-started" },
+      { title: "Run the demo", href: "/docs/demo" },
     ],
   },
   {
     title: "Core Concepts",
     items: [
       { title: "Overview", href: "/docs/concepts" },
-      { title: "Authentication & guest admin", href: "/docs/authentication" },
+      { title: "Authorization", href: "/docs/authentication" },
     ],
   },
   {
     title: "Integrations",
     items: [
-      { title: "WorkOS AuthKit (alternative provider)", href: "/docs/integrations/workos" },
+      { title: "WorkOS AuthKit", href: "/docs/integrations/workos" },
       { title: "Email (Resend)", href: "/docs/integrations/email" },
     ],
   },

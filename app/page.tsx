@@ -9,8 +9,8 @@ import {
   Shield,
   Layers,
   Timer,
-  Github,
-  Linkedin,
+  CodeXml,
+  Contact,
   BookOpen,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -73,8 +73,8 @@ export default function Home() {
             <Image src="/convex-logotype-white.svg" alt="Convex" width={170} height={38} priority className="hidden dark:block sm:-ml-1 translate-y-[1px]" />
           </p>
           <p className="text-base sm:text-lg md:text-xl text-muted-foreground/70 max-w-2xl mx-auto mb-8 px-4">
-            An open-source booking component with presence-aware slot locking,
-            multi-duration support, and O(1) availability queries.
+            Open-source booking for rooms, people, and equipment, with live
+            availability, flexible durations, and atomic resource reservations.
           </p>
           <Link
             href="/docs"
@@ -137,7 +137,7 @@ export default function Home() {
             <FeatureCard
               icon={<Users className="w-5 h-5" />}
               title="Real-time Presence"
-              description="Slot locking prevents double bookings. Other users see reserved slots instantly."
+              description="Show other visitors’ selections while final booking writes check inventory."
             />
             <FeatureCard
               icon={<Clock className="w-5 h-5" />}
@@ -152,7 +152,7 @@ export default function Home() {
             <FeatureCard
               icon={<Shield className="w-5 h-5" />}
               title="ACID Transactions"
-              description="Race-condition free bookings with Convex's transactional guarantees."
+              description="Atomic booking mutations backed by Convex transactions."
             />
             <FeatureCard
               icon={<Layers className="w-5 h-5" />}
@@ -162,7 +162,7 @@ export default function Home() {
             <FeatureCard
               icon={<Timer className="w-5 h-5" />}
               title="Flexible Schedules"
-              description="Define availability windows, date overrides, and buffer times."
+              description="Define weekly windows and date overrides. Buffer settings require host logic."
             />
           </div>
         </section>
@@ -271,7 +271,7 @@ export default function Home() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-muted text-foreground hover:bg-accent hover:border-foreground/20 transition-all duration-200"
                 >
-                  <Linkedin className="w-4 h-4" />
+                  <Contact className="w-4 h-4" />
                   LinkedIn
                 </a>
                 <a
@@ -280,7 +280,7 @@ export default function Home() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-muted text-foreground hover:bg-accent hover:border-foreground/20 transition-all duration-200"
                 >
-                  <Github className="w-4 h-4" />
+                  <CodeXml className="w-4 h-4" />
                   GitHub
                 </a>
               </div>

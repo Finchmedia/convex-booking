@@ -1,130 +1,47 @@
 <DocPage toc={[
-  { title: "Current State", url: "#current-state", depth: 2 },
-  { title: "Features", url: "#features", depth: 2 },
-  { title: "How It Works", url: "#how-it-works", depth: 2 },
-  { title: "Architecture Overview", url: "#architecture-overview", depth: 2 },
-  { title: "Quick Example", url: "#quick-example", depth: 2 },
-  { title: "Next Steps", url: "#next-steps", depth: 2 },
+  { title: "What you get", url: "#what-you-get", depth: 2 },
+  { title: "Three concepts", url: "#three-concepts", depth: 2 },
+  { title: "Start here", url: "#start-here", depth: 2 },
 ]}>
 
-# Introduction
+# Booking for Convex
 
-ConvexBooking is an open-source, real-time booking system built as a [Convex component](https://docs.convex.dev/components). It provides everything you need to add booking functionality to your application.
+Add appointments, room bookings or equipment reservations to a Convex app.
+`@mrfinch/booking` stores bookings and availability in an isolated Convex component.
+Use the included React **Booker**, or build your own interface against its API.
 
-<Callout type="info">
-  **On npm — and running live on this site**
+## What you get
 
-  Install with `npm install @mrfinch/booking convex-helpers`. Everything on convexbooking.dev runs against a public sandbox deployment: booking is anonymous, the admin dashboard opens with one click as a guest admin, and all demo data resets every hour.
-</Callout>
+- Availability from weekly schedules, date overrides and resource timezones.
+- Single-resource bookings and bundles with quantity-based equipment pools.
+- Booking confirmation, cancellation and rescheduling, including management links.
+- A React calendar, duration picker, booking form and live presence indicators.
+- Optional email notifications through Resend.
 
-## Current State
+Your application decides who can book or administer each resource and which
+booking policies apply. The component checks and updates inventory atomically.
 
-**What works:**
-- Real-time booking flow with presence-based slot locking
-- Admin UI for managing resources, schedules, and event types
-- Multi-duration support (30min, 1h, 2h, 5h)
-- Multi-resource booking with add-ons
-- O(1) availability queries that scale
-- Schedule-aware availability (timezones, date overrides, cross-midnight windows)
-- Maintenance API for wiping and reseeding demo or sandbox data
-- npm package for easy installation
+## Three concepts
 
-**Not ready yet:**
-- CLI scaffolding tool
-- Comprehensive test coverage
+| Concept | Example |
+| --- | --- |
+| **Resource** — what is being booked | A meeting room, a person, or a pool of ten cameras |
+| **Schedule** — when it is available | Monday to Friday, 09:00–17:00 in Europe/Berlin |
+| **Event type** — how it can be booked | A 30-minute meeting linked to that room |
 
-**How to use:**
-1. **Install packages:** `npm install @mrfinch/booking convex-helpers`
-2. **Mount the component:** add `app.use(booking)` to `convex/convex.config.ts`
-3. **Create API gateways:** define your trust zones in `convex/public.ts` (what visitors call) and `convex/admin.ts` (management), built on the custom function builders in `convex/functions.ts`
-4. **Use components:** render `<Booker />` inside `<BookingProvider publicApi={api.public}>`, wrapped in your Convex provider
+A resource must be **linked to an event type** before it can be booked.
+The [concepts guide](/docs/concepts) explains durations, quantities and timezones.
 
-**Optional:**
-- **Gate the dashboard:** the component never calls `ctx.auth`, so any Convex-compatible auth works. This site signs guest admins in with the Convex Auth v2 anonymous provider — see [Authentication & guest admin](/docs/authentication).
-- **Send confirmation emails:** set `RESEND_API_KEY` and `RESEND_FROM_EMAIL` on your deployment — see [Email (Resend)](/docs/integrations/email).
+## Start here
 
-Or [fork the demo repo](https://github.com/Finchmedia/convex-booking) for full customization with Admin UI included.
+Follow the [Quick Start](/docs/getting-started) to install the component and render
+a working booking page. You need a Convex app, Convex 1.46 or newer, and React if
+you use the included UI.
 
-See the [Quick Start](/docs/getting-started) for detailed instructions.
+Prefer to explore first? [Try the demo](/book) or [run it locally](/docs/demo).
+The hosted demo is a shared sandbox that resets every hour.
 
-## Features
-
-- **Real-time Presence** - Slot locking prevents double bookings. Other users see reserved slots instantly.
-- **Multi-Duration Support** - Flexible booking lengths (30min, 1h, 2h, 5h) with intelligent conflict detection.
-- **O(1) Availability Queries** - Scales to millions of bookings using discrete time buckets.
-- **ACID Transactions** - Race-condition free bookings with Convex's transactional guarantees.
-- **Multi-Resource Booking** - Book rooms, equipment, or people. Resources can be bundled or standalone.
-- **Flexible Schedules** - Define availability windows, date overrides, and buffer times.
-
-## How It Works
-
-ConvexBooking uses a **discrete time bucket** architecture where availability is pre-computed and stored in 15-minute intervals (called "quanta"). This enables O(1) availability checks regardless of how many historical bookings exist.
-
-```typescript title="convex/public.ts"
-// Check availability - always O(1), even with millions of bookings
-const slots = await ctx.runQuery(components.booking.public.getDaySlots, {
-  resourceId: "studio-a",
-  date: "2026-01-15",
-  eventLength: 60, // minutes
-});
-```
-
-The real-time presence system uses heartbeats to temporarily hold slots while users are selecting them, preventing double-booking scenarios.
-
-## Architecture Overview
-
-The system is organized in four layers:
-
-**Your App** — The frontend you build
-- `<Booker />` component (calendar, time slots, booking form), wrapped in `<BookingProvider publicApi={api.public}>`
-- Admin Dashboard (resource management, schedule configuration, booking management)
-- `ConvexProvider` (this site uses `ConvexAuthProvider`) plus `ConvexQueryCacheProvider` for cached queries
-
-**API Gateways** — Authorization layer with trust zones
-- `convex/public.ts` — Booking-flow functions visitors call anonymously, guarded server-side
-- `convex/admin.ts` — Management functions, gated by whatever auth you choose
-- `convex/functions.ts` — Custom builders: `publicQuery`/`publicMutation` require nothing, `adminQuery`/`adminMutation` require a signed-in identity
-- Pattern: Each gateway wraps component functions with appropriate authorization logic
-
-**ConvexBooking Component** — The reusable booking logic
-- **Resources** — Bookable entities (rooms, equipment, people)
-- **Schedules** — Availability windows and business hours
-- **Event Types** — Booking templates with durations and rules
-- **Bookings** — Confirmed reservations
-- **Presence** — Real-time slot locking via heartbeats
-- **Availability** — Pre-computed time buckets for O(1) queries
-- **Resend (nested)** — Email notifications via component hooks
-
-**Convex** — The backend platform
-- Real-time subscriptions, ACID transactions, serverless functions
-- Auth-agnostic: the component never calls `ctx.auth`, so authentication stays in your gateway layer
-
-## Quick Example
-
-```tsx title="app/book/page.tsx"
-import { Booker, BookingProvider } from "@mrfinch/booking/react";
-import { api } from "@/convex/_generated/api";
-
-export default function BookingPage() {
-  return (
-    <BookingProvider publicApi={api.public}>
-      <Booker
-        eventTypeId="studio-session"
-        resourceId="studio-a"
-        title="Book a Session"
-        description="Select a time that works for you"
-      />
-    </BookingProvider>
-  );
-}
-```
-
-## Next Steps
-
-- [Quick Start](/docs/getting-started) - Get ConvexBooking running in minutes
-- [Core Concepts](/docs/concepts) - Understand the architecture and data model
-- [Authentication & guest admin](/docs/authentication) - Trust zones and how this sandbox gates its dashboard
-- [Components](/docs/components) - Learn about the Booker and Admin UI
-- [API Reference](/docs/api) - Full API documentation
+For custom integrations, see the [backend API](/docs/api),
+[React components](/docs/components) and [authorization guide](/docs/authentication).
 
 </DocPage>

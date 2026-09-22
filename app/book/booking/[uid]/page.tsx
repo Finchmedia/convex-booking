@@ -1,7 +1,8 @@
 "use client";
 
-import { useSearchParams, useRouter, useParams } from "next/navigation";
+import { useSearchParams, useParams } from "next/navigation";
 import { useQuery } from "convex/react";
+import { useCurrentTime } from "@/lib/use-current-time";
 import { api } from "@/convex/_generated/api";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,9 +13,9 @@ import { Calendar, Clock, MapPin, User, Mail, Phone, MessageSquare, ArrowLeft, X
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function ViewBookingPage() {
+  const now = useCurrentTime();
   const params = useParams();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const uid = params.uid as string;
   const token = searchParams.get('token') || "";
 
@@ -64,7 +65,7 @@ export default function ViewBookingPage() {
   };
 
   // Loading state
-  if (booking === undefined) {
+  if (token && booking === undefined) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-card to-background p-4">
         <div className="fixed top-4 right-4 z-50">
@@ -79,7 +80,7 @@ export default function ViewBookingPage() {
   }
 
   // Error state - booking not found or invalid token
-  if (booking === null || !token) {
+  if (!booking || !token) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-card to-background flex items-center justify-center p-4">
         <div className="fixed top-4 right-4 z-50">
@@ -102,12 +103,13 @@ export default function ViewBookingPage() {
   }
 
   const { date, time } = formatDateTime(booking.start, booking.timezone);
-  const isPast = booking.start < Date.now();
+  const isPast = booking.start <= now;
   const canModify = !["cancelled", "completed", "declined"].includes(booking.status) && !isPast;
-  // A reschedule cancels the old booking with this reason and links the new uid.
+  // The gateway uses the component's default reschedule reason. rescheduleUid
+  // points BACK to the previous booking, so it is not proof of a later move.
   const wasRescheduled =
     booking.status === "cancelled" &&
-    (!!booking.rescheduleUid || booking.cancellationReason === "Rescheduled to new time");
+    booking.cancellationReason === "Rescheduled to new time";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-card to-background">
@@ -219,7 +221,7 @@ export default function ViewBookingPage() {
           </CardContent>
         </Card>
 
-        {/* Rescheduled: the old booking stays as a cancelled record pointing at the new one */}
+        {/* A reschedule keeps the old booking as a cancelled historical record. */}
         {booking.status === "cancelled" && wasRescheduled && (
           <Card className="bg-card/50 border-border mb-6">
             <CardHeader>
@@ -228,16 +230,6 @@ export default function ViewBookingPage() {
                 A new booking was created for the new time; this record is kept for reference.
               </CardDescription>
             </CardHeader>
-            {booking.rescheduleUid && (
-              <CardContent>
-                <Link
-                  href={`/book/booking/${booking.rescheduleUid}?token=${encodeURIComponent(token)}`}
-                  className="text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors"
-                >
-                  View the new booking
-                </Link>
-              </CardContent>
-            )}
           </Card>
         )}
 

@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/select";
 import { Users, Plus, Pencil, Trash } from "lucide-react";
 import { toast } from "sonner";
+import { convexErrorMessage } from "@/lib/convex-error-message";
 
 // Demo organization ID - in production, this would come from your auth system
 const DEMO_ORG_ID = "demo-org";
@@ -151,8 +152,8 @@ export default function ResourcesPage() {
         toast.success("Resource created");
       }
       setShowCreateModal(false);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save resource");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to save resource"));
     }
   };
 
@@ -161,8 +162,8 @@ export default function ResourcesPage() {
     try {
       await deleteResource({ id });
       toast.success("Resource deleted");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete resource");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to delete resource"));
     }
   };
 
@@ -176,8 +177,8 @@ export default function ResourcesPage() {
       await toggleActive({ id, isActive });
       toast.success(isActive ? "Resource activated" : "Resource deactivated");
       setPendingToggle(null);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update resource");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to update resource"));
       setPendingToggle(null);
     }
   };

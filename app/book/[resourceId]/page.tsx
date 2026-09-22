@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { api } from "@/convex/_generated/api";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Booker, BookingProvider, type EventType } from "@mrfinch/booking/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,11 +14,9 @@ import { ArrowLeft, Calendar, Clock, MapPin, ChevronRight, ExternalLink } from "
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BookingErrorToaster } from "@/components/booking-error-toaster";
 
-// Demo organization ID - in production, this would come from URL or auth
-const DEMO_ORG_ID = "demo-org";
-
 export default function ResourceBookingPage() {
   const params = useParams();
+  const router = useRouter();
   const resourceId = params.resourceId as string;
 
   // State: selected event type
@@ -57,7 +55,7 @@ export default function ResourceBookingPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-foreground mb-4">Resource Not Found</h1>
           <p className="text-muted-foreground mb-8">
-            The resource you're looking for doesn't exist.
+            The resource you are looking for does not exist.
           </p>
           <Link href="/book">
             <Button variant="outline">
@@ -131,7 +129,11 @@ export default function ResourceBookingPage() {
                   description={selectedEventType.description || resource.description}
                   organizerName="Studio Team"
                   onBookingComplete={(booking) => {
-                    console.log("Booking completed:", booking);
+                    if (booking.managementToken) {
+                      router.push(
+                        `/book/booking/${encodeURIComponent(booking.uid)}?token=${encodeURIComponent(booking.managementToken)}`
+                      );
+                    }
                   }}
                   onEventTypeReset={() => setSelectedEventType(null)}
                 />
@@ -223,7 +225,7 @@ export default function ResourceBookingPage() {
                     No Booking Types Available
                   </h3>
                   <p className="text-muted-foreground mt-2">
-                    This resource doesn't have any booking types configured yet.
+                    This resource has no booking types configured yet.
                   </p>
                   <Link href="/admin/event-types" className="mt-4 inline-block">
                     <Button variant="outline" size="sm">

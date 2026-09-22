@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "convex-helpers/react/cache/hooks";
 import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
+import { useCurrentTime } from "@/lib/use-current-time";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,11 +33,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { CalendarDays, Check, X, Clock, Mail, Phone, User } from "lucide-react";
 import { toast } from "sonner";
-
-type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "declined";
+import { convexErrorMessage } from "@/lib/convex-error-message";
 
 const DEMO_ORG_ID = "demo-org";
 
@@ -53,6 +52,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 ];
 
 export default function BookingsPage() {
+  const now = useCurrentTime();
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedBooking, setSelectedBooking] = useState<BookingRow | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -72,8 +72,8 @@ export default function BookingsPage() {
     try {
       await confirmBooking({ bookingId });
       toast.success("Booking confirmed");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to confirm booking");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to confirm booking"));
     }
   };
 
@@ -81,8 +81,8 @@ export default function BookingsPage() {
     try {
       await declineBooking({ bookingId });
       toast.success("Booking declined");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to decline booking");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to decline booking"));
     }
   };
 
@@ -90,8 +90,8 @@ export default function BookingsPage() {
     try {
       await cancelBooking({ reservationId: bookingId });
       toast.success("Booking cancelled");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to cancel booking");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to cancel booking"));
     }
   };
 
@@ -104,8 +104,8 @@ export default function BookingsPage() {
         toStatus: "completed",
       });
       toast.success("Booking marked as completed");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to complete booking");
+    } catch (error: unknown) {
+      toast.error(convexErrorMessage(error, "Failed to complete booking"));
     }
   };
 
@@ -212,7 +212,7 @@ export default function BookingsPage() {
               <TableBody>
                 {bookings.map((booking) => {
                   const { date, time } = formatDateTime(booking.start);
-                  const isPast = booking.start < Date.now();
+                  const isPast = booking.start <= now;
                   return (
                     <TableRow
                       key={booking._id}

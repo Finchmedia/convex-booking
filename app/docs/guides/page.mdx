@@ -1,1213 +1,209 @@
 <DocPage toc={[
   { title: "Basic Booking Flow", url: "#basic-booking-flow", depth: 2 },
-  { title: "Guarding Bookings in the Host Wrapper", url: "#guarding-bookings-in-the-host-wrapper", depth: 2 },
-  { title: "Guard Order and Error Codes", url: "#guard-order-and-error-codes", depth: 3 },
-  { title: "Handling Guard Errors in the UI", url: "#handling-guard-errors-in-the-ui", depth: 3 },
-  { title: "Reschedule with excludeBookingUid", url: "#reschedule-with-excludebookinguid", depth: 2 },
-  { title: "Multi-Duration Bookings", url: "#multi-duration-bookings", depth: 2 },
-  { title: "Configuring Durations", url: "#configuring-durations", depth: 3 },
-  { title: "Duration Locking", url: "#duration-locking", depth: 3 },
+  { title: "Host Policies", url: "#host-policies", depth: 2 },
   { title: "Multi-Resource Booking", url: "#multi-resource-booking", depth: 2 },
-  { title: "Timezone Handling", url: "#timezone-handling", depth: 2 },
-  { title: "Resource Timezones", url: "#resource-timezones", depth: 3 },
-  { title: "User Timezone Selection", url: "#user-timezone-selection", depth: 3 },
-  { title: "Building an Admin Dashboard", url: "#building-an-admin-dashboard", depth: 2 },
-  { title: "Custom Function Builders", url: "#custom-function-builders", depth: 2 },
-  { title: "Sandbox Resets with the Maintenance API", url: "#sandbox-resets-with-the-maintenance-api", depth: 2 },
-  { title: "Real-Time Booking Updates", url: "#real-time-booking-updates", depth: 2 },
+  { title: "Reschedule with excludeBookingUid", url: "#reschedule-with-excludebookinguid", depth: 2 },
+  { title: "Durations and Timezones", url: "#durations-and-timezones", depth: 2 },
 ]}>
 
 # Guides
 
-Practical patterns and recipes for common booking scenarios.
-
-> **API Organization**: ConvexBooking uses a trust-zone pattern:
-> - `api.public.*` - Anonymous: browsing, availability, booking, token-based cancel/reschedule
-> - `api.admin.*` - Dashboard operations: require a signed-in session
+Start with one resource and one event type. Add quantities, multiple resources or
+custom policies when your app needs them.
 
 ## Basic Booking Flow
 
-The simplest setup: one resource, one event type, fixed duration.
+A bookable setup needs a resource, an event type, a schedule and a link between
+the resource and event type. This seed creates a meeting room available on
+weekdays from 09:00 to 17:00 in New York, with 30-minute meetings.
 
-<Callout type="info">
-  **Setup vs. booking**: Creating resources, schedules and event types goes either through `api.admin.*`
-  (which requires a signed-in session) or through an `internalMutation` that talks to the component directly,
-  the way `convex/seed.ts` does. Booking itself is anonymous — no account, no sign-in.
-</Callout>
+Add it to a fresh development deployment, then run
+`npx convex run seed:seedBookingSetup` once. The function is internal, so browser
+clients cannot invoke it.
 
-### 1. Create a Resource
-
-```typescript title="convex/seed.ts"
+```typescript title="convex/seed.ts" check
 import { internalMutation } from "./_generated/server";
 import { components } from "./_generated/api";
 
-export const seedResources = internalMutation(async (ctx) => {
-  // Internal mutation: talks to the component directly
-  await ctx.runMutation(components.booking.resources.createResource, {
-    id: "meeting-room",
-    name: "Meeting Room",
-    type: "room",
-    timezone: "America/New_York",
-    organizationId: "my-org",
-  });
-});
-```
-
-For admin UI operations, use the admin API:
-
-```typescript title="app/admin/resources/actions.ts"
-import { api } from "@/convex/_generated/api";
-
-// adminMutation requires a signed-in session before it forwards to the component
-await ctx.runMutation(api.admin.createResource, {
-  id: "meeting-room",
-  name: "Meeting Room",
-  type: "room",
-  timezone: "America/New_York",
-  organizationId: "my-org",
-});
-```
-
-### 2. Create a Schedule
-
-```typescript title="convex/seed.ts"
-await ctx.runMutation(components.booking.schedules.createSchedule, {
-  id: "business-hours",
-  name: "Business Hours",
-  timezone: "America/New_York",
-  organizationId: "my-org",
-  isDefault: true,
-  weeklyHours: [
-    { dayOfWeek: 1, startTime: "09:00", endTime: "17:00" },
-    { dayOfWeek: 2, startTime: "09:00", endTime: "17:00" },
-    { dayOfWeek: 3, startTime: "09:00", endTime: "17:00" },
-    { dayOfWeek: 4, startTime: "09:00", endTime: "17:00" },
-    { dayOfWeek: 5, startTime: "09:00", endTime: "17:00" },
-  ],
-});
-```
-
-From admin UI:
-
-```typescript
-await ctx.runMutation(api.admin.createSchedule, {
-  // same args - the session check happens in adminMutation
-});
-```
-
-### 3. Create an Event Type
-
-```typescript title="convex/seed.ts"
-await ctx.runMutation(components.booking.public.createEventType, {
-  id: "quick-meeting",
-  slug: "quick-meeting",
-  title: "Quick Meeting",
-  lengthInMinutes: 30,
-  slotInterval: 30,
-  timezone: "America/New_York",
-  organizationId: "my-org",
-  scheduleId: "business-hours",
-  lockTimeZoneToggle: false,
-  locations: [],
-});
-```
-
-From admin UI:
-
-```typescript
-await ctx.runMutation(api.admin.createEventType, {
-  // same args - the session check happens in adminMutation
-});
-```
-
-### 4. Add the Booker
-
-The Booker component handles the complete booking flow: browsing availability, holding a slot, collecting name and email, and creating the booking. No account and no sign-in — the form is the identity.
-
-```tsx title="app/book/page.tsx"
-"use client";
-
-import { Booker, BookingProvider } from "@mrfinch/booking/react";
-import { api } from "@/convex/_generated/api";
-
-export default function BookingPage() {
-  return (
-    // BookingProvider tells the Booker which wrapper module to call
-    <BookingProvider publicApi={api.public}>
-      <Booker
-        eventTypeId="quick-meeting"
-        resourceId="meeting-room"
-        title="Book a Meeting"
-      />
-    </BookingProvider>
-  );
-}
-```
-
-**How it works:**
-1. User browses slots → `api.public.getDaySlots` (anonymous, schedule-aware)
-2. User selects slot → presence hold created (client-generated session id)
-3. User fills form → data validated locally
-4. User clicks "Book" → `api.public.createBooking`, with the form as the required `booker` argument
-5. Booking created → confirmation code plus a management token for cancel/reschedule
-
-<Callout type="info">
-  **Anonymous is not unchecked**: `api.public.createBooking` re-validates every booking server-side before it
-  reaches the component — grid alignment, booking window, duration whitelist, "is this start actually an offered
-  slot", plus a per-email rate limit. See [Guarding Bookings in the Host Wrapper](#guarding-bookings-in-the-host-wrapper).
-</Callout>
-
-## Guarding Bookings in the Host Wrapper
-
-The component validates only what it owns: the event type and the resource exist and are active, the two are
-linked, and the requested slots are not already busy. Opening hours, notice periods, duration whitelists and
-abuse limits are left to the caller by design — so an anonymous `createBooking` needs a guard in the host
-wrapper. `convex/public.ts` runs one before it forwards the write, and every failure is a
-`ConvexError({ code, message })`, so the UI gets a stable code instead of Convex's redacted "Server Error".
-
-```typescript title="convex/public.ts"
-export const createBooking = publicMutation({
-  args: {
-    eventTypeId: v.string(),
-    resourceId: v.string(),
-    start: v.number(),
-    end: v.number(),
-    timezone: v.string(),
-    booker: v.object({
-      name: v.string(),
-      email: v.string(),
-      phone: v.optional(v.string()),
-      notes: v.optional(v.string()),
-    }),
-    location: v.object({
-      type: v.string(),
-      value: v.optional(v.string()),
-    }),
-  },
-  handler: async (ctx, args) => {
-    assertBookableRange(args.start, args.end);
-    if (!isValidTimezone(args.timezone)) {
-      invalid("INVALID_TIMEZONE", "Unknown timezone.");
-    }
-    const booker = sanitizeBooker(args.booker);
-    const location = {
-      type: args.location.type,
-      value: args.location.value?.slice(0, 300),
-    };
-
-    const eventType = await loadBookableEventType(ctx, args.eventTypeId);
-    const resource = await loadBookableResource(
-      ctx,
-      args.resourceId,
-      args.eventTypeId
-    );
-    const durationMinutes = assertAllowedDuration(eventType, args.start, args.end);
-    assertBookingWindow(eventType, args.start, Date.now());
-    await assertStartIsOfferedSlot(ctx, {
-      resource,
-      eventType,
-      start: args.start,
-      durationMinutes,
+export const seedBookingSetup = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    await ctx.runMutation(components.booking.schedules.createSchedule, {
+      id: "business-hours",
+      name: "Business Hours",
+      timezone: "America/New_York",
+      organizationId: "my-org",
+      isDefault: true,
+      weeklyHours: [1, 2, 3, 4, 5].map((dayOfWeek) => ({
+        dayOfWeek, startTime: "09:00", endTime: "17:00",
+      })),
     });
-
-    await enforceBookingRateLimit(ctx, booker.email);
-
-    let booking: unknown;
-    try {
-      booking = await ctx.runMutation(components.booking.public.createBooking, {
-        eventTypeId: args.eventTypeId,
-        resourceId: args.resourceId,
-        start: args.start,
-        end: args.end,
-        timezone: args.timezone,
-        booker,
-        location,
-        resendOptions: resendOptions(),
-      });
-    } catch (error) {
-      translateComponentError(error);
-    }
-    if (!booking) {
-      invalid("BOOKING_FAILED", "Booking failed — please try again.");
-    }
-    return booking;
+    await ctx.runMutation(components.booking.resources.createResource, {
+      id: "meeting-room",
+      name: "Meeting Room",
+      type: "room",
+      timezone: "America/New_York",
+      organizationId: "my-org",
+    });
+    await ctx.runMutation(components.booking.public.createEventType, {
+      id: "quick-meeting",
+      slug: "quick-meeting",
+      title: "Quick Meeting",
+      lengthInMinutes: 30,
+      slotInterval: 30,
+      timezone: "America/New_York",
+      organizationId: "my-org",
+      scheduleId: "business-hours",
+      lockTimeZoneToggle: false,
+      locations: [],
+    });
+    await ctx.runMutation(components.booking.resource_event_types.linkResourceToEventType, {
+      resourceId: "meeting-room",
+      eventTypeId: "quick-meeting",
+    });
+    return null;
   },
 });
 ```
 
-`booker` is a **required** argument: name and email always travel with the request, nothing is derived from a
-session. `resendOptions` is the opposite — it is injected from the server's environment, never accepted from
-the client.
+Render the Booker with `resourceId="meeting-room"` and
+`eventTypeId="quick-meeting"` as shown in the [quickstart](/docs/getting-started).
+The visitor chooses a time, enters their details and confirms. The booking result
+includes a management token for later cancellation or rescheduling.
 
-### Guard Order and Error Codes
+To edit setup from a dashboard, expose only the host functions your dashboard
+needs and apply the [administrator checks](/docs/authentication). Keep reset and
+seed operations internal.
 
-Cheap checks first, database reads next, the component write last:
+## Host Policies
 
-- **Range** — safe integers, both ends on the 15-minute grid, `end > start` → `INVALID_TIME`, `SLOT_NOT_ALIGNED`, `INVALID_RANGE`
-- **Timezone** — parses as an IANA zone → `INVALID_TIMEZONE`
-- **Booker** — name present and ≤ 120 chars, an email with `@` and ≤ 254 chars, phone ≤ 30, notes ≤ 1000 → `NAME_REQUIRED`, `NAME_TOO_LONG`, `INVALID_EMAIL`, `PHONE_TOO_LONG`, `NOTES_TOO_LONG`
-- **Event type** — exists and is active → `EVENT_TYPE_NOT_FOUND`, `EVENT_TYPE_INACTIVE`
-- **Resource** — exists, is active, is standalone, and is linked to the event type → `RESOURCE_NOT_FOUND`, `RESOURCE_INACTIVE`, `RESOURCE_NOT_STANDALONE`, `NOT_LINKED`
-- **Duration** — `(end - start) / 60000` minutes is one of `lengthInMinutesOptions`, or `lengthInMinutes` when no options are configured → `INVALID_DURATION`
-- **Window** — not in the past (5 minutes of clock-skew grace), respects `minNoticeMinutes`, inside `maxFutureMinutes` (60 days when unset) → `IN_PAST`, `TOO_SOON`, `TOO_FAR_AHEAD`
-- **Offered slot** — the start is one of the slots `getDaySlots` would show for this resource, event type and duration → `SLOT_NOT_AVAILABLE`
-- **Rate limit** — 5 bookings per email address per 10 minutes → `RATE_LIMITED`
-- **Sandbox cap** — 500 booking writes (create + reschedule) per hour across the whole sandbox, so the hourly wipe always fits in one transaction → `SANDBOX_BUSY`
-- **Component errors** — mapped by message into the same shape, falling back to `BOOKING_FAILED`
+The component enforces inventory consistency. Your host app decides who may book,
+which resources they may see, and which dates and durations you offer.
 
-`rescheduleBookingByToken` runs the same guard (with the booking's own slots treated as free) and both limits,
-because a reschedule writes a new booking row.
+The [reference gateway](https://github.com/Finchmedia/convex-booking/blob/main/convex/public.ts)
+from the quickstart already checks:
 
-The offered-slot check is the master guard. Rather than re-deriving opening hours, date overrides, "runs past
-closing" and busy collisions, it asks the same schedule-aware query the calendar uses and requires the start to
-be in the answer:
+| Policy | Reference behavior |
+| --- | --- |
+| Input | Valid timezone, booker details, positive duration and 15-minute alignment |
+| Bookable setup | Active resource and event type, linked together |
+| Duration | One of the event type's configured durations |
+| Opening hours | Start and complete duration fit the schedule, including date overrides |
+| Notice and horizon | `minNoticeMinutes` and `maxFutureMinutes`; default horizon is 60 days |
+| Abuse limits | 5 booking writes per email per 10 minutes, plus 500 across the demo per hour |
 
-```typescript title="convex/public.ts"
-async function assertStartIsOfferedSlot(
-  ctx: Ctx,
-  opts: {
-    resource: ResourceDoc;
-    eventType: EventTypeDoc;
-    start: number;
-    durationMinutes: number;
-    excludeBookingUid?: string;
-  }
-): Promise<void> {
-  const avail = await resolveAvailabilityContext(ctx, opts.resource.id, {
-    eventType: opts.eventType,
-  });
-  if (!avail) {
-    invalid("RESOURCE_INACTIVE", "This resource is no longer available.");
-  }
-  const date = dayKeyFor(opts.start, avail.timezone);
-  const slots = await offeredDaySlots(ctx, avail, {
-    date,
-    eventLength: opts.durationMinutes,
-    slotInterval: effectiveSlotInterval(opts.eventType),
-    excludeBookingUid: opts.excludeBookingUid,
-  });
-  if (!slots.some((s) => slotTimeMs(s.time) === opts.start)) {
-    invalid(
-      "SLOT_NOT_AVAILABLE",
-      "This time slot is no longer available — please pick another one."
-    );
-  }
-}
-```
+Creation and token-based rescheduling both run these checks. The hourly cap is a
+**demo policy**, not a package capacity limit. Adjust both limits for your app and
+keep the `bookingRateLimits` schema table if you use that gateway.
 
-`offeredDaySlots` resolves the resource's schedule server-side and passes `resourceTimezone` plus
-`availableSlots` (from `components.booking.schedules.getEffectiveAvailability`) into the component, so a 3 AM
-Sunday booking posted straight to the API fails exactly the way it would fail in the UI.
+For a private or multi-organization app, also scope every read and write to the
+resources the caller may access. The reference gateway is for a public catalog;
+it does not determine organization membership for you. Apply the same schedule
+and access checks to every resource when adding bundle booking.
 
-<Callout type="warning">
-  **The day key follows the schedule, not UTC.** `dayKeyFor(start, timezone)` formats the timestamp in the
-  schedule's timezone before asking for that day's slots. Using `toISOString().slice(0, 10)` here would look at
-  the wrong day for any booking near midnight in a non-UTC zone.
-</Callout>
-
-### Handling Guard Errors in the UI
-
-Every rejection carries a machine-readable `code` in `error.data`. Match on the code, show the message:
-
-```tsx
-import { ConvexError } from "convex/values";
-
-type GuardError = { code: string; message: string };
-
-function describe(error: unknown): string {
-  if (error instanceof ConvexError) {
-    const data = error.data as GuardError;
-    if (data.code === "SLOT_NOT_AVAILABLE") {
-      return "Someone just took that slot. Pick another time.";
-    }
-    if (data.code === "RATE_LIMITED") {
-      return "Too many bookings from this address — try again in a few minutes.";
-    }
-    return data.message;
-  }
-  return "Booking failed — please try again.";
-}
-```
-
-<Callout type="tip">
-  Throw `ConvexError` for anything the visitor should read. A plain `Error` from a Convex mutation reaches the
-  browser as "Server Error" in production, with the real message only in the deployment logs.
-</Callout>
-
-## Reschedule with excludeBookingUid
-
-A booking blocks its own slots. The moment someone reschedules, that self-conflict has to be ignored — otherwise
-the current time, and every start overlapping it, reads as busy. `@mrfinch/booking` 0.3.0 adds an optional
-`excludeBookingUid` to both availability queries: pass a booking's `uid` and availability is computed as if that
-booking did not exist.
-
-The wrapper forwards it on reads and uses it on the write path. `rescheduleBookingByToken` runs the same guard
-as `createBooking`, with the booking's own slots treated as free:
-
-```typescript title="convex/public.ts"
-    assertBookableRange(args.newStart, args.newEnd);
-    const eventType = await loadBookableEventType(ctx, booking.eventTypeId);
-    const resource = await loadBookableResource(
-      ctx,
-      booking.resourceId,
-      booking.eventTypeId
-    );
-    const durationMinutes = assertAllowedDuration(
-      eventType,
-      args.newStart,
-      args.newEnd
-    );
-    assertBookingWindow(eventType, args.newStart, now);
-    await assertStartIsOfferedSlot(ctx, {
-      resource,
-      eventType,
-      start: args.newStart,
-      durationMinutes,
-      excludeBookingUid: booking.uid,
-    });
-```
-
-When you build your own "pick a new time" calendar, pass the same uid to the reads so the UI agrees with the
-guard — `api.public.getDaySlots` and `api.public.getMonthAvailability` both accept it:
-
-```tsx
-const slots = useQuery(api.public.getDaySlots, {
-  resourceId: booking.resourceId,
-  date: selectedDate,
-  eventLength: duration,
-  excludeBookingUid: booking.uid,
-});
-
-const month = useQuery(api.public.getMonthAvailability, {
-  resourceId: booking.resourceId,
-  dateFrom,
-  dateTo,
-  eventLength: duration,
-  excludeBookingUid: booking.uid,
-});
-```
-
-Reschedule behaviour worth knowing:
-
-- Only `pending` and `confirmed` bookings can move → `INVALID_STATE`
-- A booking that has already started cannot be moved → `ALREADY_STARTED`
-- Rescheduling to the identical start and end is rejected → `SAME_SLOT`
-- The component performs the move as cancel + create, so the result is a **new** booking with a new `uid` and the same management token
-- `excludeBookingUid` only relaxes *reads*; the write path re-validates and still refuses a collision with anybody else
-
-<Callout type="info">
-  This site's `/book/booking/[uid]/reschedule` page renders the bundled Booker in reschedule mode
-  (`originalBooking` plus `reuseBookerInfo`). That path re-confirms a slot and calls
-  `api.public.rescheduleBookingByToken` with the management token, but it does not send `excludeBookingUid` to
-  the availability queries — pass it yourself when you build your own calendar.
-</Callout>
-
-## Multi-Duration Bookings
-
-Allow users to choose from multiple booking lengths (e.g., 30min, 1h, 2h). This is critical for inventory-based booking where different durations have different availability constraints.
-
-### Configuring Durations
-
-Set `lengthInMinutesOptions` on your event type:
-
-```typescript
-await ctx.runMutation(api.admin.createEventType, {
-  id: "studio-session",
-  slug: "studio-session",
-  title: "Studio Session",
-  lengthInMinutes: 60,              // Default duration
-  lengthInMinutesOptions: [60, 120, 300],  // 1h, 2h, 5h options
-  slotInterval: 60,                 // Start times every hour
-  timezone: "Europe/Berlin",
-  organizationId: "my-org",
-  scheduleId: "business-hours",
-  lockTimeZoneToggle: false,
-  locations: [],
-});
-```
-
-The Booker automatically shows a duration selector when `lengthInMinutesOptions` has multiple values.
-
-**Why this matters:** A 5-hour booking starting at 10:00 AM requires slots 10:00-15:00 to be free. The system must check span conflicts, not just individual slot conflicts. See [Real-Time Booking Updates](#real-time-booking-updates) for details.
-
-### Duration Locking
-
-**Important behavior:** Once a user selects a time slot, their duration is locked. This is intentional:
-
-1. User selects duration (e.g., 5h)
-2. User selects slot (e.g., 10:00 AM)
-3. System holds slots 10:00-15:00 via presence
-4. Duration selector becomes disabled
-5. To change duration: user must click "Back" and reselect
-
-**Why?** The presence system holds multiple slots for longer durations. Allowing duration changes mid-selection would require releasing and re-acquiring holds, creating race conditions.
+`bufferBefore` and `bufferAfter` are stored configuration only. If you need gaps
+between bookings, enforce them in your host's availability and write paths.
 
 ## Multi-Resource Booking
 
-Link event types to multiple resources so users can book any available one.
-
-### Setup
-
-1. Create multiple resources (admin operation):
-
-```typescript title="convex/seed.ts"
-await ctx.runMutation(components.booking.resources.createResource, {
-  id: "studio-a",
-  name: "Studio A",
-  type: "room",
-  timezone: "Europe/Berlin",
-  organizationId: "my-org",
-});
-
-await ctx.runMutation(components.booking.resources.createResource, {
-  id: "studio-b",
-  name: "Studio B",
-  type: "room",
-  timezone: "Europe/Berlin",
-  organizationId: "my-org",
-});
-```
-
-2. Link resources to event type in Admin UI (`/admin/event-types`) or programmatically:
-
-```typescript
-await ctx.runMutation(api.admin.setResourcesForEventType, {
-  eventTypeId: "studio-session",
-  resourceIds: ["studio-a", "studio-b"],
-});
-```
-
-3. Create a resource selection page (public, no auth required):
-
-```tsx title="app/book/page.tsx"
-"use client";
-
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import Link from "next/link";
-
-export default function SelectResourcePage() {
-  // Public query - anyone can view active resources
-  const resources = useQuery(api.public.listResources, {
-    organizationId: "my-org",
-    type: "room", // optional filter
-  });
-
-  if (!resources) return <div>Loading...</div>;
-
-  return (
-    <div className="grid gap-4">
-      <h1>Select a Studio</h1>
-      {resources.map((resource) => (
-        <Link
-          key={resource.id}
-          href={`/book/${resource.id}`}
-          className="p-4 border rounded hover:bg-gray-50"
-        >
-          <h2>{resource.name}</h2>
-          <p className="text-sm text-gray-600">{resource.description}</p>
-        </Link>
-      ))}
-    </div>
-  );
-}
-```
-
-### Resource Isolation
-
-Each resource has independent availability. When User A holds a slot on Studio A, it does NOT affect Studio B's availability.
-
-**How it works:**
-- Presence uses compound key: `resourceId` + `slot` + `updated`
-- Index: `["resourceId", "slot", "updated"]` ensures efficient range queries
-- Query pattern: `api.public.getDatePresence({ resourceId, date })`
-
-**Example:**
-```typescript
-// User A holds Studio A at 10:00
-await ctx.runMutation(api.public.heartbeat, {
-  resourceId: "studio-a",
-  slot: "2025-11-24T10:00:00.000Z",
-  user: "session-123",
-});
-
-// User B queries Studio B presence - sees no conflict
-const presence = await ctx.runQuery(api.public.getDatePresence, {
-  resourceId: "studio-b",
-  date: "2025-11-24",
-});
-// Returns: [] (empty - Studio B is free)
-```
-
-## Timezone Handling
-
-ConvexBooking handles timezones at multiple levels.
-
-### Resource Timezones
-
-Each resource has a `timezone` field that determines:
-- How schedules are interpreted (9 AM in which timezone?)
-- How availability is calculated
-
-```typescript
-await ctx.runMutation(api.admin.createResource, {
-  id: "tokyo-office",
-  name: "Tokyo Conference Room",
-  type: "room",
-  timezone: "Asia/Tokyo",  // Schedule interpreted in JST
-  organizationId: "my-org",
-});
-```
-
-### User Timezone Selection
-
-The Booker includes a timezone selector that lets users view slots in their local time. This is purely a display concern—the booking is always stored in UTC.
-
-```
-User in New York views Tokyo room:
-├─ Resource schedule: 9 AM - 5 PM JST
-├─ User sees: 8 PM - 4 AM EST (previous day)
-├─ User selects: 10 PM EST
-├─ Stored as: UTC timestamp
-└─ Confirmation shows: 10 PM EST (user's TZ) / 12 PM JST (resource's TZ)
-```
-
-**Best practice:** Always store and query using UTC timestamps. Let the frontend handle display conversion.
-
-```typescript
-// Creating a booking - use Unix timestamps (UTC)
-await ctx.runMutation(api.public.createBooking, {
-  resourceId: "tokyo-office",
-  eventTypeId: "meeting",
-  start: 1705312800000,  // Unix ms - always UTC, on the 15-minute grid
-  end: 1705316400000,
-  timezone: "America/New_York",  // Booker's display timezone for emails/UI
-  booker: {
-    name: "John Doe",
-    email: "john@example.com",
-    // phone and notes are optional
-  },
-  location: { type: "address", value: "Tokyo Conference Room" },
-});
-```
-
-<Callout type="info">
-  **`booker` is required**: the wrapper never derives it from a session — the object your form collects is the
-  object that gets stored. If your app does have a signed-in user, prefill the fields through the Booker's
-  `currentUser` prop; the values still travel in `booker`.
-</Callout>
-
----
-
-## Building an Admin Dashboard
-
-Admin operations (CRUD for resources, event types, schedules) run through `api.admin.*`, built on `adminQuery` / `adminMutation`. Those builders require a Convex Auth session and inject `{ user, role }` into the handler — the dashboard never checks auth itself.
-
-### Pattern: Gating the Dashboard
-
-This demo has no accounts. `/admin` is gated by Convex Auth v2's anonymous provider: one click mints a
-throw-away session, which is enough to satisfy `adminQuery` / `adminMutation` and to stamp audit fields with a
-user id. There is no redirect and no user-lookup round-trip — the three state components render off the
-provider's own token state.
-
-```tsx title="app/admin/layout.tsx"
-"use client";
-
-import {
-  Authenticated,
-  AuthLoading,
-  Unauthenticated,
-} from "@convex-dev/auth/react";
-import { useAnonymousAuth } from "@convex-dev/auth/providers/anonymous/react";
-import { api } from "@/convex/_generated/api";
-
-function GuestAdminGate() {
-  const { signInAnonymous } = useAnonymousAuth(api.auth.signInAnonymous);
-
-  return (
-    <Button onClick={() => signInAnonymous()}>
-      Continue as guest admin
-    </Button>
-  );
-}
-
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <AuthLoading>
-        <AdminGateSkeleton />
-      </AuthLoading>
-      <Unauthenticated>
-        <GuestAdminGate />
-      </Unauthenticated>
-      <Authenticated>
-        <AdminShell>{children}</AdminShell>
-      </Authenticated>
-    </>
-  );
-}
-```
-
-The provider replaces `ConvexProvider` at the root and keeps the session's tokens itself:
-
-```tsx title="components/ConvexClientProvider.tsx"
-<ConvexAuthProvider
-  client={convex}
-  api={{ refreshSession: api.auth.refreshSession, signOut: api.auth.signOut }}
-  ambientSignIns={[]}
->
-  <ConvexQueryCacheProvider>{children}</ConvexQueryCacheProvider>
-</ConvexAuthProvider>
-```
-
-The backend half is a handful of lines. `signInAnonymous` is what the button calls; `createUser` writes the app's own
-`users` row and returns its id, which becomes `identity.subject`:
-
-```typescript title="convex/auth.ts"
-import { components, internal } from "./_generated/api";
-import { setupCore } from "@convex-dev/auth/core/setup";
-import { setupAnonymous } from "@convex-dev/auth/providers/anonymous/setup";
-
-const core = setupCore({ component: components.auth });
-export const { signOut, refreshSession, isAuthenticated } = core;
-
-export const { signInAnonymous } = setupAnonymous(core, {
-  component: components.authAnonymous,
-}).attachUserCallbacks({ createUser: internal.users.createUser });
-```
-
-Signing out is the mirror image: `useAuthActions().signOut()` from the same package. Swapping in a real
-provider (OAuth, passwords, [WorkOS AuthKit](/docs/integrations/workos)) changes this file and the sign-in
-button — not `api.admin.*`, and not the dashboard pages, which only ever see the identity through `ctx.user`.
-
-### Pattern: Admin CRUD Operations
-
-```tsx title="app/admin/resources/new/page.tsx"
-"use client";
-
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useRouter } from "next/navigation";
-
-export default function NewResourcePage() {
-  const createResource = useMutation(api.admin.createResource);
-  const router = useRouter();
-
-  async function handleSubmit(data: FormData) {
-    try {
-      // adminMutation resolves the session before this handler runs
-      await createResource({
-        id: data.get("id") as string,
-        name: data.get("name") as string,
-        type: data.get("type") as string,
-        timezone: data.get("timezone") as string,
-        organizationId: "my-org",
-      });
-      router.push("/admin/resources");
-    } catch (error) {
-      // ConvexError with code "UNAUTHENTICATED" when the session is gone
-      console.error(error);
-    }
-  }
-
-  return (
-    <form onSubmit={(e) => {
-      e.preventDefault();
-      handleSubmit(new FormData(e.currentTarget));
-    }}>
-      {/* Form fields */}
-    </form>
-  );
-}
-```
-
-### Admin API Reference
-
-All admin operations follow this pattern:
-
-```typescript
-// Resources
-api.admin.listResources         // List all (including inactive)
-api.admin.getResource           // Get by ID
-api.admin.createResource        // Create new
-api.admin.updateResource        // Update existing
-api.admin.deleteResource        // Delete
-api.admin.toggleResourceActive  // Activate/deactivate
-
-// Event Types
-api.admin.listEventTypes
-api.admin.getEventType
-api.admin.createEventType
-api.admin.updateEventType
-api.admin.deleteEventType
-api.admin.toggleEventTypeActive
-
-// Schedules
-api.admin.listSchedules
-api.admin.getSchedule
-api.admin.createSchedule
-api.admin.updateSchedule
-api.admin.deleteSchedule
-
-// Resource ↔ Event Type Linking
-api.admin.getResourcesForEventType
-api.admin.setResourcesForEventType
-api.admin.linkResourceToEventType
-api.admin.unlinkResourceFromEventType
-
-// Bookings (Admin Management)
-api.admin.listBookings          // View all bookings
-api.admin.getBooking            // Get details
-api.admin.confirmBooking        // Approve pending booking
-api.admin.declineBooking        // Reject pending booking
-api.admin.transitionBookingState // Manual state transition
-api.admin.getBookingHistory     // View state history
-```
-
-<Callout type="warning">
-  **Everyone who signs in is an admin here.** The sandbox has a single shared demo organization and only the
-  anonymous provider, so `adminQuery` / `adminMutation` check *that* you have a session, not *who* you are — and
-  the data resets every hour anyway. In a real app, replace `requireAuth` in `convex/functions.ts` with a role
-  lookup and throw `ConvexError({ code: "FORBIDDEN" })` when it fails.
-</Callout>
-
----
-
-## Custom Function Builders
-
-ConvexBooking uses a trust-zone pattern with custom function builders. You can extend this pattern for your own use cases.
-
-### Trust Zones Explained
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  GREEN ZONE: Internal                                       │
-│  - Direct component access: components.booking.*            │
-│  - No auth checks (trust Convex's internal boundary)        │
-│  - Used for: Seeding, sandbox resets, scheduled jobs        │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│  BLUE ZONE: Public                                          │
-│  - api.public.* (publicQuery, publicMutation)               │
-│  - No identity read, none required - anonymous              │
-│  - Guarded by explicit checks in the handler                │
-│  - Used for: Booking flow, availability, presence           │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│  YELLOW ZONE: Admin                                         │
-│  - api.admin.* (adminQuery, adminMutation)                  │
-│  - Convex Auth session required, injects user + role        │
-│  - Used for: CRUD operations, dashboard                     │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Creating Custom Builders
-
-```typescript title="convex/functions.ts"
-import {
-  customQuery,
-  customMutation,
-  customCtx,
-} from "convex-helpers/server/customFunctions";
-import { query, mutation } from "./_generated/server";
-import type { QueryCtx, MutationCtx } from "./_generated/server";
-import { ConvexError } from "convex/values";
-
-/** Read the Convex Auth identity, or null when the caller is not signed in. */
-export async function getUserIdentity(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) return null;
-  return {
-    userId: identity.subject,
-    email: identity.email ?? "",
-    name: identity.name,
-  };
-}
-
-/** Require a signed-in (guest admin) session. */
-export async function requireAuth(ctx: QueryCtx | MutationCtx) {
-  const user = await getUserIdentity(ctx);
-  if (!user) {
-    throw new ConvexError({
-      code: "UNAUTHENTICATED",
-      message: "Sign in as guest admin to use the dashboard",
-    });
-  }
-  return user;
-}
-
-/**
- * Public Query / Mutation - no auth, nothing injected.
- * Use for: availability, browsing, anonymous booking, presence heartbeats.
- */
-export const publicQuery = customQuery(query, customCtx(async () => ({})));
-
-export const publicMutation = customMutation(mutation, customCtx(async () => ({})));
-
-/**
- * Admin Mutation - requires a Convex Auth identity; injects { user, role }.
- * `user.userId` is what admin.ts records as changedBy / cancelledBy.
- */
-export const adminMutation = customMutation(
-  mutation,
-  customCtx(async (ctx) => {
-    const user = await requireAuth(ctx);
-    return { user, role: "admin" as Role };
-  })
-);
-```
-
-### Using Custom Builders
-
-```typescript title="convex/public.ts"
-import { publicQuery, publicMutation } from "./functions";
-
-/**
- * List resources - anyone can view, active only
- */
-export const listResources = publicQuery({
-  args: {
-    organizationId: v.string(),
-    type: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.resources.listResources, {
-      organizationId: args.organizationId,
-      type: args.type,
-      activeOnly: true, // Always filter to active for public
-    });
-  },
-});
-
-/**
- * Heartbeat - anonymous, but still bounded
- */
-export const heartbeat = publicMutation({
-  args: {
-    resourceId: v.string(),
-    slots: v.array(v.string()),
-    user: v.string(), // Client-generated session ID
-    eventTypeId: v.optional(v.string()),
-    data: v.optional(v.any()),
-  },
-  handler: async (ctx, args) => {
-    if (args.slots.length > MAX_PRESENCE_SLOTS) {
-      invalid("TOO_MANY_SLOTS", "Too many slots in one hold.");
-    }
-    return await ctx.runMutation(components.booking.presence.heartbeat, args);
-  },
-});
-```
-
-`createBooking` is the long one — see
-[Guarding Bookings in the Host Wrapper](#guarding-bookings-in-the-host-wrapper) for its full guard.
-
-### Benefits of This Pattern
-
-1. **Type Safety**: Custom builders provide typed `ctx.user` and `ctx.role`
-2. **Reusability**: Write auth logic once, reuse everywhere
-3. **Clarity**: Function name signals auth requirements (`publicQuery` vs `adminMutation`)
-4. **Security**: The zone is visible in the function name — an admin function cannot forget its check, and a public one carries its guard explicitly
-5. **Composability**: Builders wrap standard Convex functions, work with all features
-
-For more details, see [Ian White's Convex Authorization article](https://stack.convex.dev/authorizing-mutations) and the [convex-helpers documentation](https://github.com/get-convex/convex-helpers).
-
----
-
-## Sandbox Resets with the Maintenance API
-
-`@mrfinch/booking` 0.3.0 ships a `maintenance` module for exactly this job — giving a demo deployment a clean
-slate on a schedule:
-
-- `components.booking.maintenance.wipeAllBookingData` — deletes bookings, history, booking items and slot occupancy; keeps resources, schedules, event types, links and hooks
-- `components.booking.maintenance.wipeAllData` — the above **plus** the setup tables (this site uses it, because the reset reseeds everything)
-- `components.booking.maintenance.getDailyAvailability` — the raw `busySlots` array for one resource and day, for verification
-
-<Callout type="danger">
-  These are unauthenticated at the component boundary — the component trusts its host. Never re-export them from
-  `convex/public.ts` or `convex/admin.ts`. Wrap them in an `internalMutation` so only crons and other server code
-  can reach them.
-</Callout>
-
-convexbooking.dev resets **every hour**. One cron entry drives it:
-
-```typescript title="convex/crons.ts"
-import { cronJobs } from "convex/server";
-import { internal } from "./_generated/api";
-
-const crons = cronJobs();
-
-// Public sandbox: wipe every booking + setup row, reseed the demo org and
-// purge stale guest-admin users. Nothing public can trigger this.
-crons.interval("reset sandbox", { hours: 1 }, internal.seed.resetSandbox, {});
-
-export default crons;
-```
-
-The wipe itself is a one-liner; the reset is an `internalAction` that sequences three separate mutations:
-
-```typescript title="convex/seed.ts"
-/**
- * Wipe every booking AND setup row in the booking component.
- * Internal only — never expose this through public.ts / admin.ts.
- */
-export const wipeSandbox = internalMutation({
+Use `components.booking.multi_resource.createMultiResourceBooking` to reserve a
+bundle in one transaction: for example, one room plus two cameras. Every requested
+resource must be linked to the event type.
+
+For a camera pool, create a resource with `isFungible: true` and `quantity: 4`.
+A request for two cameras then consumes two of its four units. Exclusive resources
+such as rooms always use quantity one. Quantities and capacities must be positive
+safe integers; list each resource ID once.
+
+This complete server-only recipe extends the setup above. Run
+`npx convex run bundles:addCameraPool` once, then call `internal.bundles.bookRoomWithCameras`
+from a host function that has checked [your booking policies](#host-policies).
+
+```typescript title="convex/bundles.ts" check
+import { v } from "convex/values";
+import { internalMutation } from "./_generated/server";
+import { components } from "./_generated/api";
+
+export const addCameraPool = internalMutation({
   args: {},
-  returns: wipeResult,
   handler: async (ctx) => {
-    return await ctx.runMutation(components.booking.maintenance.wipeAllData, {});
+    await ctx.runMutation(components.booking.resources.createResource, {
+      id: "camera-pool",
+      name: "Cameras",
+      type: "equipment",
+      timezone: "America/New_York",
+      organizationId: "my-org",
+      isFungible: true,
+      quantity: 4,
+    });
+    await ctx.runMutation(components.booking.resource_event_types.linkResourceToEventType, {
+      resourceId: "camera-pool",
+      eventTypeId: "quick-meeting",
+    });
   },
 });
 
-/**
- * Hourly sandbox reset (crons.ts). Three separate mutations so a large wipe
- * cannot drag the reseed into one oversized transaction.
- */
-export const resetSandbox = internalAction({
-  args: {},
-  returns: v.object({
-    wiped: wipeResult,
-    seeded: seedResult,
-    cleanup: v.object({
-      deletedUsers: v.number(),
-      deletedRateLimits: v.number(),
-      batches: v.number(),
-    }),
-  }),
-  handler: async (ctx): Promise<ResetResult> => {
-    const wiped = await ctx.runMutation(internal.seed.wipeSandbox, {});
-    const seeded = await ctx.runMutation(internal.seed.seedDemoData, {});
-
-    let deletedUsers = 0;
-    let deletedRateLimits = 0;
-    let batches = 0;
-    for (;;) {
-      const r = await ctx.runMutation(internal.seed.cleanupGuestUsers, {});
-      deletedUsers += r.deletedUsers;
-      deletedRateLimits += r.deletedRateLimits;
-      batches += 1;
-      if (!r.hasMore || batches >= 50) break;
-    }
-
-    return {
-      wiped,
-      seeded,
-      cleanup: { deletedUsers, deletedRateLimits, batches },
-    };
-  },
-});
-```
-
-Three details that matter:
-
-1. **Wipe before reseed.** `createSchedule` and `createResource` throw on duplicate ids, so reseeding on top of surviving setup rows fails. The order in `resetSandbox` is not cosmetic.
-2. **Separate mutations, driven by an action.** A wipe of a busy sandbox can touch a lot of rows; keeping it out of the reseed's transaction keeps both of them small. The cleanup loop runs until it reports `hasMore: false` (or hits 50 batches).
-3. **The component cannot clean your tables.** `wipeAllData` only knows the component's own data. App-side rows — the anonymous guest-admin `users` and the booking rate-limit rows — are deleted by `cleanupGuestUsers`, in batches of 200:
-
-```typescript title="convex/seed.ts"
-const staleUsers = await ctx.db
-  .query("users")
-  .withIndex("by_creation_time", (q) => q.lt("_creationTime", userCutoff))
-  .take(CLEANUP_BATCH);
-for (const user of staleUsers) {
-  await ctx.db.delete(user._id);
-}
-```
-
-Presence rows are deliberately left alone — they carry a 10-second timeout and disappear on their own. Guest
-sessions are not revoked either (the auth core exposes no per-user session API); they expire.
-
-<Callout type="tip">
-  Seeding runs in the same file. `seedDemoData` is an `internalMutation` around a plain `seedAll(ctx)` helper, so
-  the cron and a manual `npx convex run seed:seedDemoData` share one code path.
-</Callout>
-
----
-
-## Real-Time Booking Updates
-
-ConvexBooking uses a presence system to provide real-time slot locking when users are viewing/selecting slots. This prevents double-bookings and shows live availability.
-
-### How Presence Works
-
-```
-User Action                Backend Query                 Cache Behavior
-────────────────────────────────────────────────────────────────────────
-Selects duration (5h)  →   getDaySlots(date, 300min)   → Cached (stable)
-Views calendar         →   getDatePresence(date)       → Live (5s updates)
-Selects slot           →   heartbeat(resourceId, slot) → Presence created
-                           [Every 5s heartbeat]
-Other user views       →   getDatePresence(date)       → Sees hold, filters slot
-First user navigates   →   leave(resourceId, slot)     → Presence deleted
-                           OR 10s timeout              → Auto-cleanup
-```
-
-### Query Separation Pattern
-
-**Problem:** If presence was included in `getDaySlots`, every heartbeat (5s) would invalidate the query for ALL users viewing that date, regardless of duration. Result: Query thrashing.
-
-**Solution:** Separate stable from volatile data.
-
-```typescript
-// Backend: Stable query (only invalidated on actual bookings)
-export const getDaySlots = publicQuery({
+export const bookRoomWithCameras = internalMutation({
   args: {
-    resourceId: v.string(),
-    date: v.string(),
-    duration: v.number(),
-    slotInterval: v.optional(v.number()),
+    start: v.number(),
+    end: v.number(),
+    booker: v.object({ name: v.string(), email: v.string() }),
   },
-  handler: async (ctx, args) => {
-    // Returns slots free from CONFIRMED bookings
-    // Duration-specific: 60min ≠ 300min queries
-  },
-});
-
-// Backend: Volatile query (updated every 5s)
-export const getDatePresence = publicQuery({
-  args: {
-    resourceId: v.string(),
-    date: v.string(),
-  },
-  handler: async (ctx, args) => {
-    // Returns active presence holds
-    // Shared across all durations viewing same date
-  },
+  handler: (ctx, args) => ctx.runMutation(
+    components.booking.multi_resource.createMultiResourceBooking,
+    {
+      ...args,
+      eventTypeId: "quick-meeting",
+      timezone: "America/New_York",
+      resources: [
+        { resourceId: "meeting-room", quantity: 1 },
+        { resourceId: "camera-pool", quantity: 2 },
+      ],
+    },
+  ),
 });
 ```
 
-**Frontend Derivation:**
+Check bundle inventory with `checkMultiResourceAvailability`. Use
+`getBookingWithItems` to read its resource quantities from an authorized host
+function. Cancellation releases every item; rescheduling moves every item
+atomically, and a conflicting destination leaves the original booking intact.
 
-```typescript title="lib/hooks/use-convex-slots.ts"
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useMemo } from "react";
+The bundled Booker is a single-resource flow. Build your own resource and quantity
+selection for bundles or pools. Ordinary and provisional single-resource creation
+reject pools, and their slot queries return no pool slots.
 
-export function useConvexSlots(resourceId: string, date: string, duration: number) {
-  // Stable query (cached per duration)
-  const daySlots = useQuery(api.public.getDaySlots, {
-    resourceId,
-    date,
-    duration,
-    slotInterval: 60,
-  });
+## Reschedule with excludeBookingUid
 
-  // Volatile query (shared across all durations)
-  const presence = useQuery(api.public.getDatePresence, {
-    resourceId,
-    date,
-  });
+When a customer chooses a new time, their existing booking should not make its
+own interval appear unavailable. The day and month availability queries accept
+`excludeBookingUid` for this purpose.
 
-  // Derive filtered slots (local computation, <1ms)
-  const processedSlots = useMemo(() => {
-    if (!daySlots || !presence) return null;
+In a custom calendar, pass the booking's `uid` to `getDaySlots` and
+`getMonthAvailability` alongside your normal query arguments. This changes the
+availability preview; it does not authorize a move. Your host must verify the
+management token or the caller's right to manage that booking.
 
-    const available = daySlots.filter(slot =>
-      !hasPresenceConflict(slot, duration, presence)
-    );
+The component's `rescheduleBooking` and `rescheduleBookingByToken` move pending or
+confirmed bookings. They create a replacement booking with a new `uid`, preserve
+the status, management token and resource quantities, and cancel the old record.
+Use the returned booking for subsequent navigation and management calls.
 
-    const reserved = daySlots.filter(slot =>
-      hasPresenceConflict(slot, duration, presence)
-    );
+The reference gateway also rejects moves after the booking starts, identical
+times, and dates outside the host policy. It checks the proposed slot again
+inside the mutation before committing the move.
 
-    return { available, reserved };
-  }, [daySlots, presence, duration]);
+## Durations and Timezones
 
-  return processedSlots;
-}
+Set `lengthInMinutes` to the default duration and, optionally,
+`lengthInMinutesOptions` to choices such as `[30, 60, 90]`. Set `slotInterval` to
+control the spacing between offered starts. Use multiples of 15 minutes.
 
-function hasPresenceConflict(slot: Slot, duration: number, presence: Presence[]) {
-  const requiredSlots = calculateRequiredSlots(slot.time, duration);
-  return presence.some(p => requiredSlots.includes(p.slot));
-}
-```
+Store booking `start` and `end` as Unix timestamps in **milliseconds**. Keep the
+IANA timezone, such as `Europe/Berlin`, for display and schedule interpretation.
+A schedule's date is its local calendar date; derive it in that timezone rather
+than taking the date from a UTC ISO string.
 
-### Why This Matters
-
-**Performance characteristics:**
-
-```
-Without separation (naive):
-  Every heartbeat (5s):
-    → Invalidates getDaySlots(Nov24, 60min)
-    → Invalidates getDaySlots(Nov24, 120min)
-    → Invalidates getDaySlots(Nov24, 300min)
-    → Result: O(n) invalidations where n = unique durations
-
-With separation (ConvexBooking):
-  Every heartbeat (5s):
-    → Invalidates getDatePresence(Nov24)        ← Single shared query
-    → getDaySlots queries remain cached         ← No invalidation
-    → Frontend recalculates locally (<1ms)
-    → Result: O(1) invalidation regardless of viewers
-```
-
-### Multi-Duration Conflict Detection
-
-**Critical:** A 5-hour booking starting at 10:00 requires slots 10:00-15:00 to be free. Checking only the start slot (10:00) is insufficient.
-
-```typescript
-function calculateRequiredSlots(startTime: string, duration: number): string[] {
-  const slots: string[] = [];
-  const start = new Date(startTime);
-  const intervalMs = 60 * 60 * 1000; // 1 hour intervals
-
-  for (let offset = 0; offset < duration; offset += 60) {
-    const slotTime = new Date(start.getTime() + offset * 60 * 1000);
-    slots.push(slotTime.toISOString());
-  }
-
-  return slots;
-}
-
-// Example: 5h booking at 10:00
-calculateRequiredSlots("2025-11-24T10:00:00.000Z", 300)
-// Returns: [
-//   "2025-11-24T10:00:00.000Z",
-//   "2025-11-24T11:00:00.000Z",
-//   "2025-11-24T12:00:00.000Z",
-//   "2025-11-24T13:00:00.000Z",
-//   "2025-11-24T14:00:00.000Z",
-// ]
-```
-
-If another user holds `13:00`, the 10:00 slot must be filtered out (conflict).
-
-### UX: Reserved vs Available
-
-```tsx title="components/booking-calendar/time-slots-panel.tsx"
-export function TimeSlotsPanel({ available, reserved }: Props) {
-  // Merge chronologically
-  const allSlots = [...available, ...reserved].sort((a, b) =>
-    a.time.localeCompare(b.time)
-  );
-
-  return (
-    <div className="space-y-2">
-      {allSlots.map((slot) => (
-        <TimeSlotButton
-          key={slot.time}
-          slot={slot}
-          isReserved={reserved.includes(slot)}
-          onClick={slot.isReserved ? undefined : () => onSelect(slot)}
-        />
-      ))}
-    </div>
-  );
-}
-```
-
-**Why inline display?** Cal.com hides conflicting slots entirely. ConvexBooking shows them as "Reserved" to hint they might become available (10s timeout). Better UX transparency.
-
----
-
-## Related Documentation
-
-- [Core Concepts](/docs/concepts) - Deep dive into the Traffic Controller Pattern
-- [API Reference](/docs/api) - Complete API documentation, including the maintenance module
-- [Authentication](/docs/authentication) - The guest-admin gate and how to swap in your own provider
-- [Component Development](https://docs.convex.dev/production/components) - Convex components guide
+For API arguments and hook return values, see the [API reference](/docs/api).
 
 </DocPage>

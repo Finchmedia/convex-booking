@@ -1,203 +1,98 @@
 <DocPage toc={[
   { title: "Booker", url: "#booker", depth: 2 },
-  { title: "Identity is Optional", url: "#identity-is-optional", depth: 3 },
-  { title: "Booker Props", url: "#booker-props", depth: 3 },
-  { title: "Booker Flow", url: "#booker-flow", depth: 3 },
   { title: "Calendar", url: "#calendar", depth: 2 },
   { title: "Admin UI", url: "#admin-ui", depth: 2 },
-  { title: "Resources Admin", url: "#resources-admin", depth: 3 },
-  { title: "Schedules Admin", url: "#schedules-admin", depth: 3 },
-  { title: "Event Types Admin", url: "#event-types-admin", depth: 3 },
-  { title: "Bookings Admin", url: "#bookings-admin", depth: 3 },
   { title: "Customization", url: "#customization", depth: 2 },
 ]}>
 
-# Components
+# React Components
 
-ConvexBooking includes ready-to-use React components for both the public booking flow and admin management.
+Import UI components from `@mrfinch/booking/react`. They need your Convex provider,
+`ConvexQueryCacheProvider` and `BookingProvider`; the [Quick Start](/docs/getting-started)
+shows the full setup.
 
 ## Booker
 
-<Callout type="info">
-  **No sign-in required to book**: The Booker collects the booker's name and email in its own form and sends them to `api.public.createBooking`, which is an anonymous mutation. If your app already has signed-in users, the optional `currentUser` prop prefills those fields and the optional `onAuthRequired` prop hands the confirm step to *your* auth.
-</Callout>
+`Booker` provides duration/date/slot selection, a contact form and confirmation
+for an exclusive resource. For pool quantities or custom bundles, build a UI around
+the [multi-resource API](/docs/api#multiple-resources).
 
-The `<Booker />` component is the main booking interface for your users. It handles the full booking flow: calendar display, time slot selection, form submission, and confirmation.
-
-```tsx title="app/book/page.tsx"
+```tsx title="examples/booker.tsx" check
 "use client";
+import { Booker } from "@mrfinch/booking/react";
 
-import { Booker, BookingProvider } from "@mrfinch/booking/react";
-import { api } from "@/convex/_generated/api";
+export function MeetingBooker() {
+  return <Booker eventTypeId="quick-meeting" resourceId="meeting-room" title="Book a Meeting" />;
+}
+```
 
-export default function BookingPage() {
+| Prop | Purpose |
+| --- | --- |
+| `eventTypeId`, `resourceId` | Required linked event type and resource IDs |
+| `title` | Optional heading |
+| `description`, `showHeader` | Optional description and header visibility |
+| `organizerName`, `organizerAvatar` | Organizer display details |
+| `currentUser` | Optional contact details to prefill the form |
+| `onBookingComplete` | Receives the created booking |
+| `onNavigate` | Handles recovery navigation if setup becomes unavailable |
+| `onEventTypeReset` | Returns to event-type selection |
+| `onAuthRequired` | Handles an `UNAUTHENTICATED` response from your host gateway |
+| `originalBooking` | Enables rescheduling using the booking's management token |
+| `reuseBookerInfo` | Skips contact re-entry in reschedule mode |
+
+A supplied `currentUser` only prefills the form. The backend must independently
+verify identity when your product requires sign-in. The Booker handles conflicts
+from a final booking write even if a slot looked available during selection.
+
+## Calendar
+
+For a custom flow, `Calendar` exposes controlled date, duration, timezone and
+month state. It does not create a booking by itself:
+
+```tsx title="examples/calendar.tsx" check
+"use client";
+import { useState } from "react";
+import { Calendar } from "@mrfinch/booking/react";
+
+export function MeetingCalendar() {
+  const [date, setDate] = useState<Date | null>(null);
+  const [month, setMonth] = useState(() => new Date());
+  const [duration, setDuration] = useState(30);
+  const [timezone, setTimezone] = useState("America/New_York");
+  const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("24h");
   return (
-    <BookingProvider publicApi={api.public}>
-      <Booker
-        eventTypeId="studio-session"
-        resourceId="studio-a"
-        title="Book Studio A"
-        description="Select a time for your session"
-        onBookingComplete={(booking) => {
-          console.log("Booking created:", booking);
-        }}
-      />
-    </BookingProvider>
+    <Calendar
+      resourceId="meeting-room" eventTypeId="quick-meeting"
+      selectedDate={date} onDateChange={setDate}
+      currentMonth={month} onMonthChange={setMonth}
+      selectedDuration={duration} onDurationChange={setDuration}
+      timezone={timezone} onTimezoneChange={setTimezone}
+      timeFormat={timeFormat} onTimeFormatChange={setTimeFormat}
+      onSlotSelect={({ slot, duration }) => console.log({ slot, duration })}
+    />
   );
 }
 ```
 
-### Identity is Optional
-
-The Booker never asks who you are. Every visitor walks the same path:
-
-- **Browse**: resources, event types and availability come from public queries
-- **Select**: picking a date and a time slot takes a real-time hold, no account involved
-- **Fill in**: the form collects name, email and optional notes — this is the booker identity stored on the booking
-- **Confirm**: `api.public.createBooking` is an anonymous mutation whose `booker` argument is required, so the details always travel with the request
-
-That is exactly how the live demo books. The only gated surface is the admin dashboard.
-
-**Anonymous is not unguarded.** Because there is no sign-in to lean on, the wrapper in `convex/public.ts` validates every booking server-side before it reaches the component: the start must sit on the 15-minute grid, fall inside the event type's notice window and booking horizon, and be one of the slots `getDaySlots` actually offers for that resource and duration — plus a small per-email rate limit (5 bookings per 10 minutes).
-
-**If you already have auth**, two optional integration hooks wire it in without forking the component:
-
-- `currentUser` — prefills the form's name and email (and avatar) from your session. Cosmetic only: the values still travel as ordinary form data.
-- `onAuthRequired` — a fallback for a gated backend. If your own `createBooking` throws `ConvexError({ code: "UNAUTHENTICATED" })`, the Booker calls `onAuthRequired` with the selected slot instead of showing its error dialog, so you can open a sign-in modal and return the user to the same slot. The public sandbox never throws that code, so the hook stays dormant here.
-
-```tsx title="app/book/page.tsx (with your own auth)"
-<Booker
-  eventTypeId="studio-session"
-  resourceId="studio-a"
-  currentUser={user ? { name: user.name, email: user.email } : undefined}
-  onAuthRequired={({ slot, duration }) => {
-    // Your backend rejected an anonymous booking — send them to sign in
-    // and remember which slot they were on.
-    router.push(`/sign-in?next=/book/studio-a&slot=${slot}&duration=${duration}`);
-  }}
-/>
-```
-
-For the trust-zone model behind the public and admin function builders, see the [Authentication](/docs/authentication) documentation.
-
-### Booker Props
-
-| Prop | Type | Required | Description |
-|------|------|----------|-------------|
-| `eventTypeId` | `string` | Yes | The event type to book |
-| `resourceId` | `string` | Yes | The resource to book |
-| `title` | `string` | No | Header title |
-| `description` | `string` | No | Header description |
-| `showHeader` | `boolean` | No | Show/hide header (default: true) |
-| `organizerName` | `string` | No | Display name for the organizer |
-| `organizerAvatar` | `string` | No | Avatar URL for the organizer |
-| `currentUser` | `CurrentUser` | No | Optional integration hook: prefills the form's `name`, `email` and `avatarUrl` from your own session |
-| `onBookingComplete` | `(booking) => void` | No | Callback when booking succeeds |
-| `onEventTypeReset` | `() => void` | No | Callback when user wants to change event type |
-| `onNavigate` | `(path: string) => void` | No | Navigation callback, used when the resource is deleted or deactivated mid-flow |
-| `onAuthRequired` | `(slotData) => void` | No | Optional integration hook: called with `slot`, `duration` and `eventTypeId` when your backend rejects the booking with `UNAUTHENTICATED`, instead of showing the error dialog |
-| `originalBooking` | `Booking` | No | Switches the Booker into reschedule mode (calls `rescheduleBookingByToken`) |
-| `reuseBookerInfo` | `boolean` | No | Reschedule mode only: skip the form step and reuse the original booker details |
-
-### Booker Flow
-
-The Booker has three steps:
-
-1. **Event Meta** - Calendar + time slot selection
-   - Shows monthly calendar with availability dots
-   - Displays time slots for the selected date
-   - Handles duration selection (if multiple options)
-   - Manages real-time presence (slot locking)
-
-2. **Booking Form** - User details
-   - Collects name and email
-   - Optionally collects notes
-   - Validates input before submission
-
-3. **Success** - Confirmation
-   - Shows booking details
-   - Option to add to calendar
-   - Back button to book another
-
-## Calendar
-
-The calendar component is used internally by Booker but can also be used standalone:
-
-```tsx
-import { Calendar } from "@mrfinch/booking/react";
-
-<Calendar
-  resourceId="studio-a"
-  eventTypeId="studio-session"
-  duration={60}
-  slotInterval={60}
-  timezone="Europe/Berlin"
-  onSlotSelect={({ slot, duration }) => {
-    console.log("Selected:", slot, duration);
-  }}
-/>
-```
-
-The calendar includes:
-- **Monthly grid** with availability dots
-- **Time slots panel** for the selected date
-- **Duration selector** (if event type has options)
-- **Timezone selector**
-- **Real-time presence** showing reserved slots
+For smaller building blocks, use `CalendarGrid`, `TimeSlotsPanel`, `EventMetaPanel`
+or the [React hooks](/docs/api#frontend-hooks). Their exported TypeScript types
+provide the complete prop contracts.
 
 ## Admin UI
 
-<Callout type="warning">
-  **Admin Authentication Required**: Every `api.admin.*` function is built with the `adminQuery` / `adminMutation` builders, which read `ctx.auth.getUserIdentity()` and throw `UNAUTHENTICATED` when nobody is signed in. The public sandbox uses Convex Auth's anonymous provider — one click on "Continue as guest admin" — so anyone can try the dashboard; in your own app you swap that provider for a real one. See [Authentication](/docs/authentication) for the trust-zone model.
-</Callout>
-
-The admin dashboard (`/admin`) provides a complete interface for managing your booking system. In the hosted sandbox it is shared: every visitor edits the same demo organization, and all data resets every hour.
-
-### Resources Admin
-
-Manage bookable resources at `/admin/resources`:
-
-- Create new resources (rooms, equipment, people)
-- Edit resource details and settings
-- Activate/deactivate resources
-- Set resource timezone
-
-### Schedules Admin
-
-Manage availability schedules at `/admin/schedules`:
-
-- Create named schedules (e.g., "Business Hours", "Weekend Hours")
-- Define weekly availability per day
-- Set a default schedule
-- Configure timezone
-
-### Event Types Admin
-
-Manage booking templates at `/admin/event-types`:
-
-- Create event types with title and description
-- Set duration and duration options
-- Configure slot intervals
-- Link to resources (which resources can this event be booked on)
-- Set buffer times before/after bookings
-
-### Bookings Admin
-
-View and manage bookings at `/admin/bookings`:
-
-- List all bookings with filters
-- View booking details
-- Cancel bookings
-- See booking history
+The dashboard on this website is **demo application code**, not an admin component
+exported by the npm package. You can adapt its resource, schedule, event-type and
+booking screens from the [demo repository](https://github.com/Finchmedia/convex-booking).
+Apply your own [administrator and organization checks](/docs/authentication).
 
 ## Customization
 
-All components use Tailwind CSS and shadcn/ui primitives. To customize:
+Use your Tailwind theme to change colors and typography. Compose exported calendar,
+form and display components when you need a different layout. Changing the built-in
+form's fields or internal behavior requires changing package source or building a
+custom form; copying the demo alone does not change code installed from npm.
 
-1. **Styles** - Modify component files directly or override with Tailwind classes
-2. **Behavior** - Fork the component and modify the logic
-3. **Fields** - Add custom fields to the booking form schema
-
-The components ship inside the `@mrfinch/booking` package, so points 1 and 3 need no fork. For point 2, fork the [demo repository](https://github.com/Finchmedia/convex-booking) and edit the components in place.
+The `BookingSlot` type describes `{ time: string; attendees?: number }`. Older
+versions used a different public type name; update imports when moving to 0.4.0.
 
 </DocPage>

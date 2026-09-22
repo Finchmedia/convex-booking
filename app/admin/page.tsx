@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "convex-helpers/react/cache/hooks";
+import { useCurrentTime } from "@/lib/use-current-time";
 import { api } from "@/convex/_generated/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import Link from "next/link";
 const DEMO_ORG_ID = "demo-org";
 
 export default function DemoDashboard() {
+  const now = useCurrentTime();
   const eventTypes = useQuery(api.admin.listEventTypes, {});
   const bookings = useQuery(api.admin.listBookings, {
     organizationId: DEMO_ORG_ID,
@@ -34,7 +36,7 @@ export default function DemoDashboard() {
     },
     {
       title: "Upcoming",
-      value: bookings?.filter((b) => b.start > Date.now() && b.status === "confirmed").length ?? 0,
+      value: bookings?.filter((b) => b.start > now && b.status === "confirmed").length ?? 0,
       icon: Clock,
       href: "/admin/bookings?status=confirmed",
       description: "Confirmed upcoming",
