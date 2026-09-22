@@ -2,6 +2,7 @@
   { title: "Enable Email", url: "#enable-email", depth: 2 },
   { title: "Pass Configuration from the Host", url: "#pass-configuration-from-the-host", depth: 2 },
   { title: "Management Links", url: "#management-links", depth: 2 },
+  { title: "Use Your Own Email Design", url: "#use-your-own-email-design", depth: 2 },
   { title: "Notifications and Hooks", url: "#notifications-and-hooks", depth: 2 },
   { title: "Verify Delivery", url: "#verify-delivery", depth: 2 },
 ]}>
@@ -70,8 +71,77 @@ templates use these routes, with the booking's secret token in the query string:
 Your app must implement those routes. The
 [demo booking pages](https://github.com/Finchmedia/convex-booking/tree/main/app/book/booking)
 show a token-based implementation. If your app uses a different route structure,
-provide your own notifications through hooks instead of sending the built-in
-management links.
+redirect these routes to your own management pages or adapt the links in an
+app renderer, described below.
+
+## Use Your Own Email Design
+
+Starting with version 0.4.2, an optional app renderer can replace the email's
+subject, HTML and plain text. Booking still selects the notification and sends
+it through its nested Resend component. Existing integrations need no changes.
+
+Create an internal query in your app. Returning `null` keeps the default template
+for that notification, so you can customize one kind at a time:
+
+```typescript title="convex/bookingEmailRenderer.ts" check
+import { internalQuery } from "./_generated/server";
+import {
+  bookingEmailContextValidator,
+  bookingEmailResultValidator,
+} from "@mrfinch/booking/emails";
+
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[char]!));
+
+export const render = internalQuery({
+  args: bookingEmailContextValidator,
+  returns: bookingEmailResultValidator,
+  handler: (_ctx, email) => {
+    if (email.kind !== "confirmed") return null;
+    return {
+      subject: "Your booking is confirmed",
+      html: `<h1>Thanks, ${escapeHtml(email.bookerName)}</h1>
+        <p>${escapeHtml(email.eventTitle)}</p>
+        ${email.links ? `<a href="${escapeHtml(email.links.view)}">View booking</a>` : ""}`,
+      text: `Thanks, ${email.bookerName}. Your booking is confirmed.` +
+        (email.links ? `\nView booking: ${email.links.view}` : ""),
+    };
+  },
+});
+```
+
+Then make your host's email-options helper asynchronous and pass the renderer:
+
+```typescript title="convex/emailOptions.ts"
+import { internal } from "./_generated/api";
+import { createBookingEmailOptions, type BookingEmailOptions } from "@mrfinch/booking/emails";
+
+export async function bookingEmailOptions(): Promise<BookingEmailOptions | undefined> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return undefined;
+  return createBookingEmailOptions({
+    apiKey,
+    fromEmail: process.env.RESEND_FROM_EMAIL,
+    baseUrl: process.env.NEXT_PUBLIC_APP_URL,
+    renderer: internal.bookingEmailRenderer.render,
+  });
+}
+```
+
+Use `resendOptions: await bookingEmailOptions()` in each host booking operation.
+The renderer receives a snapshot of the notification's data, including old/new
+times on rescheduling. No template registration or extra Resend instance is needed.
+
+The supported kinds are `confirmed`, `pending`, `approved`, `declined`, `cancelled`
+and `rescheduled`. A missing renderer or a `null` result uses the built-in template.
+A broken renderer fails the email job visibly; it does not undo the booking.
+
+Renderers run in the Convex query runtime, without network requests or Node-only
+libraries. Custom content is limited to 128 KiB of combined UTF-8 subject, HTML
+and text, with a nonempty subject of at most 200 UTF-16 code units. For payload
+details, escaping and failed-job recovery, see the
+[custom email guide](https://github.com/Finchmedia/booking-component/blob/main/docs/custom-emails.md).
 
 ## Notifications and Hooks
 
@@ -88,7 +158,7 @@ The built-in notification follows the booking lifecycle:
 Delivery is scheduled after the booking operation. A successful booking response
 means the booking exists; it is not confirmation that the email reached an inbox.
 
-For custom notifications, register a host **mutation function handle** with
+For additional side effects, such as an organizer notification, register a host **mutation function handle** with
 `components.booking.hooks.registerHook`. Hooks receive lifecycle payloads such as
 `booking.created`, `booking.confirmed` or `booking.cancelled`; these are Convex
 functions, not HTTP webhook URLs. Keep registration internal or administrator-only.
@@ -97,8 +167,9 @@ without `organizationId` is global.
 
 The [hook implementation](https://github.com/Finchmedia/booking-component/blob/main/src/component/hooks.ts)
 and [email templates](https://github.com/Finchmedia/booking-component/tree/main/src/component/emails/templates)
-are the source for payloads and template behavior. To use custom mail exclusively,
-omit built-in `resendOptions` and send from your host hook.
+are the source for payloads and template behavior. If your hook takes over guest
+delivery entirely, omit built-in `resendOptions` to avoid sending twice. For a
+different guest email design alone, use the renderer above.
 
 ## Verify Delivery
 
