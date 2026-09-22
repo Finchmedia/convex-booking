@@ -57,6 +57,7 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
   const minutes = (i % 2) * 30;
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
 });
+const END_TIME_OPTIONS = [...TIME_OPTIONS, "24:00"];
 
 interface WeeklyHour {
   dayOfWeek: number;
@@ -401,7 +402,7 @@ export default function SchedulesPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {TIME_OPTIONS.map((time) => (
+                      {END_TIME_OPTIONS.map((time) => (
                         <SelectItem key={time} value={time}>
                           {time}
                         </SelectItem>
