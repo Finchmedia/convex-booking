@@ -31,8 +31,9 @@ Do not copy production credentials into source control or into a preview deploym
 5. Commit and push. Monitor the linked Vercel build to READY, verify the production
    domain, booking flow, docs navigation and deployment logs.
 
-Backend deployment happens before the frontend build. A failed frontend build does
-not roll back the backend; use compatible transitions and inspect both outcomes.
+The Convex CLI runs the frontend build before pushing backend functions. Vercel
+then finishes publishing the frontend. These are separate services: a failure
+after the backend push does not automatically roll it back. Inspect both outcomes.
 Do not redeploy concurrently from the CLI and Git integration.
 
 ## Sandbox behavior

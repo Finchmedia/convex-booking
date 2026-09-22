@@ -1,4 +1,5 @@
 import nextMDX from "@next/mdx";
+import remarkGfm from "remark-gfm";
 import rehypePrettyCode from "rehype-pretty-code";
 import rehypeSlug from "rehype-slug";
 
@@ -14,7 +15,7 @@ const options = {
 const withMDX = nextMDX({
   extension: /\.mdx?$/,
   options: {
-    remarkPlugins: [],
+    remarkPlugins: [remarkGfm],
     rehypePlugins: [rehypeSlug, [rehypePrettyCode, options]],
   },
 });
