@@ -35,14 +35,18 @@ import {
 } from "@/components/ui/dialog";
 import { CalendarDays, Check, X, Clock, Mail, Phone, User } from "lucide-react";
 import { toast } from "sonner";
+import type { BookingStatus } from "@mrfinch/booking/react";
 import { convexErrorMessage } from "@/lib/convex-error-message";
 
 const DEMO_ORG_ID = "demo-org";
 
-/** One row of the admin list, typed from the query result (status is `string`). */
+/** One row of the admin list, typed from the query result. */
 type BookingRow = FunctionReturnType<typeof api.admin.listBookings>[number];
 
-const STATUS_OPTIONS: { value: string; label: string }[] = [
+/** listBookings accepts the component's statuses only; "all" sends none. */
+type StatusFilter = BookingStatus | "all";
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "All Bookings" },
   { value: "pending", label: "Pending" },
   { value: "confirmed", label: "Confirmed" },
@@ -53,7 +57,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 
 export default function BookingsPage() {
   const now = useCurrentTime();
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedBooking, setSelectedBooking] = useState<BookingRow | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
@@ -158,7 +162,14 @@ export default function BookingsPage() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select
+            value={statusFilter}
+            onValueChange={(value) =>
+              setStatusFilter(
+                STATUS_OPTIONS.find((option) => option.value === value)?.value ?? "all"
+              )
+            }
+          >
             <SelectTrigger className="w-48">
               <SelectValue />
             </SelectTrigger>

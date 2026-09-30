@@ -10,6 +10,7 @@
  * - internalMutation: hook management — not callable by (guest) admins
  */
 import { v } from "convex/values";
+import { bookingStatusValidator } from "@mrfinch/booking";
 import { components } from "./_generated/api";
 import { adminQuery, adminMutation, internalMutation } from "./functions";
 
@@ -470,7 +471,7 @@ export const createDateOverride = adminMutation({
   args: {
     scheduleId: v.string(),
     date: v.string(),
-    type: v.string(),
+    type: v.union(v.literal("unavailable"), v.literal("custom")),
     customHours: v.optional(
       v.array(
         v.object({
@@ -519,7 +520,7 @@ export const listBookings = adminQuery({
   args: {
     organizationId: v.optional(v.string()),
     resourceId: v.optional(v.string()),
-    status: v.optional(v.string()),
+    status: v.optional(bookingStatusValidator),
     dateFrom: v.optional(v.number()),
     dateTo: v.optional(v.number()),
     eventTypeId: v.optional(v.string()),
@@ -548,7 +549,7 @@ export const getBooking = adminQuery({
 export const transitionBookingState = adminMutation({
   args: {
     bookingId: v.string(),
-    toStatus: v.string(),
+    toStatus: bookingStatusValidator,
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {

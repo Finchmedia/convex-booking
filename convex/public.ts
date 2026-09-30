@@ -85,8 +85,8 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // TYPES — component documents come from the generated ComponentApi
 // ============================================
 
-type EventTypeDoc = FunctionReturnType<
-  typeof components.booking.public.getEventType
+type EventTypeDoc = NonNullable<
+  FunctionReturnType<typeof components.booking.public.getEventType>
 >;
 type ResourceDoc = NonNullable<
   FunctionReturnType<typeof components.booking.resources.getResource>
