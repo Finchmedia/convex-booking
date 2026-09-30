@@ -34,6 +34,7 @@ const navigation: NavItem[] = [
     items: [
       { title: "Introduction", href: "/docs" },
       { title: "Quick Start", href: "/docs/getting-started" },
+      { title: "Upgrading to 0.5", href: "/docs/upgrading" },
       { title: "Run the demo", href: "/docs/demo" },
     ],
   },

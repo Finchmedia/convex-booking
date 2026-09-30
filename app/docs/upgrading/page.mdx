@@ -1,0 +1,258 @@
+<DocPage toc={[
+  { title: "Before upgrading", url: "#before-upgrading", depth: 2 },
+  { title: "Breaking changes", url: "#breaking-changes", depth: 2 },
+  { title: "React changes", url: "#react-changes", depth: 2 },
+  { title: "Deploy", url: "#deploy", depth: 2 },
+  { title: "After the deploy", url: "#after-the-deploy", depth: 2 },
+  { title: "Rollback", url: "#rollback", depth: 2 },
+  { title: "Coming from 0.4.2", url: "#coming-from-042", depth: 2 },
+]}>
+
+# Upgrading to 0.5
+
+`@mrfinch/booking` 0.5.0 is the contract release. The component enforces the
+booking rules on every path, rejects expected failures with coded errors, keeps
+booking statuses to a closed set and checks configuration writes. `BookingProvider`
+checks your gateway at compile time. Function paths and version 1 hook payloads
+are unchanged, and jobs queued by 0.4.x are still accepted.
+
+This page gives the order of the upgrade and a checklist. The
+[CHANGELOG](https://github.com/Finchmedia/booking-component/blob/main/CHANGELOG.md#upgrading)
+has the details of every entry. This site's demo made the same upgrade; its
+[gateway](https://github.com/Finchmedia/convex-booking/blob/main/convex/public.ts)
+shows the error mapping and the slot wrappers. The docs for 0.4.x stay available
+at the [docs-0.4 tag](https://github.com/Finchmedia/convex-booking/tree/docs-0.4/app/docs).
+
+## Before upgrading
+
+Install the new version with its peers. On 0.x a caret range stops before the next
+minor version, so `^0.4.2` never installs 0.5.0. `convex-helpers` is now a required
+peer, not only for the React UI: `listBookingsPage` uses its paginator.
+
+```bash
+npm install @mrfinch/booking@^0.5.0 convex@^1.46.0 convex-helpers@^0.1.124
+```
+
+Then prepare your data and your host code:
+
+1. **Audit a copy of your data.** The eight new `maintenance.audit` checks ship with
+   0.5.0; 0.4.3 has two of the ten and 0.4.2 none. Import a production snapshot
+   into a separate deployment, deploy your host with 0.5.0 there, and run every
+   check until `isDone`, as in [After the deploy](#after-the-deploy).
+2. **Repair production with the 0.4.x functions.** Point every event type whose
+   `scheduleId` names a deleted schedule to an existing one, or clear it with
+   `scheduleId: ""`: from the deploy on, the slot queries throw
+   `SCHEDULE_NOT_FOUND` for it. Without a copy, compare `listEventTypes` with
+   `getSchedule`. For the bookings `booking_eligibility` lists, link every resource
+   your bundles use to the event type (pools included), create resources for IDs
+   booked without one, and resolve pending requests and provisional holds on
+   deactivated or unlinked configuration. The
+   [maintenance guide](https://github.com/Finchmedia/booking-component/blob/main/docs/maintenance.md#checks)
+   gives the repair for every check.
+3. **Map the error codes your clients see.** Catch component errors with
+   `isBookingError(error)` from `@mrfinch/booking`, choose your text by
+   `error.data.code` and rethrow your own `ConvexError`; fall back to a generic
+   error for the rest. A gateway that passes every `ConvexError` through would
+   send browsers the component's codes and English texts, which can contain IDs.
+   The [error codes](https://github.com/Finchmedia/booking-component/blob/main/docs/errors.md)
+   list which function throws what.
+4. **Update your host code** for each [breaking change](#breaking-changes) that
+   applies, and deploy it together with the new version.
+
+## Breaking changes
+
+Each row is one entry of the CHANGELOG's 0.5.0 _Upgrading_ section.
+
+### Errors and queries
+
+| Change | What to do |
+| --- | --- |
+| Expected failures throw `ConvexError({ code, message })`; `message` is the 0.4.x text | Map the codes (step 3 above); matching `data.message` still works |
+| `getEventType` returns `null` for an unknown ID | Handle `null`; drop a wrapper's catch that turned "Event type not found" into `null` |
+| New bookings reject a `timezone` that `Intl` does not accept and a malformed booker email (`INVALID_INPUT`) | Check both in your booking form; `isSendableAddress` from `@mrfinch/booking/emails` is the same email check |
+| `getMonthAvailability` answers at most 93 days per call, `getAvailability` at most 366 | Split longer ranges |
+| `getMonthAvailability` and `getDaySlots` need complete schedule arguments; an unknown `scheduleId` throws `SCHEDULE_NOT_FOUND` | Pass `{ scheduleId }` alone, or `availableSlots` with `resourceTimezone` |
+| `listBookings` rejects a `limit` that is not a positive integer | Omit `limit` for no limit. Without a selector it reads only the 1,000 most recently created bookings: pass one, or page with `listBookingsPage` |
+| `getQuantityAvailability` returns `bookedQuantities` as `Record<string, number>` | Drop casts of the result |
+| A client's `excludeBookingUid` on the slot queries frees any booking's time | Forward the booker's `rescheduleContext: { uid, token }` instead ([wrapper](https://github.com/Finchmedia/booking-component/blob/main/docs/host-functions.md#slot-queries-while-rescheduling)); keep `excludeBookingUid` for code that has authorized the move |
+| Hooks keep the version 1 payloads unless registered with `payloadVersion: 2` | Nothing; to switch, register a [version 2](https://github.com/Finchmedia/booking-component/blob/main/docs/hook-payloads-v2.md) handler, then unregister the old hook |
+
+### Configuration writes
+
+| Change | What to do |
+| --- | --- |
+| `createEventType` and `updateEventType` check lengths, options, slot interval, buffers, notice and horizon (`INVALID_INPUT`) | Repair what `event_type_config` lists; change a length and its options together |
+| `createEventType` on an existing ID keeps an omitted `isActive` and `organizationId`; another organization's ID is `ORGANIZATION_MISMATCH` | Pass `isActive: true` or call `toggleEventTypeActive` to reactivate |
+| Date overrides take the type `unavailable` or `custom`, and `custom` needs at least one window | Update the rows `date_override_config` lists |
+| `updateResource` refuses `isFungible: true` while single-resource bookings hold the resource (`RESOURCE_IN_USE`) | End or move those bookings first; `booking_integrity` lists stranded ones as `poolWithoutItems` |
+| The event type ID `legacy` is reserved | Create new event types under other IDs; manage an existing one with `updateEventType` |
+| Event type writes reject an unknown `scheduleId`; `deleteSchedule` refuses while an event type uses the schedule (`SCHEDULE_IN_USE`) | Repair dangling `scheduleId`s before the deploy (step 2 above) |
+| `deleteResource` and `deleteEventType` delete the ID's links | Link a re-created ID explicitly; remove links earlier deletes left ([After the deploy](#after-the-deploy)) |
+
+### Booking rules
+
+| Change | What to do |
+| --- | --- |
+| One set of rules for bookings, bundles (every item), moves and confirmations: an existing, active event type and existing, active resources linked to it and in its organization when it has one, one of them standalone. Cancel, decline and expiry stay unchecked | Repair what `booking_eligibility` lists before the deploy; reactivate or relink before moving or confirming such a booking |
+| No bookings across organizations: links, bookings and moves reject another organization's resource (`ORGANIZATION_MISMATCH`) | Omit a bundle's `organizationId` or pass the event type's; unlink the pairs `link_integrity` lists as `crossOrganization` |
+| Booking statuses are a closed set of six (`BookingStatus`); `toStatus` and `status` filters reject other strings | Declare statuses with `bookingStatusValidator`; omit `status` instead of passing `""` |
+
+### Packages, audit and deploy
+
+| Change | What to do |
+| --- | --- |
+| `convex-helpers` is a required peer | Install it ([Before upgrading](#before-upgrading)) |
+| Eight new `maintenance.audit` checks | Run them on a copy before and on production after the deploy |
+| All component indexes are renamed; `event_types` gains `by_scheduleId` | Nothing in host code; allow time for the [deploy](#deploy) on large tables |
+| Rolling back to 0.4.x | See [Rollback](#rollback) |
+
+### React
+
+| Change | What to do |
+| --- | --- |
+| `Booking.status` is the component's `BookingStatus`; `"rescheduled"` is gone | Delete comparisons with it (a moved booking is `cancelled`); a returns validator declares `status` with `bookingStatusValidator` |
+| `BookingProvider` checks `publicApi` at compile time against the 11 functions the components call | Fix the function the type error names ([React changes](#react-changes)) |
+| The 11 required members of `PublicBookingAPI` are `FunctionReference_future`, which convex-helpers' cached `useQuery` rejects | Take references from `useBookingAPI()` or your generated `api`; use `satisfies` instead of annotating a variable as `PublicBookingAPI` |
+| The other 10 public operations are optional | Handle `undefined` from `useBookingAPI()`, or call your own `api.public` references |
+| `useBookingAPI()` types the 11 operations with the contract's arguments and views | Read other fields and pass other arguments through your own generated references |
+| Admin operations resolve only from `adminApi` | Pass `adminApi={api.admin}` wherever admin operations are used |
+| `onBookingComplete` receives a `BookingView` | Type the callback's argument as `BookingView`, or drop the annotation |
+
+## React changes
+
+Check your gateway on its own. The error names the function that does not fit and
+lists the argument keys it declares next to the keys the components send:
+
+```typescript title="lib/booking-contract.ts" check
+import type { PublicBookingAPI } from "@mrfinch/booking/react";
+import { api } from "@/convex/_generated/api";
+
+export const bookingPublicApi = api.public satisfies PublicBookingAPI;
+```
+
+- **Availability context (opt-in).** With `<BookingProvider publicApi={api.public} availabilityContext>`
+  the Calendar also sends `eventTypeId` and, while rescheduling,
+  `rescheduleContext: { uid, token }` to `getMonthAvailability` and `getDaySlots`,
+  so a move that overlaps the booking's own time is offered. Declare both as
+  optional arguments of both wrappers and deploy them before the page: until then
+  their validators reject every slot query. Check such a gateway against
+  `PublicBookingAPIWithAvailabilityContext`. This site turns it on for the
+  reschedule page only.
+- **Error texts.** An error with a known component `code` but no `message` shows
+  a generic text for that code instead of "Something went wrong". `data.message`
+  still comes first.
+- **Deprecated, still available:** `ValidationError.recoveryPath` (map `recovery`
+  instead), `useConvexSlots().fetchSlots` and `fetchMonthSlots` (use
+  `fetchSlotsForDate` and `fetchMonthSlotsFor`), `BookingValidationError` and
+  `BookingValidationResult`.
+
+## Deploy
+
+Deploy the host code and the new version together. Two things can slow down or
+stop the deploy:
+
+- **Schema check.** Convex checks the stored booking and history statuses and the
+  pool counters against the narrowed schema, and refuses the deploy while a row
+  holds another value, naming the table and document. The component writes only
+  valid values, so only rows edited in the dashboard or imported can do this.
+  Correct them in the dashboard and deploy again.
+- **Index rebuild.** The deploy builds the renamed indexes and the new
+  `by_scheduleId`, and drops the old ones. Allow time on large tables.
+
+A Vercel build that runs `npx convex deploy --cmd 'npm run build'` pushes the
+functions before the new page is served, so validators for `availabilityContext`
+are live in time.
+
+## After the deploy
+
+Run every audit check on production right away and repair what it lists. Each call
+reads one page of one table (`limit` 1–500); pass `continueCursor` back as `cursor`
+until `isDone`. From the CLI, add `--prod` for production:
+
+```bash
+npx convex run --component booking maintenance:audit '{"check": "booking_eligibility", "limit": 500}'
+```
+
+The checks are `event_type_config`, `schedule_config`, `resource_config`,
+`date_override_config`, `link_integrity`, `booking_integrity`,
+`booking_eligibility`, `booking_status_invalid`, `event_length_invalid` and
+`f10_weekday`. The [maintenance guide](https://github.com/Finchmedia/booking-component/blob/main/docs/maintenance.md#running-the-audit)
+has an internal action that runs them all.
+
+Then make the one-time repairs:
+
+- **`backfillBookingOrganizations`** when `booking_integrity` reports
+  `organizationMissing`. It gives such bookings their event type's organization
+  and only lists the ones it cannot corroborate (`needsReview`) or that name
+  another organization (`mismatches`).
+- **`sweepOrphanedHolds`** once when coming from 0.4.2 or earlier. It removes
+  presence holds whose cleanup job was lost.
+- **`deleteAllLinksForResource`** or **`deleteAllLinksForEventType`** for each
+  deleted ID that `link_integrity` reports as `resourceMissing` or
+  `eventTypeMissing`, at the latest before you create the ID again.
+
+The first two page like the audit; `dryRun: true` only counts:
+
+```bash
+npx convex run --component booking maintenance:backfillBookingOrganizations '{"limit": 500, "dryRun": true}'
+npx convex run --component booking presence:sweepOrphanedHolds '{"limit": 500, "dryRun": true}'
+npx convex run --component booking resource_event_types:deleteAllLinksForResource '{"resourceId": "old-room"}'
+```
+
+## Rollback
+
+Roll back your host code and the package together, to 0.4.3:
+
+1. Unregister every hook registered with `payloadVersion: 2`; `listHooks` shows
+   it. Convex refuses the 0.4.x schema while a hook row has one.
+2. Let queued `triggerHooks` jobs finish; they run right after their booking
+   write. 0.5.0 queues them with an argument 0.4.x rejects, so a job still queued
+   when 0.4.x deploys fails, and the emails and hooks of its event are lost.
+3. Do not go back further than 0.4.3. From 0.4.3 on, every moved booking carries
+   `rescheduledToUid`, which the 0.4.2 schema does not know, so Convex refuses it
+   once a booking has been moved.
+
+The deploy restores the old index names, so allow time again.
+
+## Coming from 0.4.2
+
+0.5.0 includes 0.4.3. If you skip 0.4.3, also follow its
+[Upgrading notes](https://github.com/Finchmedia/booking-component/blob/main/CHANGELOG.md#upgrading-1):
+
+- Run `sweepOrphanedHolds` and `backfillBookingOrganizations` after the deploy
+  (above). Do not mass-cancel `presence:cleanup` jobs: that orphans live holds.
+- Hooks run only function handles from `createFunctionHandle`. Stored hooks with
+  other strings are skipped and logged; remove them with `unregisterHook`.
+- Inputs without a valid meaning are rejected: event lengths that are not positive
+  numbers, dates that do not exist, `dateFrom` after `dateTo`, time zones `Intl`
+  rejects. `event_length_invalid` lists event types whose lengths the slot queries
+  now reject.
+- At UTC+12 and beyond, weekly hours apply to the day's own weekday. Undo any
+  compensating `weeklyHours` shift; `f10_weekday` lists upcoming bookings on
+  days that are now closed.
+- On fall-back days a repeated wall-clock time means its first occurrence in every
+  zone.
+- Date overrides stored with unpadded dates such as `2027-3-9` are no longer found
+  by date. Recreate them padded and delete the old rows.
+- The built-in emails escape booking text, and a `baseUrl` that is not an absolute
+  `http(s)` URL yields no buttons. Update email snapshot tests.
+- Moved bookings carry `rescheduledToUid`, so host validators of booking fields
+  must accept it. New management tokens are 64 lowercase hex characters; accept
+  both formats.
+- The Booker shows booking errors itself. Drop your own toast of them or move it
+  to `onBookingError(error, { phase })`; this site's demo dropped its toaster.
+- Pass `onEventTypeReset` and `onNavigate` for a way back from configuration
+  errors, and keep the Booker inside an error boundary.
+- The Booker stores the first configured location's address, or
+  `{ type: "address" }` without a value: render a location by `location.value`.
+- Durations are radio inputs in a `fieldset`, the error dialog is a native
+  `dialog`, and the Booker's steps sit in a `display: contents` wrapper. Check
+  your CSS and test selectors.
+- `Calendar` uses day carriers: replace your own `fetchSlots(date)` calls with
+  `fetchSlotsForDate(day.civilDate)`.
+
+Coming from an older version, read each release's _Upgrading_ notes in the
+CHANGELOG in order. For example, 0.4.0 requires Convex 1.46 and renamed the React
+slot type `CalcomSlot` to `BookingSlot`.
+
+</DocPage>
