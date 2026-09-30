@@ -186,9 +186,10 @@ export default function RescheduleBookingPage() {
             availabilityContext makes the Calendar send eventTypeId and the
             booker's rescheduleContext ({ uid, token }) to getMonthAvailability
             and getDaySlots, so times that overlap this booking are offered.
-            Both gateway queries declare the two arguments; the Convex deploy
-            runs before the Next build (vercel.json), so the validators are
-            live before this page is. */}
+            Both gateway queries declare the two arguments. `convex deploy
+            --cmd` (vercel.json) builds first and pushes the functions after,
+            and Vercel serves the page only once that whole step succeeds, so
+            the validators are live before this page is. */}
         <BookingProvider publicApi={api.public} availabilityContext>
           <Booker
             eventTypeId={booking.eventTypeId}

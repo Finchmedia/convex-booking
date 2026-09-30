@@ -1336,8 +1336,8 @@ export const rescheduleBookingByToken = publicMutation({
       excludeBookingUid: booking.uid,
     });
 
-    // A reschedule writes a new booking row (the old one is kept, marked
-    // rescheduled), so it counts like a create.
+    // A reschedule writes a new booking row (the old one stays, cancelled,
+    // with rescheduledToUid naming the new one), so it counts like a create.
     await enforceBookingRateLimit(ctx, booking.bookerEmail);
 
     try {
