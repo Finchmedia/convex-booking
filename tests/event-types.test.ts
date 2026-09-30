@@ -24,12 +24,9 @@ const storedEventType = () => ({
 });
 
 describe("public getEventType for a missing event type (N1)", () => {
-  it("returns null when the component reports it not found", async () => {
-    const { ctx } = fakeCtx({
-      "public/getEventType": ({ eventTypeId }) => {
-        throw new Error(`Event type not found: ${eventTypeId}`);
-      },
-    });
+  it("returns null when the component finds no event type", async () => {
+    // 0.5.0 returns null for an unknown ID (0.4.x threw "Event type not found").
+    const { ctx } = fakeCtx({ "public/getEventType": () => null });
     expect(await run(publicApi.getEventType, ctx, { eventTypeId: "deleted" })).toBeNull();
   });
 
