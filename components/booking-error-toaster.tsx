@@ -2,7 +2,9 @@
 
 import { type ReactNode, useMemo } from "react";
 import { ConvexProvider, useConvex, type ConvexReactClient } from "convex/react";
+import { getFunctionName } from "convex/server";
 import { toast } from "sonner";
+import { api } from "@/convex/_generated/api";
 import { convexErrorMessage } from "@/lib/convex-error-message";
 
 /**
@@ -17,6 +19,9 @@ import { convexErrorMessage } from "@/lib/convex-error-message";
  * client delegates everything to the real one (same connection, same auth)
  * but toasts `error.data.message` before re-throwing.
  *
+ * Only booking writes toast: a failed presence heartbeat/leave (the slot
+ * hold) is not a failed booking and stays silent, as the Booker intends.
+ *
  * Host-side workaround only; remove once the component renders its own
  * booking errors (or offers an onBookingError prop).
  */
@@ -28,15 +33,22 @@ export function BookingErrorToaster({ children }: { children: ReactNode }) {
 
 const TOAST_ID = "booking-error";
 
-function withMutationToasts(client: ConvexReactClient): ConvexReactClient {
-  const mutation: ConvexReactClient["mutation"] = (ref, ...argsAndOptions) =>
-    client.mutation(ref, ...argsAndOptions).catch((error: unknown) => {
+const BOOKING_MUTATIONS = new Set(
+  [api.public.createBooking, api.public.rescheduleBookingByToken].map(getFunctionName)
+);
+
+export function withMutationToasts(client: ConvexReactClient): ConvexReactClient {
+  const mutation: ConvexReactClient["mutation"] = (ref, ...argsAndOptions) => {
+    const result = client.mutation(ref, ...argsAndOptions);
+    if (!BOOKING_MUTATIONS.has(getFunctionName(ref))) return result;
+    return result.catch((error: unknown) => {
       toast.error(
         convexErrorMessage(error, "Booking failed — please try again."),
         { id: TOAST_ID }
       );
       throw error;
     });
+  };
 
   return new Proxy(client, {
     get(target, prop) {

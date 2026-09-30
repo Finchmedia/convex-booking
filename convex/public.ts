@@ -167,8 +167,14 @@ const allowedDurations = (et: EventTypeDoc): number[] =>
     : [et.lengthInMinutes];
 
 /**
- * MUST match the Booker's derivation (react/hooks/use-convex-slots.ts):
- * `slotInterval ?? min(allDurationOptions) ?? eventLength`.
+ * Start spacing the booking guard accepts:
+ * `slotInterval ?? min(lengthInMinutesOptions) ?? lengthInMinutes`.
+ *
+ * The Booker (Calendar → useConvexSlots) derives its grid differently:
+ * `slotInterval ?? min(lengthInMinutes, ...lengthInMinutesOptions)`. The two
+ * agree when `slotInterval` is set (this app's admin form always sends it) or
+ * `lengthInMinutes` is not below every option; otherwise the Booker offers
+ * starts on a finer grid than this guard accepts.
  */
 const effectiveSlotInterval = (et: EventTypeDoc): number =>
   et.slotInterval ??
@@ -747,12 +753,22 @@ export const hasResourceEventTypeLink = publicQuery({
 });
 
 /**
- * Get a single event type by ID
+ * Get a single event type by ID, or null if it does not exist.
+ *
+ * The component throws for an unknown ID, and a throwing query crashes the
+ * Booker during render; null lets it show its "event deleted" dialog instead.
+ * Other errors propagate unchanged.
  */
 export const getEventType = publicQuery({
   args: { eventTypeId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getEventType, args);
+    try {
+      return await ctx.runQuery(components.booking.public.getEventType, args);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("Event type not found")) return null;
+      throw error;
+    }
   },
 });
 

@@ -168,6 +168,33 @@ const generateSlug = (value: string) => {
     .replace(/^-|-$/g, "");
 };
 
+/**
+ * Create/update arguments for the submitted form values.
+ *
+ * Durations and description are always sent: the component keeps any field an
+ * update omits, so sending `undefined` would leave a removed duration bookable
+ * and a cleared description in place.
+ */
+export function toEventTypePayload(data: EventTypeFormData) {
+  return {
+    title: data.title,
+    slug: data.slug,
+    description: data.description ?? "",
+    lengthInMinutes: data.durations[0],
+    lengthInMinutesOptions: data.durations,
+    slotInterval: data.slotInterval,
+    timezone: data.timezone,
+    lockTimeZoneToggle: data.lockTimezone,
+    locations: data.locations,
+    bufferBefore: data.bufferBefore,
+    bufferAfter: data.bufferAfter,
+    minNoticeMinutes: data.minNotice,
+    maxFutureMinutes: data.maxFuture,
+    requiresConfirmation: data.requiresConfirmation,
+    isActive: data.isActive,
+  };
+}
+
 export function EventTypeForm({ eventType, availableResources, initialResourceIds }: EventTypeFormProps) {
   const router = useRouter();
   const createEventType = useMutation(api.admin.createEventType);
@@ -243,23 +270,7 @@ export function EventTypeForm({ eventType, availableResources, initialResourceId
     try {
       let eventTypeId: string;
 
-      const payload = {
-        title: data.title,
-        slug: data.slug,
-        description: data.description || undefined,
-        lengthInMinutes: data.durations[0],
-        lengthInMinutesOptions: data.durations.length > 1 ? data.durations : undefined,
-        slotInterval: data.slotInterval,
-        timezone: data.timezone,
-        lockTimeZoneToggle: data.lockTimezone,
-        locations: data.locations,
-        bufferBefore: data.bufferBefore,
-        bufferAfter: data.bufferAfter,
-        minNoticeMinutes: data.minNotice,
-        maxFutureMinutes: data.maxFuture,
-        requiresConfirmation: data.requiresConfirmation,
-        isActive: data.isActive,
-      };
+      const payload = toEventTypePayload(data);
 
       if (eventType) {
         await updateEventType({ id: eventType.id, ...payload });
