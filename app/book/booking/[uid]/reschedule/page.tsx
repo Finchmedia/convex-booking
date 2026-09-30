@@ -30,7 +30,11 @@ export default function RescheduleBookingPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const uid = params.uid as string;
-  const token = searchParams.get('token') || "";
+  // Trimmed like the gateway's token check. The Booker sends this token as
+  // rescheduleContext, which the component compares exactly: with trailing
+  // whitespace (a %0A added by a mail client) the page would load, but the
+  // calendar would not free this booking's own slots.
+  const token = (searchParams.get('token') || "").trim();
 
   const booking = useQuery(
     api.public.getBookingByToken,

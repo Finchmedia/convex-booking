@@ -98,7 +98,8 @@ host flow if it is not completed. Every booking has one of six statuses:
 
 Confirming a booking, submitting a provisional hold as a request and moving a
 booking check the booking rules again: an active event type, and active resources
-that are linked to it and belong to its organization. Cancelling, declining and
+that are linked to it and belong to its organization. Bookings from the legacy
+`createReservation` stay exempt when moved. Cancelling, declining and
 expiring are always allowed, and deactivating a resource or event type never ends
 an existing booking.
 
@@ -124,7 +125,8 @@ a presence heartbeat does not guarantee a reservation.
 ## Your Host App
 
 The component owns inventory and booking records. It guarantees the booking rules
-and organization consistency on every path: no booking holds resources of two
+and organization consistency on every path except the legacy `createReservation`
+([API reference](/docs/api#bookings)): no booking holds resources of two
 organizations, or of another organization than its event type's. Authorization
 stays with your app: it owns authentication, organization access, opening-hours
 policy and abuse limits. Your app calls the component through `components.booking.*`

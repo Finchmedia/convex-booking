@@ -79,10 +79,13 @@ seed operations internal.
 ## Host Policies
 
 The component enforces the booking rules on every path that creates, moves or
-confirms a booking: the event type is active, and each resource is active, linked
-to it and in its organization. It also checks a new booking's timezone and email
-syntax. Your host app decides who may book, which resources they may see, and
-which dates and durations you offer.
+confirms a booking, except the legacy `createReservation`: the event type is
+active, and each resource is active, linked to it and in its organization. It
+also checks a new booking's timezone and email syntax. `createReservation` checks
+none of this, and its bookings (event type ID `legacy`) keep that exemption when
+moved, so book through `createBooking` wherever the rules must hold. Your host app
+decides who may book, which resources they may see, and which dates and durations
+you offer.
 
 The [reference gateway](https://github.com/Finchmedia/convex-booking/blob/main/convex/public.ts)
 from the quickstart checks:
@@ -261,8 +264,9 @@ code that has authorized the move. Passing both arguments throws `INVALID_INPUT`
 covers the details.
 
 The component's `rescheduleBooking` and `rescheduleBookingByToken` move pending or
-confirmed bookings. They check the booking rules for every item again; there is no
-administrator override. They create a replacement booking with a new `uid`,
+confirmed bookings. They check the booking rules for every item again, except for
+bookings from the legacy `createReservation`; there is no administrator override.
+They create a replacement booking with a new `uid`,
 preserve the status, management token and resource quantities, and cancel the
 original, which names its successor in `rescheduledToUid`. Use the returned
 booking for subsequent navigation and management calls; the Booker passes it to

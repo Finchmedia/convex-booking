@@ -20,7 +20,9 @@ Use the included React **Booker**, or build your own interface against its API.
 
 The component enforces the booking rules whenever a booking is created, moved or
 confirmed, bundles included: an active event type, and active resources that are
-linked to it and belong to its organization. It checks and updates inventory
+linked to it and belong to its organization. The one exception is the legacy
+`createReservation`, which checks none of these rules
+([API reference](/docs/api#bookings)). The component checks and updates inventory
 atomically. Your application decides who can book or administer each resource
 and sets booking policy (opening hours, notice) and abuse limits.
 
@@ -33,7 +35,7 @@ and sets booking policy (opening hours, notice) and abuse limits.
 | **Event type** — how it can be booked | A 30-minute meeting linked to that room |
 
 A resource must be **linked to an event type** before it can be booked, and both
-must be active.
+must be active; only the legacy `createReservation` skips this.
 The [concepts guide](/docs/concepts) explains durations, quantities and timezones.
 
 ## Start here

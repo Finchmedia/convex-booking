@@ -58,7 +58,7 @@ The component checks setup writes:
 - `createEventType` on an existing ID updates it and keeps omitted fields,
   `isActive` and `organizationId` included. An ID stored for another organization
   is rejected (`ORGANIZATION_MISMATCH`) instead of being moved, and the ID `legacy`
-  is reserved.
+  is reserved for [`createReservation`](#bookings) bookings.
 - An event type's `scheduleId` names an existing schedule or is `""`
   (`SCHEDULE_NOT_FOUND`). `deleteSchedule` refuses while an event type uses the
   schedule (`SCHEDULE_IN_USE`).
@@ -138,6 +138,7 @@ The slot queries do not offer pooled resources. For a resource pool, use
 | `public.rescheduleBooking` | Move a booking using its component document ID |
 | `public.rescheduleBookingByToken` | Move using UID and token |
 | `hooks.transitionBookingState` | Administer lifecycle transitions |
+| `public.createReservation` | Legacy: book one resource without an event type and without the booking rules |
 
 `getBooking` and `getBookingByUid` return the whole record, including the
 management token and the guest's contact details, without checking any token. A
@@ -153,6 +154,12 @@ event type's organization when it has one; the resource must not be an add-on
 (`isStandalone: false`). A timezone that `Intl` rejects and a booker email that
 fails the component's syntax check throw `INVALID_INPUT`. `isSendableAddress`
 from `@mrfinch/booking/emails` is that check, for your form or gateway.
+
+The legacy `createReservation` checks none of these rules, only the time range,
+availability and that the resource is not a pool. It stores the booking under the
+reserved event type ID `legacy`, and such bookings keep that exemption when moved,
+as long as no event type has that ID. Use `createBooking` wherever the booking
+rules must hold.
 
 Provisional bookings do not expire automatically. Have your host schedule a call
 to `public.expireProvisionalBooking` when its confirmation window ends.
@@ -180,8 +187,8 @@ new UID, retaining its management token and resource quantities; the original
 becomes `cancelled` with `rescheduledToUid` set. Use the returned UID for
 subsequent management requests. Moves check the booking rules for every item, with
 no administrator override: after deactivating or unlinking, reactivate or relink
-first. Host wrappers must validate the new time against schedules, duration
-choices and notice periods too.
+first. Only `createReservation` bookings stay exempt (above). Host wrappers must
+validate the new time against schedules, duration choices and notice periods too.
 
 `transitionBookingState` checks the booking rules again when it confirms a booking
 or submits a provisional hold as a request (`pending`). Cancelling, declining and
@@ -333,10 +340,10 @@ functions, `makeInternalBookingAPI` or the CLI, never from clients.
 | `presence.sweepOrphanedHolds` | Remove presence holds whose cleanup job was lost |
 | `resource_event_types.deleteAllLinksForResource` / `deleteAllLinksForEventType` | Remove links that deletes before 0.5.0 left behind |
 
-The first three read one page per call: pass `continueCursor` back until `isDone`
-(`limit` 1–500).
-`dryRun: true` makes the two repairs only count. `makeInternalBookingAPI` wraps the
-first three, not the link deletes. For example:
+The first three read one page per call: pass `continueCursor` back as `cursor`
+until `isDone` (`limit` 1–500).
+The two repairs require `dryRun`: `true` only counts, `false` writes.
+`makeInternalBookingAPI` wraps the first three, not the link deletes. For example:
 
 ```bash
 npx convex run --component booking maintenance:audit '{"check": "link_integrity", "limit": 200}'
