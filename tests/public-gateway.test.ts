@@ -205,6 +205,26 @@ describe("anonymous work bounds (H-03)", () => {
     expect(calls).toEqual([]);
   });
 
+  it("getAvailability rejects finite timestamps outside the Date range", async () => {
+    // Beyond ±8.64e15 ms `new Date(ms)` is invalid, so the component would
+    // throw a RangeError that surfaces as BOOKING_FAILED.
+    const MAX = 8.64e15;
+    const { ctx, calls } = availabilityComponent();
+    const check = (s: number, e: number) =>
+      errorCode(run(publicApi.getAvailability, ctx, { resourceId: "studio-a", start: s, end: e }));
+    expect(await check(9e15, 9e15 + HOUR)).toBe("INVALID_TIME");
+    expect(await check(MAX - HOUR, MAX + HOUR)).toBe("INVALID_TIME");
+    expect(await check(-9e15, -9e15 + HOUR)).toBe("INVALID_TIME");
+    expect(calls).toEqual([]);
+
+    // Controls: ranges touching either end of the Date range reach the component.
+    const ok = (s: number, e: number) =>
+      run(publicApi.getAvailability, ctx, { resourceId: "studio-a", start: s, end: e });
+    expect(await ok(MAX - HOUR, MAX)).toBe(true);
+    expect(await ok(-MAX, -MAX + HOUR)).toBe(true);
+    expect(calls).toEqual(["public/getAvailability", "public/getAvailability"]);
+  });
+
   const slots = (n: number) =>
     Array.from({ length: n }, (_, i) => new Date(start + i * 15 * 60 * 1000).toISOString());
   const presenceComponent = () =>

@@ -54,6 +54,8 @@ const MAX_MONTH_RANGE_MS = 62 * 24 * 60 * 60 * 1000;
  * is unbounded work; the same 62 days as the month view.
  */
 const MAX_AVAILABILITY_RANGE_MS = MAX_MONTH_RANGE_MS;
+/** Largest |timestamp| a JavaScript Date can represent (±100,000,000 days). */
+const MAX_DATE_MS = 8.64e15;
 /** Horizon when an event type sets no maxFutureMinutes (60 days). */
 const DEFAULT_MAX_FUTURE_MINUTES = 60 * 24 * 60;
 /** Anonymous createBooking: 5 bookings per email per 10 minutes. */
@@ -136,6 +138,10 @@ const dateKeyInTz = (ms: number, tz: string): string =>
 /** Day key in the resource/schedule zone, or the UTC day on the legacy path. */
 const dayKeyFor = (ms: number, tz: string | undefined): string =>
   tz ? dateKeyInTz(ms, tz) : toIsoDateUtc(ms);
+
+/** Finite and inside the Date range, so the component can turn it into a day. */
+const isDateMs = (ms: number): boolean =>
+  Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
 
 const isValidTimezone = (tz: string): boolean => {
   try {
@@ -955,7 +961,7 @@ export const getAvailability = publicQuery({
     end: v.number(),
   },
   handler: async (ctx, args) => {
-    if (!Number.isFinite(args.start) || !Number.isFinite(args.end)) {
+    if (!isDateMs(args.start) || !isDateMs(args.end)) {
       invalid("INVALID_TIME", "Invalid time value.");
     }
     if (args.end <= args.start) {
