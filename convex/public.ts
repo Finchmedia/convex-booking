@@ -5,11 +5,16 @@
  *
  * - Reads (resources, event types, availability, presence) pass through to the
  *   @mrfinch/booking component. The availability wrappers are SCHEDULE-AWARE
- *   on the server: the React Booker only sends resourceId/date/eventLength/
- *   slotInterval, so this module resolves the resource → its organization's
- *   default schedule → `resourceTimezone` + `scheduleId` (month view) /
- *   `availableSlots` (day view). Without a schedule the component's legacy
- *   09:00–17:00 UTC path is used unchanged.
+ *   on the server: the React Booker sends resourceId/date/eventLength/
+ *   slotInterval (plus eventTypeId and, while rescheduling, the booker's
+ *   rescheduleContext where BookingProvider's availabilityContext is on), so
+ *   this module resolves the resource → the event type's or its
+ *   organization's default schedule → `resourceTimezone` + `scheduleId`
+ *   (month view) / `availableSlots` (day view). Without a schedule the
+ *   component's legacy 09:00–17:00 UTC path is used unchanged. A booking's
+ *   own slots count as free for a client only through rescheduleContext
+ *   ({ uid, token }, checked by the component); the uid-only
+ *   excludeBookingUid is passed solely after the reschedule's token check.
  *
  * - createBooking takes the booker inline (no identity involved) and enforces
  *   the host-side guard the component deliberately leaves to the caller:
@@ -111,6 +116,18 @@ type BookerInput = {
   notes?: string;
 };
 
+/**
+ * The booker's credential for the slot queries while moving a booking: its
+ * uid and management token. Forwarded unchanged; the component frees that
+ * booking's own slots only when the token matches a pending or confirmed
+ * booking on the queried resource, and ignores it otherwise.
+ */
+type RescheduleContext = { uid: string; token: string };
+const rescheduleContextValidator = v.object({
+  uid: v.string(),
+  token: v.string(),
+});
+
 // ============================================
 // SMALL HELPERS
 // ============================================
@@ -160,11 +177,6 @@ const isSaneEventLength = (n: number): boolean =>
 
 const isSaneSlotInterval = (n: number | undefined): boolean =>
   n === undefined || (Number.isInteger(n) && n >= 15 && n <= 240);
-
-const sanitizeUid = (uid: string | undefined): string | undefined => {
-  const t = uid?.trim();
-  return t && t.length <= 100 ? t : undefined;
-};
 
 const slotTimeMs = (t: string | number): number =>
   typeof t === "number" ? t : Date.parse(t);
@@ -281,10 +293,11 @@ type AvailabilityContext = {
  * known and it points at an existing schedule) → the organization's default
  * schedule (`getDefaultSchedule`: isDefault, else the first one) → none.
  *
- * The React Booker never sends an eventTypeId to the availability queries, so
- * the notice/horizon windows fall back to the active event types linked to the
- * resource (min notice, max horizon — never hides a slot that createBooking
- * would accept for some event type).
+ * The React Booker sends an eventTypeId to the availability queries only where
+ * BookingProvider's availabilityContext is on. Without one the notice/horizon
+ * windows fall back to the active event types linked to the resource (min
+ * notice, max horizon — never hides a slot that createBooking would accept
+ * for some event type).
  */
 async function resolveAvailabilityContext(
   ctx: Ctx,
@@ -350,7 +363,14 @@ async function resolveAvailabilityContext(
 /**
  * The slots the component offers for one resource-local day — schedule-aware
  * when a schedule exists (resourceTimezone + availableSlots are always passed
- * together; the component silently falls back to 09–17 UTC otherwise).
+ * together; the component rejects one without the other).
+ *
+ * The booking being moved counts as free through ONE of:
+ * - `rescheduleContext`: the booker's { uid, token } from the client; the
+ *   component checks the token.
+ * - `excludeBookingUid`: frees a booking by uid alone, so only
+ *   assertStartIsOfferedSlot passes it, for rescheduleBookingByToken after
+ *   that mutation's own token check. Never fill it from client arguments.
  */
 async function offeredDaySlots(
   ctx: Ctx,
@@ -359,6 +379,7 @@ async function offeredDaySlots(
     date: string;
     eventLength: number;
     slotInterval: number | undefined;
+    rescheduleContext?: RescheduleContext;
     excludeBookingUid?: string;
   }
 ): Promise<DaySlot[]> {
@@ -380,6 +401,7 @@ async function offeredDaySlots(
     slotInterval: opts.slotInterval,
     resourceTimezone: availableSlots ? avail.timezone : undefined,
     availableSlots,
+    rescheduleContext: opts.rescheduleContext,
     excludeBookingUid: opts.excludeBookingUid,
   });
 }
@@ -389,6 +411,8 @@ async function offeredDaySlots(
  * right now: nothing inside the minimum notice, nothing past the horizon.
  * Filtered PER SLOT, not per day — `now + maxFutureMinutes` lands at the
  * current wall-clock time of its day, so that day is only partly bookable.
+ * Serves the client-facing queries, so it takes the client's
+ * rescheduleContext and never an excludeBookingUid.
  */
 async function windowedDaySlots(
   ctx: Ctx,
@@ -397,13 +421,18 @@ async function windowedDaySlots(
     date: string;
     eventLength: number;
     slotInterval: number | undefined;
-    excludeBookingUid?: string;
+    rescheduleContext: RescheduleContext | undefined;
     now: number;
   }
 ): Promise<DaySlot[]> {
   const notBefore = opts.now + avail.minNoticeMinutes * 60_000;
   const notAfter = opts.now + avail.maxFutureMinutes * 60_000;
-  const slots = await offeredDaySlots(ctx, avail, opts);
+  const slots = await offeredDaySlots(ctx, avail, {
+    date: opts.date,
+    eventLength: opts.eventLength,
+    slotInterval: opts.slotInterval,
+    rescheduleContext: opts.rescheduleContext,
+  });
   return slots.filter((s) => {
     const t = slotTimeMs(s.time);
     return t >= notBefore && t <= notAfter;
@@ -560,6 +589,10 @@ function assertBookingWindow(
  * subsumes schedule windows, date overrides, grid alignment for the duration,
  * "runs past closing" and busy collisions — validated against the OFFERED list
  * rather than re-deriving the rules.
+ *
+ * `excludeBookingUid` treats that booking's own slots as free. Trusted server
+ * input only: rescheduleBookingByToken passes the uid of the booking it has
+ * just loaded by uid AND token.
  */
 async function assertStartIsOfferedSlot(
   ctx: Ctx,
@@ -798,8 +831,14 @@ export const listEventTypes = publicQuery({
  * resourceTimezone + scheduleId to the component. Past days are forced to
  * false; days beyond the booking horizon are false; today and the horizon day
  * are checked against the windowed slot list (they are only partly bookable);
- * malformed input yields {}. `eventTypeId` / `excludeBookingUid` are optional
- * so a future Booker can send them (the current one does not).
+ * malformed input yields {}.
+ *
+ * `eventTypeId` and `rescheduleContext` are optional; the Booker sends them
+ * where BookingProvider's availabilityContext is on. rescheduleContext goes to
+ * the component unchanged, which frees the moved booking's own slots only
+ * when its token matches. There is deliberately no `excludeBookingUid`
+ * argument: it would free any booking whose uid (the visible "Booking ID")
+ * a client knows.
  */
 export const getMonthAvailability = publicQuery({
   args: {
@@ -809,7 +848,7 @@ export const getMonthAvailability = publicQuery({
     eventLength: v.number(),
     slotInterval: v.optional(v.number()),
     eventTypeId: v.optional(v.string()),
-    excludeBookingUid: v.optional(v.string()),
+    rescheduleContext: v.optional(rescheduleContextValidator),
   },
   handler: async (ctx, args): Promise<Record<string, boolean>> => {
     if (!isIsoDate(args.dateFrom) || !isIsoDate(args.dateTo)) return {};
@@ -827,7 +866,6 @@ export const getMonthAvailability = publicQuery({
     const slotInterval =
       args.slotInterval ??
       (avail.eventType ? effectiveSlotInterval(avail.eventType) : undefined);
-    const excludeBookingUid = sanitizeUid(args.excludeBookingUid);
 
     // Day keys in the schedule's zone (UTC on the legacy path) — the same
     // calendar the component's month view is computed in.
@@ -849,10 +887,10 @@ export const getMonthAvailability = publicQuery({
           dateTo: effectiveTo,
           eventLength: args.eventLength,
           slotInterval,
-          // Both or neither — otherwise the component silently takes the legacy path.
+          // resourceTimezone only with scheduleId: the component rejects it alone.
           resourceTimezone: avail.scheduleId ? avail.timezone : undefined,
           scheduleId: avail.scheduleId,
-          excludeBookingUid,
+          rescheduleContext: args.rescheduleContext,
         }
       );
       Object.assign(result, fromComponent);
@@ -876,7 +914,7 @@ export const getMonthAvailability = publicQuery({
           date: edge,
           eventLength: args.eventLength,
           slotInterval,
-          excludeBookingUid,
+          rescheduleContext: args.rescheduleContext,
           now,
         });
         result[edge] = slots.length > 0;
@@ -893,6 +931,7 @@ export const getMonthAvailability = publicQuery({
  * schedule) to the component. Past days and days beyond the horizon return [];
  * within a day every slot inside the minimum-notice window or past the horizon
  * is dropped — so the list matches what createBooking accepts, slot by slot.
+ * `eventTypeId` and `rescheduleContext` as in getMonthAvailability.
  */
 export const getDaySlots = publicQuery({
   args: {
@@ -901,7 +940,7 @@ export const getDaySlots = publicQuery({
     eventLength: v.number(),
     slotInterval: v.optional(v.number()),
     eventTypeId: v.optional(v.string()),
-    excludeBookingUid: v.optional(v.string()),
+    rescheduleContext: v.optional(rescheduleContextValidator),
   },
   handler: async (ctx, args): Promise<DaySlot[]> => {
     if (!isIsoDate(args.date)) return [];
@@ -927,7 +966,7 @@ export const getDaySlots = publicQuery({
       slotInterval:
         args.slotInterval ??
         (avail.eventType ? effectiveSlotInterval(avail.eventType) : undefined),
-      excludeBookingUid: sanitizeUid(args.excludeBookingUid),
+      rescheduleContext: args.rescheduleContext,
       now,
     });
   },
