@@ -1,4 +1,5 @@
 <DocPage toc={[
+  { title: "BookingProvider", url: "#bookingprovider", depth: 2 },
   { title: "Booker", url: "#booker", depth: 2 },
   { title: "Calendar", url: "#calendar", depth: 2 },
   { title: "Admin UI", url: "#admin-ui", depth: 2 },
@@ -10,6 +11,66 @@
 Import UI components from `@mrfinch/booking/react`. They need your Convex provider,
 `ConvexQueryCacheProvider` and `BookingProvider`; the [Quick Start](/docs/getting-started)
 shows the full setup.
+
+## BookingProvider
+
+`BookingProvider` tells the components which of your host functions to call.
+
+| Prop | Purpose |
+| --- | --- |
+| `publicApi` | Required. Your public gateway, usually `api.public` |
+| `adminApi` | Optional. Your admin functions, usually `api.admin` |
+| `availabilityContext` | Optional, off by default. Sends the selected event type and the booking being moved to the slot queries |
+
+**`publicApi`** is checked at compile time. The components and hooks call 11 of
+its functions; each must accept every argument they send, must not require any
+other, and must return at least the fields they read. A gateway that does not fit is a
+type error. To find the function, check the gateway on its own:
+
+```typescript title="lib/booking-contract.ts" check
+import type { PublicBookingAPI } from "@mrfinch/booking/react";
+import { api } from "@/convex/_generated/api";
+
+export const bookingPublicApi = api.public satisfies PublicBookingAPI;
+```
+
+The error names the function, as in `The types of 'getDaySlots._fn' are incompatible`.
+The component's [host contract](https://github.com/Finchmedia/booking-component#host-contract)
+lists the arguments and result fields of each function. The other public
+operations, such as the token-less booking reads, are optional.
+
+**`adminApi`** supplies the admin operations (`createResource`, `listBookings`,
+`transitionBookingState`, …) and nothing else. Without it they are `undefined`;
+`publicApi` never stands in for them. Pass it only where components take admin
+operations from `useBookingAPI()`; in your own pages, `useMutation(api.admin.createResource)`
+keeps your generated argument types. The two props choose which functions the UI
+calls; they are not access control. Each admin function checks the caller itself,
+as described in [authorization](/docs/authentication).
+
+**`availabilityContext`** makes the Calendar and `useConvexSlots` add two optional
+arguments to `getDaySlots` and `getMonthAvailability`: `eventTypeId`, the selected
+event type, and, while the Booker reschedules, `rescheduleContext: { uid, token }`,
+the booking being moved and its management token. Pass `rescheduleContext` on to the component's
+query unchanged: it frees the booking's own time only when the token matches, so a
+new time that overlaps the current one is offered. Presence functions never receive
+the token. Never turn it into `excludeBookingUid`, which frees a booking by its UID
+alone.
+
+Before you turn it on, declare both arguments in both slot queries and deploy them
+ahead of the page that sets the prop. A validator without them rejects every slot
+query the Calendar sends:
+
+```typescript
+// In the args of getDaySlots and getMonthAvailability
+eventTypeId: v.optional(v.string()),
+rescheduleContext: v.optional(v.object({ uid: v.string(), token: v.string() })),
+```
+
+`BookingProvider` checks this at compile time against
+`PublicBookingAPIWithAvailabilityContext`. The reference gateway declares both
+arguments; the demo turns the prop on for its reschedule page only.
+[Host functions](https://github.com/Finchmedia/booking-component/blob/main/docs/host-functions.md#slot-queries-while-rescheduling)
+shows a complete wrapper.
 
 ## Booker
 
@@ -33,16 +94,33 @@ export function MeetingBooker() {
 | `description`, `showHeader` | Optional description and header visibility |
 | `organizerName`, `organizerAvatar` | Organizer display details |
 | `currentUser` | Optional contact details to prefill the form |
-| `onBookingComplete` | Receives the created booking |
-| `onNavigate` | Handles recovery navigation if setup becomes unavailable |
-| `onEventTypeReset` | Returns to event-type selection |
-| `onAuthRequired` | Handles an `UNAUTHENTICATED` response from your host gateway |
-| `originalBooking` | Enables rescheduling using the booking's management token |
+| `onBookingComplete` | Receives the created or moved booking as a `BookingView` |
+| `onBookingError` | `(error, { phase })`: reports each failed booking (`"create"`) or move (`"reschedule"`) |
+| `onEventTypeReset` | Returns to event-type selection when the event type is deleted or deactivated, or the resource is unlinked |
+| `onNavigate` | Called when the resource is deleted or deactivated. Its `path` argument is deprecated; navigate to your own resource page |
+| `onAuthRequired` | Handles an `UNAUTHENTICATED` error from your gateway on a new booking |
+| `originalBooking` | Enables rescheduling using the booking's management token; with `availabilityContext`, also sent to the slot queries as `rescheduleContext` |
 | `reuseBookerInfo` | Skips contact re-entry in reschedule mode |
 
 A supplied `currentUser` only prefills the form. The backend must independently
 verify identity when your product requires sign-in. The Booker handles conflicts
 from a final booking write even if a slot looked available during selection.
+
+The Booker shows a failed booking or move itself, in an announced alert. It shows
+the `message` of a `ConvexError({ code, message })` your function throws; for a
+component [error code](https://github.com/Finchmedia/booking-component/blob/main/docs/errors.md)
+without a message, a generic text for that code; otherwise a generic message, never
+Convex transport text. A component error your gateway lets through shows the
+component's English text, so map the codes in your gateway, as the reference
+gateway does. If you toast mutation errors, move that into `onBookingError`, so
+users see one message. Without `onAuthRequired`, the Booker asks the user to sign in.
+
+Your `getEventType` must return `null` for a missing event type: the Booker and
+Calendar show it as deleted. The component's `getEventType` returns `null` since
+0.5.0, so a wrapper that returns its result is enough. A wrapper that throws sends
+the Booker to your error boundary instead. Like any Convex `useQuery` consumer, the
+Booker rethrows other query errors during rendering, so place it inside an error
+boundary.
 
 ## Calendar
 
@@ -74,6 +152,12 @@ export function MeetingCalendar() {
 }
 ```
 
+`selectedDate` and `currentMonth` are day carriers: a `Date` whose local calendar
+fields name the day, like the dates the Calendar emits. For a reschedule flow with
+`availabilityContext` on, pass `{ uid, token }` of the booking being moved as the
+optional `rescheduleContext` prop; `useConvexSlots` takes it in its seventh
+argument, `{ eventTypeId, rescheduleContext }`. Both send it only with the opt-in.
+
 For smaller building blocks, use `CalendarGrid`, `TimeSlotsPanel`, `EventMetaPanel`
 or the [React hooks](/docs/api#frontend-hooks). Their exported TypeScript types
 provide the complete prop contracts.
@@ -91,8 +175,5 @@ Use your Tailwind theme to change colors and typography. Compose exported calend
 form and display components when you need a different layout. Changing the built-in
 form's fields or internal behavior requires changing package source or building a
 custom form; copying the demo alone does not change code installed from npm.
-
-The `BookingSlot` type describes `{ time: string; attendees?: number }`. Older
-versions used a different public type name; update imports when moving to 0.4.0.
 
 </DocPage>

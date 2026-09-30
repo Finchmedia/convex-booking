@@ -85,6 +85,12 @@ Do not trust a supplied `organizationId`, `userId` or role as proof of permissio
 An administrator of one organization must not be able to operate on another
 organization by changing an argument.
 
+The component keeps organizations consistent: an event type with an
+`organizationId` links and books only that organization's resources
+(`ORGANIZATION_MISMATCH`), and a booking belongs to its event type's organization.
+That is data integrity, not authorization. The component does not know the caller,
+so your wrappers still decide who may act for an organization.
+
 ## Booking management links
 
 The reference public gateway uses a booking UID plus a secret management token
@@ -93,7 +99,8 @@ return it only to the booker or an authorized administrator, and do not expose i
 in public booking lists. UI visibility checks alone do not protect an endpoint.
 The gateway's token-less reads (`getBooking`, `getBookingByUid`) therefore return
 a redacted view without the token, the guest's contact details or the
-requested location value.
+requested location value. The React components never call them, and
+`BookingProvider` does not require them: a gateway may leave them out.
 
 ## About the demo
 

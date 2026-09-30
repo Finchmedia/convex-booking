@@ -4,7 +4,9 @@
   { title: "Bookings", url: "#bookings", depth: 2 },
   { title: "Multiple resources", url: "#multiple-resources", depth: 2 },
   { title: "Presence", url: "#presence", depth: 2 },
+  { title: "Errors", url: "#errors", depth: 2 },
   { title: "Internal helpers", url: "#internal-helpers", depth: 2 },
+  { title: "Maintenance", url: "#maintenance", depth: 2 },
   { title: "Frontend hooks", url: "#frontend-hooks", depth: 2 },
 ]}>
 
@@ -13,6 +15,7 @@
 This page describes the **component API**. The [reference gateway](https://github.com/Finchmedia/convex-booking/blob/main/convex/public.ts)
 adds host policy and sometimes uses different arguments. Your generated
 `components.booking` types are the complete, version-matched reference.
+Coming from 0.4.x? See [Upgrading to 0.5](/docs/upgrading).
 
 ## Calling the component
 
@@ -20,7 +23,8 @@ Inside a Convex function, import `components` from `./_generated/api` and call
 `ctx.runQuery` or `ctx.runMutation`. Browser clients call your host wrappers.
 Apply [authorization](/docs/authentication) before returning private data or
 changing resources, and [booking policy](/docs/guides#host-policies) before creating
-or moving a booking.
+or moving a booking. The component enforces the booking rules and input checks
+itself and rejects violations with [coded errors](#errors).
 
 ```typescript
 // Inside an authorized host query:
@@ -35,7 +39,7 @@ const resource = await ctx.runQuery(components.booking.resources.getResource, {
 | --- | --- |
 | `resources` | `createResource`, `getResource`, `listResources`, `updateResource`, `deleteResource` |
 | `schedules` | `createSchedule`, `getSchedule`, `getDefaultSchedule`, `getEffectiveAvailability`, date overrides |
-| `public` | `createEventType`, `getEventType`, `getEventTypeBySlug`, `listEventTypes` |
+| `public` | `createEventType`, `updateEventType`, `getEventType`, `getEventTypeBySlug`, `listEventTypes` |
 | `resource_event_types` | `linkResourceToEventType`, `hasResourceEventTypeLink`, link/unlink and lookup operations |
 
 Resource and event-type `id` values are your app's strings. A booking's `_id` is a
@@ -43,10 +47,33 @@ component document ID; its `uid` is used in management links. They are not inter
 Resources can carry `metadata: Record<string, string>`; updating that field replaces
 the whole map, while omitting it preserves the existing map.
 
+The component checks setup writes:
+
+- `getEventType` returns `null` for an unknown ID, like `getResource`.
+- Event-type lengths, length options and slot intervals are whole minutes above 0;
+  buffers and notice are 0 or more, `maxFutureMinutes` is above 0, and
+  `lengthInMinutes` is one of `lengthInMinutesOptions` when there are any
+  (`INVALID_INPUT`). `updateEventType` clears `description`, `scheduleId`,
+  buffers, notice and horizon given `null`.
+- `createEventType` on an existing ID updates it and keeps omitted fields,
+  `isActive` and `organizationId` included. An ID stored for another organization
+  is rejected (`ORGANIZATION_MISMATCH`) instead of being moved, and the ID `legacy`
+  is reserved.
+- An event type's `scheduleId` names an existing schedule or is `""`
+  (`SCHEDULE_NOT_FOUND`). `deleteSchedule` refuses while an event type uses the
+  schedule (`SCHEDULE_IN_USE`).
+- A date override's `type` is `"unavailable"`, or `"custom"` with at least one window.
+- An event type with an `organizationId` links only resources of that organization
+  (`ORGANIZATION_MISMATCH`).
+- `deleteResource` and `deleteEventType` also delete the ID's links, so an ID
+  created again starts unlinked. `updateResource` refuses `isFungible: true` while
+  active single-resource bookings hold the resource (`RESOURCE_IN_USE`).
+
 ### Month availability
 
-`public.getMonthAvailability` returns a map of date strings to booleans. Pass the
-resource's IANA timezone and a schedule ID for schedule-aware results:
+`public.getMonthAvailability` returns a map of date strings to booleans, for at
+most 93 days per call (`INVALID_INPUT` beyond). Pass a schedule ID alone for
+schedule-aware results; the dates are then days in the schedule's timezone:
 
 ```typescript
 const month = await ctx.runQuery(components.booking.public.getMonthAvailability, {
@@ -55,7 +82,6 @@ const month = await ctx.runQuery(components.booking.public.getMonthAvailability,
   dateTo: "2027-03-31",
   eventLength: 30,
   slotInterval: 30,
-  resourceTimezone: "America/New_York",
   scheduleId: "business-hours",
 });
 ```
@@ -63,31 +89,40 @@ const month = await ctx.runQuery(components.booking.public.getMonthAvailability,
 ### Day slots
 
 `public.getDaySlots` returns `Array<{ time: string }>` with ISO timestamp strings.
-Unlike the month query, it takes the day's **available slot indices**, not a
-schedule ID. The reference gateway resolves this for the Booker:
+It takes the same `scheduleId` and reads that day's hours, date overrides included:
 
 ```typescript
-const availability = await ctx.runQuery(
-  components.booking.schedules.getEffectiveAvailability,
-  { scheduleId: "business-hours", date: "2027-03-02" }
-);
 const slots = await ctx.runQuery(components.booking.public.getDaySlots, {
   resourceId: "meeting-room",
   date: "2027-03-02",
   eventLength: 30,
   slotInterval: 30,
-  resourceTimezone: "America/New_York",
-  availableSlots: availability.availableSlots,
+  scheduleId: "business-hours",
 });
 ```
 
-The slot indices represent local 15-minute buckets, from 0 to 95. An empty array
-means closed. Without schedule information, these queries fall back to
-09:00–17:00 UTC; pass real schedule information for your application.
+Instead of `scheduleId`, you can pass the day's `availableSlots` together with
+`resourceTimezone`. The reference gateway does this with the result of
+`schedules.getEffectiveAvailability`. The slot indices represent local 15-minute
+buckets, from 0 to 95; an empty array means closed.
 
-Both queries accept `excludeBookingUid` when displaying a reschedule calendar.
-This excludes only that booking's exclusive-resource occupancy. For a resource
-pool, use `multi_resource.checkMultiResourceAvailability` instead.
+Only a call without any schedule argument falls back to 09:00–17:00 UTC; pass real
+schedule information for your application. Partial arguments throw `INVALID_INPUT`:
+`resourceTimezone` alone, `availableSlots` without `resourceTimezone` or
+`scheduleId`, or a `resourceTimezone` that differs from the schedule's. An unknown
+`scheduleId` throws `SCHEDULE_NOT_FOUND`.
+
+While a booker moves a booking, pass `rescheduleContext: { uid, token }` (the
+booking's UID and management token) to both queries. Its own slots then count as
+free on every resource it holds, so a new time that overlaps the current one is
+offered. Anything but the token of a pending or confirmed booking with that UID
+frees nothing and raises no error. `excludeBookingUid` frees a booking from its
+UID alone: pass it only from server code that has authorized the move, never from
+client arguments. Passing both throws `INVALID_INPUT`. The [host functions guide](https://github.com/Finchmedia/booking-component/blob/main/docs/host-functions.md#slot-queries-while-rescheduling)
+shows a wrapper.
+
+The slot queries do not offer pooled resources. For a resource pool, use
+`multi_resource.checkMultiResourceAvailability` instead.
 
 ## Bookings
 
@@ -97,6 +132,8 @@ pool, use `multi_resource.checkMultiResourceAvailability` instead.
 | `public.createProvisionalBooking` | Hold an exclusive resource until your host confirms or expires it |
 | `public.getBooking` / `getBookingByUid` | Read the full booking from authorized host code |
 | `public.getBookingByToken` | Read a booking using its UID and management token |
+| `public.listBookings` | List bookings, filtered by organization, resource, event type, status or dates |
+| `public.listBookingsPage` | Page through one organization's, resource's or event type's bookings |
 | `public.cancelBookingByToken` | Cancel using UID and token |
 | `public.rescheduleBooking` | Move a booking using its component document ID |
 | `public.rescheduleBookingByToken` | Move using UID and token |
@@ -107,9 +144,15 @@ management token and the guest's contact details, without checking any token. A
 UID alone is not a secret, so return their result only to a caller who has proven
 access. For anyone else, return a redacted view without those fields, as the
 reference gateway does; see [booking management links](/docs/authentication#booking-management-links).
+No React component calls these reads, so your public gateway need not export them.
 
 Creation takes epoch milliseconds for `start` and `end`, a timezone, event type,
-resource, booker details and location. It returns the booking document.
+resource, booker details and location. It returns the booking document. The
+event type and the resource must exist and be active, be linked, and share the
+event type's organization when it has one; the resource must not be an add-on
+(`isStandalone: false`). A timezone that `Intl` rejects and a booker email that
+fails the component's syntax check throw `INVALID_INPUT`. `isSendableAddress`
+from `@mrfinch/booking/emails` is that check, for your form or gateway.
 
 Provisional bookings do not expire automatically. Have your host schedule a call
 to `public.expireProvisionalBooking` when its confirmation window ends.
@@ -133,11 +176,39 @@ retain historical occupancy.
 
 Both reschedule entry points move all booking items atomically: a conflict leaves
 the original booking untouched. A successful move returns a new booking with a
-new UID, retaining its management token and resource quantities. Use the returned
-UID for subsequent management requests. Host wrappers must validate the new time
-against schedules, duration choices and notice periods too. Moves do not re-check
-the bookable setup; if your host does, check every item of a bundle, not only its
-primary `resourceId`.
+new UID, retaining its management token and resource quantities; the original
+becomes `cancelled` with `rescheduledToUid` set. Use the returned UID for
+subsequent management requests. Moves check the booking rules for every item, with
+no administrator override: after deactivating or unlinking, reactivate or relink
+first. Host wrappers must validate the new time against schedules, duration
+choices and notice periods too.
+
+`transitionBookingState` checks the booking rules again when it confirms a booking
+or submits a provisional hold as a request (`pending`). Cancelling, declining and
+completing never check them. A booking stored with another organization than its
+event type's, or none, takes the event type's organization on its next move,
+transition, cancellation or expiry when all its resources belong to it, before
+hooks and emails go out.
+
+### Booking lists
+
+`listBookings` returns one array, newest `start` first. Filter it by
+`organizationId`, `resourceId`, `eventTypeId`, `status` and `dateFrom`/`dateTo`
+(epoch milliseconds, bounding `start`). Without `status`, provisional holds are
+left out. `limit` must be a positive integer; omit it for no limit. Without an ID
+filter, it considers only the 1,000 most recently created bookings.
+
+`listBookingsPage` takes exactly one of `organizationId`, `resourceId` and
+`eventTypeId`, plus `paginationOpts` and the same `dateFrom`, `dateTo` and
+`status` filters. Pass `includeProvisional: true` to list provisional holds
+without `status`. A page reads at most 1,000 bookings, so a filtered page can be
+short or empty before the end: continue until `isDone`. Page it reactively from a
+host query with `usePaginatedQuery` from `convex-helpers/react`.
+
+In both, `resourceId` matches a booking's primary resource, which for a bundle is
+its first item. Both return whole bookings, management tokens included: remove
+them before returning results to a browser. The [host functions guide](https://github.com/Finchmedia/booking-component/blob/main/docs/host-functions.md#paged-booking-lists)
+shows a paged wrapper.
 
 ## Multiple resources
 
@@ -149,7 +220,6 @@ const booking = await ctx.runMutation(
   components.booking.multi_resource.createMultiResourceBooking,
   {
     eventTypeId: "studio-session",
-    organizationId: "my-org", // not taken from the event type
     resources: [
       { resourceId: "studio-a", quantity: 1 },
       { resourceId: "camera-pool", quantity: 2 },
@@ -162,12 +232,17 @@ const booking = await ctx.runMutation(
 );
 ```
 
-Pass the event type's `organizationId`: unlike `createBooking`, bundle creation
-does not derive it, and a bundle without it is missing from organization booking
-lists and never reaches organization-scoped hooks. Bundle creation checks inventory
-and that at least one resource is standalone (`isStandalone` is not `false`), but
-not the [bookable setup](/docs/guides#multi-resource-booking): first check that
-every requested resource exists, is active and is linked to an active event type.
+A bundle belongs to its event type's organization. `organizationId` is optional: a
+value that differs from the event type's is rejected with `ORGANIZATION_MISMATCH`.
+For an event type without organization, the value is used and must be the
+organization of the booked resources.
+
+The component applies the booking rules of `createBooking` to every item: the
+event type exists and is active, and each resource exists, is active, is linked to
+the event type (pools included) and belongs to its organization when it has one.
+All resources belong to one organization, and at least one is standalone
+(`isStandalone` is not `false`). An unknown resource ID is rejected with
+`RESOURCE_NOT_FOUND`.
 
 `resources` must contain unique IDs and positive safe-integer quantities.
 Exclusive resources accept quantity 1. Pools use `isFungible: true` and a positive
@@ -189,6 +264,47 @@ The React `useSlotHold` hook maintains heartbeats and cleanup. Presence helps
 visitors see one another's selections; it is not an exclusive inventory lock.
 The final booking write can still reject a conflict.
 
+## Errors
+
+Expected failures, such as a taken slot or a wrong management token, throw
+`ConvexError({ code, message })`. The [error codes](https://github.com/Finchmedia/booking-component/blob/main/docs/errors.md)
+are public contract and listed with the functions that throw them. `message` is
+English text for logs and administrators and can contain IDs. Other failures,
+such as argument validation by Convex, stay plain `Error`s, whose message Convex
+redacts for clients in production.
+
+A host function receives the component's `ConvexError` from `ctx.runQuery` or
+`ctx.runMutation`. `isBookingError` from `@mrfinch/booking` recognizes one with a
+known code. Map the codes your clients see to your own codes and texts, and fall
+back to a generic error for the rest:
+
+```typescript title="convex/booking-errors.ts" check
+import { ConvexError } from "convex/values";
+import { isBookingError, type BookingErrorCode } from "@mrfinch/booking";
+
+const SLOT_TAKEN = "This time slot is no longer available — please pick another one.";
+
+const CLIENT_ERRORS: Partial<Record<BookingErrorCode, [code: string, message: string]>> = {
+  SLOT_UNAVAILABLE: ["SLOT_NOT_AVAILABLE", SLOT_TAKEN],
+  QUANTITY_UNAVAILABLE: ["SLOT_NOT_AVAILABLE", SLOT_TAKEN],
+  BOOKING_NOT_FOUND: ["NOT_FOUND", "Booking not found."],
+  INVALID_TOKEN: ["INVALID_TOKEN", "Invalid booking link."],
+};
+
+export function translateComponentError(error: unknown): never {
+  if (isBookingError(error)) {
+    const mapped = CLIENT_ERRORS[error.data.code];
+    if (mapped) throw new ConvexError({ code: mapped[0], message: mapped[1] });
+  }
+  throw new ConvexError({ code: "BOOKING_FAILED", message: "Booking failed — please try again." });
+}
+```
+
+Call it in a `catch` around the component call only, so that every `ConvexError`
+it sees is the component's. The reference gateway uses a longer table of this
+shape. A host that passes component errors through unchanged sends their codes
+and English texts to the browser, where the Booker shows `data.message`.
+
 ## Internal helpers
 
 `makeInternalBookingAPI` creates server-only helpers under Convex's `internal`
@@ -202,8 +318,34 @@ export const { getResource, getDaySlots } = makeInternalBookingAPI(components.bo
 ```
 
 The old `makeBookingAPI` public factory was removed in 0.4.0. Migrate browser
-endpoints to authorized host wrappers. Maintenance functions such as
-`maintenance.wipeAllData` are destructive; keep reset wrappers internal.
+endpoints to authorized host wrappers.
+
+## Maintenance
+
+The component's tables are private to it. These functions check and repair the
+stored rows, usually once after an upgrade. Call them from host internal
+functions, `makeInternalBookingAPI` or the CLI, never from clients.
+
+| Function | Purpose |
+| --- | --- |
+| `maintenance.audit` | Read-only: one page of one check, with its `issues` |
+| `maintenance.backfillBookingOrganizations` | Give bookings without an organization their event type's, when all their resources belong to it |
+| `presence.sweepOrphanedHolds` | Remove presence holds whose cleanup job was lost |
+| `resource_event_types.deleteAllLinksForResource` / `deleteAllLinksForEventType` | Remove links that deletes before 0.5.0 left behind |
+
+The first three read one page per call: pass `continueCursor` back until `isDone`
+(`limit` 1–500).
+`dryRun: true` makes the two repairs only count. `makeInternalBookingAPI` wraps the
+first three, not the link deletes. For example:
+
+```bash
+npx convex run --component booking maintenance:audit '{"check": "link_integrity", "limit": 200}'
+```
+
+The [maintenance guide](https://github.com/Finchmedia/booking-component/blob/main/docs/maintenance.md)
+lists every check with its repair and the upgrade order.
+`maintenance.wipeAllData` and `wipeAllBookingData` are destructive; keep reset
+wrappers internal.
 
 ## Frontend Hooks
 
@@ -234,19 +376,22 @@ sends twenty 15-minute buckets regardless of the displayed slot interval.
 ### `useConvexSlots`
 
 The positional signature is
-`useConvexSlots(resourceId, eventLength, slotInterval?, allDurationOptions?, enabled = true, timezone?)`.
-The default timezone is the browser's timezone. Call `fetchSlots(date)` to select
-a day and `fetchMonthSlots(date)` to request the month's availability.
+`useConvexSlots(resourceId, eventLength, slotInterval?, allDurationOptions?, enabled = true, timezone?, context?)`.
+Call `fetchSlotsForDate("YYYY-MM-DD")` to select a day and
+`fetchMonthSlotsFor(year, month)` (month 1–12) to request a month's availability;
+both throw a `RangeError` for impossible input. The older `fetchSlots(date)` and
+`fetchMonthSlots(date)` take a `Date` and are deprecated; `timezone` (default: the
+browser's) only affects `fetchSlots`.
 
 ```tsx title="examples/slots.tsx" check
 "use client";
 import { useEffect } from "react";
 import { useConvexSlots } from "@mrfinch/booking/react";
 
-export function SlotList({ date }: { date: Date }) {
-  const { availableSlots, reservedSlots, isLoading, fetchSlots } =
-    useConvexSlots("meeting-room", 30, 30, undefined, true, "America/New_York");
-  useEffect(() => { fetchSlots(date); }, [date, fetchSlots]);
+export function SlotList({ date }: { date: string }) { // "2027-03-02"
+  const { availableSlots, reservedSlots, isLoading, fetchSlotsForDate } =
+    useConvexSlots("meeting-room", 30, 30);
+  useEffect(() => { fetchSlotsForDate(date); }, [date, fetchSlotsForDate]);
   if (isLoading) return <p>Loading slots…</p>;
   return (
     <ul>
@@ -258,23 +403,31 @@ export function SlotList({ date }: { date: Date }) {
 ```
 
 Returns `monthSlots`, `availableSlots`, `reservedSlots`, `isLoading`,
-`fetchMonthSlots` and `fetchSlots`. Slots have a `time` ISO string, not `slot` or
-`formatted` properties. Reserved here means presence held by another session;
-it does not mean a committed booking or server-enforced reservation.
+`presenceIncomplete` and the fetch functions. Slots have a `time` ISO string, not
+`slot` or `formatted` properties. Reserved here means presence held by another
+session; it does not mean a committed booking or server-enforced reservation.
+`presenceIncomplete` is true when the slots and their duration span more than three
+UTC dates, which takes bookings of about a day or longer; holds after the third
+date are not shown.
+
+`context` is `{ eventTypeId, rescheduleContext }`. The hook sends it to
+`getMonthAvailability` and `getDaySlots` only when `BookingProvider` has
+`availabilityContext` on; presence queries never receive it.
 
 ### `useBookingValidation`
 
 `useBookingValidation(eventType, resource, hasLink, selectedDuration, resourceId)`
 validates objects you already loaded. `undefined` means loading; `null` means a
-missing record. It does not fetch them for you.
+missing record. It does not fetch them for you, and the `EventTypeView` and
+`ResourceView` fields are enough.
 
 ```tsx title="examples/validation.tsx" check
 "use client";
-import { useBookingValidation, type EventType, type Resource } from "@mrfinch/booking/react";
+import { useBookingValidation, type EventTypeView, type ResourceView } from "@mrfinch/booking/react";
 
 export function SelectionStatus(props: {
-  eventType: EventType | null | undefined;
-  resource: Resource | null | undefined;
+  eventType: EventTypeView | null | undefined;
+  resource: ResourceView | null | undefined;
   hasLink: boolean | null | undefined;
 }) {
   const result = useBookingValidation(
@@ -287,7 +440,9 @@ export function SelectionStatus(props: {
 ```
 
 Returns `{ status: "loading" | "valid" | "error", error? }`. The error object
-contains `type`, `message` and `recoveryPath`; there is no `data` field.
+contains `type`, `message` and `recovery` (`"select-event-type"`,
+`"select-resource"` or `"reset-duration"`), which you map to your own routes;
+`recoveryPath` is deprecated. There is no `data` field.
 This catches deleted/inactive setup, removed durations and unlinked resources in
 the UI. The server must independently validate every write.
 

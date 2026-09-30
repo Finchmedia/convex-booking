@@ -2,7 +2,7 @@
   { title: "Basic Booking Flow", url: "#basic-booking-flow", depth: 2 },
   { title: "Host Policies", url: "#host-policies", depth: 2 },
   { title: "Multi-Resource Booking", url: "#multi-resource-booking", depth: 2 },
-  { title: "Reschedule with excludeBookingUid", url: "#reschedule-with-excludebookinguid", depth: 2 },
+  { title: "Reschedule with rescheduleContext", url: "#reschedule-with-reschedulecontext", depth: 2 },
   { title: "Durations and Timezones", url: "#durations-and-timezones", depth: 2 },
 ]}>
 
@@ -19,7 +19,8 @@ weekdays from 09:00 to 17:00 in New York, with 30-minute meetings.
 
 Add it to a fresh development deployment, then run
 `npx convex run seed:seedBookingSetup` once. The function is internal, so browser
-clients cannot invoke it.
+clients cannot invoke it. It creates the schedule first: `createEventType` rejects
+a `scheduleId` that names no schedule.
 
 ```typescript title="convex/seed.ts" check
 import { internalMutation } from "./_generated/server";
@@ -77,31 +78,43 @@ seed operations internal.
 
 ## Host Policies
 
-The component enforces inventory consistency. Your host app decides who may book,
-which resources they may see, and which dates and durations you offer.
+The component enforces the booking rules on every path that creates, moves or
+confirms a booking: the event type is active, and each resource is active, linked
+to it and in its organization. It also checks a new booking's timezone and email
+syntax. Your host app decides who may book, which resources they may see, and
+which dates and durations you offer.
 
 The [reference gateway](https://github.com/Finchmedia/convex-booking/blob/main/convex/public.ts)
-from the quickstart already checks:
+from the quickstart checks:
 
-| Policy | Reference behavior |
-| --- | --- |
-| Input | Valid timezone, booker details, positive duration and 15-minute alignment |
-| Bookable setup | Active resource and event type, linked together |
-| Duration | One of the event type's configured durations |
-| Opening hours | Start and complete duration fit the schedule, including date overrides |
-| Notice and horizon | `minNoticeMinutes` and `maxFutureMinutes`; default horizon is 60 days |
-| Abuse limits | 5 booking writes per email per 10 minutes, plus 500 across the demo per hour |
+| Policy | Reference gateway | Component |
+| --- | --- | --- |
+| Input | Valid timezone, booker details, positive duration and 15-minute alignment | Timezone, email syntax, end after start |
+| Bookable setup | Active resource and event type, linked together | The same plus organization, for bundles, moves and confirmations too |
+| Duration | One of the event type's configured durations | Not checked |
+| Opening hours | Start and complete duration fit the schedule, including date overrides | Not checked |
+| Notice and horizon | `minNoticeMinutes` and `maxFutureMinutes`; default horizon is 60 days | Validated and stored, not applied |
+| Abuse limits | 5 booking writes per email per 10 minutes, plus 500 across the demo per hour | None |
 
-Creation and token-based rescheduling both run these checks. The hourly cap is a
-**demo policy**, not a package capacity limit. Adjust both limits for your app and
-keep the `bookingRateLimits` schema table if you use that gateway.
+Creation and token-based rescheduling both run the gateway's checks. Where the
+component checks the same rule, the gateway's check runs first and fails with the
+gateway's own code and text. The component rejects with
+`ConvexError({ code, message })`, and its `message` is for logs and can contain
+IDs. The gateway's booking and management functions map the
+[error codes](https://github.com/Finchmedia/booking-component/blob/main/docs/errors.md)
+they expect to their own codes and texts, and anything else to `BOOKING_FAILED`.
+
+The hourly cap is a **demo policy**, not a package capacity limit. Adjust both
+limits for your app and keep the `bookingRateLimits` schema table if you use that
+gateway.
 
 For a private or multi-organization app, also scope every read and write to the
 resources the caller may access. The reference gateway is for a public catalog;
-it does not determine organization membership for you. When you add bundle
-booking, run the bookable-setup, schedule and access checks for every resource in
-the bundle: the component does not run them for bundles (see
-[Multi-Resource Booking](#multi-resource-booking)).
+it does not determine organization membership for you, and neither does the
+component: its organization checks keep each booking within one organization;
+they do not check the caller. When you add bundle booking, run your schedule and
+access checks for every resource in the bundle; the component checks the bookable
+setup of every item itself (see [Multi-Resource Booking](#multi-resource-booking)).
 
 `bufferBefore` and `bufferAfter` are stored configuration only. If you need gaps
 between bookings, enforce them in your host's availability and write paths.
@@ -111,22 +124,23 @@ between bookings, enforce them in your host's availability and write paths.
 Use `components.booking.multi_resource.createMultiResourceBooking` to reserve a
 bundle in one transaction: for example, one room plus two cameras.
 
-In 0.4.x the component checks that the event type exists, that every resource
-has capacity and that at least one resource is standalone (`isStandalone` is not
-`false`). It does not check the bookable setup: whether the event type is active,
-or whether each resource exists, is active and is linked to the event type. Your
-host function owns these [checks](#host-policies) and must run them for every
-requested resource, not only the first.
+The component applies the booking rules to every item: the event type is active,
+and each resource exists, is active, is linked to the event type (pools included)
+and belongs to its organization. At least one of them must be standalone
+(`isStandalone` is not `false`). Your host function owns the schedule, notice and
+access [checks](#host-policies) and must run them for every requested resource,
+not only the first.
 
-Pass the event type's `organizationId` too. Unlike `createBooking`, bundle creation
-does not take it from the event type. A bundle without it is missing from the
-organization's booking lists, and organization-scoped hooks do not receive its
-events.
+The bundle belongs to its event type's organization, like a single booking.
+`organizationId` is optional: omit it or pass that organization; any other is
+rejected with `ORGANIZATION_MISMATCH`. Under an event type without organization,
+all resources must belong to one organization, and a given `organizationId` must
+be theirs.
 
-For a camera pool, create a resource with `isFungible: true` and `quantity: 4`.
-A request for two cameras then consumes two of its four units. Exclusive resources
-such as rooms always use quantity one. Quantities and capacities must be positive
-safe integers; list each resource ID once.
+For a camera pool, create a resource with `isFungible: true` and `quantity: 4`,
+and link it to the event type. A request for two cameras then consumes two of its
+four units. Exclusive resources such as rooms always use quantity one. Quantities
+and capacities must be positive safe integers; list each resource ID once.
 
 This complete server-only recipe extends the setup above. Run
 `npx convex run bundles:addCameraPool` once, then call `internal.bundles.bookRoomWithCameras`
@@ -167,7 +181,6 @@ export const bookRoomWithCameras = internalMutation({
     {
       ...args,
       eventTypeId: "quick-meeting",
-      organizationId: "my-org",
       timezone: "America/New_York",
       resources: [
         { resourceId: "meeting-room", quantity: 1 },
@@ -182,39 +195,92 @@ Check bundle inventory with `checkMultiResourceAvailability`. Use
 `getBookingWithItems` to read its resource quantities from an authorized host
 function. Cancellation releases every item; rescheduling moves every item
 atomically, and a conflicting destination leaves the original booking intact.
-The component does not re-check the bookable setup when moving either. When your
-host re-checks before moving a bundle, check every item from `getBookingWithItems`:
-the booking's `resourceId` is only its first (primary) resource.
+A move checks the booking rules for every item again. If your host checks its own
+policies before moving a bundle, take every item from `getBookingWithItems`: the
+booking's `resourceId` is only its first (primary) resource.
 
 The bundled Booker is a single-resource flow. Build your own resource and quantity
 selection for bundles or pools. Ordinary and provisional single-resource creation
 reject pools, and their slot queries return no pool slots.
 
-## Reschedule with excludeBookingUid
+## Reschedule with rescheduleContext
 
-When a customer chooses a new time, their existing booking should not make its
-own interval appear unavailable. The day and month availability queries accept
-`excludeBookingUid` for this purpose.
+While a customer picks a new time, their own booking should not block it: a move
+half an hour later overlaps the current time, and the move mutations accept it. Pass
+`rescheduleContext: { uid, token }`, the booking's UID and management token, to
+`getDaySlots` and `getMonthAvailability`, and the booking's own slots count as
+free.
 
-In a custom calendar, pass the booking's `uid` to `getDaySlots` and
-`getMonthAvailability` alongside your normal query arguments. This changes the
-availability preview; it does not authorize a move. Your host must verify the
-management token or the caller's right to manage that booking.
+The component checks the token. It frees the slots only when the token belongs to
+a pending or confirmed booking with that UID that holds the queried resource (for
+a bundle, any of its items). Anything else frees nothing and is no error, and
+neither value appears in results or logs. In your gateway, declare the argument
+and pass it on unchanged:
+
+```typescript title="convex/public.ts" check
+import { v } from "convex/values";
+import { query } from "./_generated/server";
+import { components } from "./_generated/api";
+
+export const getDaySlots = query({
+  args: {
+    resourceId: v.string(),
+    date: v.string(),
+    eventLength: v.number(),
+    slotInterval: v.optional(v.number()),
+    eventTypeId: v.optional(v.string()),
+    rescheduleContext: v.optional(v.object({ uid: v.string(), token: v.string() })),
+  },
+  handler: async (ctx, { eventTypeId, ...args }) => {
+    // Your access and policy checks go here.
+    const eventType = eventTypeId
+      ? await ctx.runQuery(components.booking.public.getEventType, { eventTypeId })
+      : null;
+    return await ctx.runQuery(components.booking.public.getDaySlots, {
+      ...args, // rescheduleContext included: the component checks the token
+      scheduleId: eventType?.scheduleId,
+    });
+  },
+});
+```
+
+`getMonthAvailability` takes the same argument. The reference gateway forwards it
+in both queries, next to its schedule lookup and its notice and horizon windows.
+
+With the Booker, set `availabilityContext` on the reschedule page's
+`BookingProvider`. The Calendar then sends `eventTypeId` and, while the Booker
+reschedules, `rescheduleContext` built from `originalBooking.managementToken`.
+Deploy wrappers that declare both optional arguments before the page: a validator
+without them rejects every slot query, and `BookingProvider` rejects such a
+`publicApi` at compile time. This demo turns it on for its reschedule page only.
+
+Never accept `excludeBookingUid` from a client. It frees a booking by UID alone,
+and a UID is not a secret: the demo shows it as the Booking ID. Pass it only from
+code that has authorized the move. Passing both arguments throws `INVALID_INPUT`.
+[Host functions](https://github.com/Finchmedia/booking-component/blob/main/docs/host-functions.md#slot-queries-while-rescheduling)
+covers the details.
 
 The component's `rescheduleBooking` and `rescheduleBookingByToken` move pending or
-confirmed bookings. They create a replacement booking with a new `uid`, preserve
-the status, management token and resource quantities, and cancel the old record.
-Use the returned booking for subsequent navigation and management calls.
+confirmed bookings. They check the booking rules for every item again; there is no
+administrator override. They create a replacement booking with a new `uid`,
+preserve the status, management token and resource quantities, and cancel the
+original, which names its successor in `rescheduledToUid`. Use the returned
+booking for subsequent navigation and management calls; the Booker passes it to
+`onBookingComplete`.
 
-The reference gateway also rejects moves after the booking starts, identical
-times, and dates outside the host policy. It checks the proposed slot again
-inside the mutation before committing the move.
+The reference gateway's `rescheduleBookingByToken` loads the booking by UID and
+token first. It rejects moves after the booking starts, identical times, and
+dates outside the host policy, then checks the new time against the offered slots,
+with `excludeBookingUid` set to that booking, inside the same mutation.
 
 ## Durations and Timezones
 
 Set `lengthInMinutes` to the default duration and, optionally,
-`lengthInMinutesOptions` to choices such as `[30, 60, 90]`. Set `slotInterval` to
-control the spacing between offered starts. Use multiples of 15 minutes.
+`lengthInMinutesOptions` to choices such as `[30, 60, 90]`; the default must be
+one of them. Set `slotInterval` to control the spacing between offered starts.
+Event-type writes reject values that are not whole minutes above 0 with
+`INVALID_INPUT`. Availability rounds lengths and intervals up to the 15-minute
+grid, so use multiples of 15 minutes.
 
 Store booking `start` and `end` as Unix timestamps in **milliseconds**. Keep the
 IANA timezone, such as `Europe/Berlin`, for display and schedule interpretation.
