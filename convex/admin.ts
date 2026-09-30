@@ -637,8 +637,10 @@ export const declineBooking = adminMutation({
 export const cancelReservation = adminMutation({
   args: { reservationId: v.string() },
   handler: async (ctx, args) => {
+    const { user } = ctx;
     return await ctx.runMutation(components.booking.public.cancelReservation, {
       reservationId: args.reservationId,
+      cancelledBy: user.userId, // History actor (the component defaults to "unknown")
       resendOptions: process.env.RESEND_API_KEY
         ? {
             apiKey: process.env.RESEND_API_KEY,
@@ -661,6 +663,7 @@ export const rescheduleBooking = adminMutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const { user } = ctx;
     return await ctx.runMutation(
       components.booking.public.rescheduleBooking,
       {
@@ -668,6 +671,7 @@ export const rescheduleBooking = adminMutation({
         newStart: args.newStart,
         newEnd: args.newEnd,
         reason: args.reason,
+        changedBy: user.userId, // History actor (the component defaults to "system")
         resendOptions: process.env.RESEND_API_KEY
           ? {
               apiKey: process.env.RESEND_API_KEY,

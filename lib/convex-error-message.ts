@@ -1,9 +1,11 @@
 import { ConvexError } from "convex/values";
 
 /**
- * Fallback copy per error code thrown by convex/public.ts. The server already
- * sends a readable `data.message` with every code; this map only covers the
- * case where a code arrives without one.
+ * Fallback copy per error code thrown by convex/public.ts, and by the
+ * @mrfinch/booking component through the admin wrappers in convex/admin.ts,
+ * which pass its errors on. The server already sends a readable
+ * `data.message` with every code (the component's since 0.5.0); this map only
+ * covers the case where a code arrives without one.
  */
 const CODE_MESSAGES: Record<string, string> = {
   SLOT_NOT_AVAILABLE: "This time slot is no longer available — please pick another one.",
@@ -38,6 +40,12 @@ const CODE_MESSAGES: Record<string, string> = {
   TOO_MANY_SLOTS: "Too many slots selected.",
   UNAUTHENTICATED: "Sign in as guest admin to use the dashboard.",
   BOOKING_FAILED: "Booking failed — please try again.",
+  // Component codes the admin dashboard can see (docs/errors.md in @mrfinch/booking)
+  SCHEDULE_IN_USE: "Event types still use this schedule — give them another schedule first.",
+  RESOURCE_IN_USE: "Bookings or reserved slots prevent this change to the resource.",
+  EVENT_TYPE_IN_USE: "This event type has bookings, so it cannot be deleted — deactivate it instead.",
+  ORGANIZATION_MISMATCH: "The resource and the event type belong to different organizations.",
+  INVALID_INPUT: "Please check your details and try again.",
 };
 
 /**
