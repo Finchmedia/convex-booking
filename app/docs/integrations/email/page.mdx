@@ -177,7 +177,11 @@ means the booking exists; it is not confirmation that the email reached an inbox
 For additional side effects, such as an organizer notification, register a host **mutation function handle** with
 `components.booking.hooks.registerHook`. Hooks receive lifecycle payloads such as
 `booking.created`, `booking.confirmed` or `booking.cancelled`; these are Convex
-functions, not HTTP webhook URLs. Keep registration internal or administrator-only.
+functions, not HTTP webhook URLs. Keep registration internal or administrator-only:
+the payloads include the booking's management token and the guest's contact
+details, so whoever can register a hook can read and manage every matching booking.
+The demo therefore offers hook registration only as internal functions, not to
+guest administrators.
 An organization-scoped hook receives only that organization's events; a hook
 without `organizationId` is global.
 

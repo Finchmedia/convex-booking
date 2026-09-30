@@ -7,10 +7,11 @@
  * Pattern:
  * - adminQuery: Auth + role check for reads
  * - adminMutation: Auth + admin role for writes
+ * - internalMutation: hook management — not callable by (guest) admins
  */
 import { v } from "convex/values";
 import { components } from "./_generated/api";
-import { adminQuery, adminMutation } from "./functions";
+import { adminQuery, adminMutation, internalMutation } from "./functions";
 
 // ============================================
 // RESOURCES (Admin CRUD)
@@ -712,13 +713,19 @@ export const getActivePresenceCount = adminQuery({
 });
 
 // ============================================
-// HOOKS (Admin)
+// HOOKS (internal only)
 // ============================================
+//
+// Not on the guest-admin surface: anyone can "Continue as guest admin", and a
+// registered hook receives every matching booking's payload — including the
+// management token and the booker's contact data. Operators manage hooks from
+// server code (with a handle from createFunctionHandle), the CLI or the
+// dashboard.
 
 /**
- * Register a webhook for booking events
+ * Register a hook (a mutation function handle) for booking events
  */
-export const registerHook = adminMutation({
+export const registerHook = internalMutation({
   args: {
     eventType: v.string(),
     functionHandle: v.string(),
@@ -730,9 +737,9 @@ export const registerHook = adminMutation({
 });
 
 /**
- * Unregister a webhook
+ * Unregister a hook
  */
-export const unregisterHook = adminMutation({
+export const unregisterHook = internalMutation({
   args: { hookId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.runMutation(components.booking.hooks.unregisterHook, {
