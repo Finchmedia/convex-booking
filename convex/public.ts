@@ -16,8 +16,9 @@
  *   15-minute grid, past / min-notice / horizon windows, duration whitelist,
  *   "start is an offered slot" (the same list getDaySlots shows), plus a small
  *   per-email rate limit and a sandbox-wide hourly cap. Component errors are
- *   translated to `ConvexError({ code, message })` so clients get stable codes
- *   instead of Convex's redacted "Server Error".
+ *   mapped by their code to this gateway's `ConvexError({ code, message })`,
+ *   so clients get stable codes and host texts instead of the component's
+ *   texts or Convex's redacted "Server Error".
  *
  * - cancel / reschedule are authenticated by the booking's management token.
  *   Reschedule runs the full createBooking guard (including both limits) on
@@ -32,6 +33,8 @@
  */
 import { v, ConvexError } from "convex/values";
 import type { FunctionReturnType } from "convex/server";
+import { isBookingError, type BookingErrorCode } from "@mrfinch/booking";
+import { isSendableAddress } from "@mrfinch/booking/emails";
 import { components } from "./_generated/api";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { publicQuery, publicMutation } from "./functions";
@@ -214,41 +217,44 @@ function resendOptions() {
 // COMPONENT ERROR TRANSLATION
 // ============================================
 
-/** Substring → ConvexError code. Order matters for overlapping prefixes. */
-const COMPONENT_ERRORS: Array<[needle: string, code: string, message: string]> = [
-  ["Time slot no longer available", "SLOT_NOT_AVAILABLE", "This time slot is no longer available — please pick another one."],
-  ["Resource is not available for the requested time range", "SLOT_NOT_AVAILABLE", "This time slot is no longer available — please pick another one."],
-  ["Conflict detected on", "SLOT_NOT_AVAILABLE", "This time slot is no longer available — please pick another one."],
-  ["Invalid time range", "INVALID_RANGE", "End time must be after start time."],
-  ["Event type not found", "EVENT_TYPE_NOT_FOUND", "This event type no longer exists."],
-  ["Event type is no longer active", "EVENT_TYPE_INACTIVE", "This event type is no longer available for booking."],
-  ["Resource not found", "RESOURCE_NOT_FOUND", "This resource no longer exists."],
-  ["Resource is no longer active", "RESOURCE_INACTIVE", "This resource is no longer available."],
-  ["cannot be booked alone", "RESOURCE_NOT_STANDALONE", "This resource can only be booked as an add-on."],
-  ["Resource is not available for this event type", "NOT_LINKED", "This resource is not available for this event type."],
-  ["Booking not found", "NOT_FOUND", "Booking not found."],
-  ["Invalid token", "INVALID_TOKEN", "Invalid booking link."],
-];
+const SLOT_TAKEN = "This time slot is no longer available — please pick another one.";
 
 /**
- * Rethrow a component failure as a ConvexError. ConvexErrors pass through
- * untouched; plain Errors are mapped by message; anything else → BOOKING_FAILED.
+ * Component error code → the code and text this gateway's clients see. The
+ * component's `data.message` is English for logs and can hold IDs, so clients
+ * never receive it. Codes missing here become BOOKING_FAILED: the admin-only
+ * *_IN_USE / *_ALREADY_EXISTS (the wrapped calls never throw them), and
+ * POOL_REQUIRES_BUNDLE / ORGANIZATION_MISMATCH, setup faults a visitor
+ * cannot fix.
+ */
+const COMPONENT_ERRORS: Partial<
+  Record<BookingErrorCode, [code: string, message: string]>
+> = {
+  SLOT_UNAVAILABLE: ["SLOT_NOT_AVAILABLE", SLOT_TAKEN],
+  QUANTITY_UNAVAILABLE: ["SLOT_NOT_AVAILABLE", SLOT_TAKEN],
+  EVENT_TYPE_NOT_FOUND: ["EVENT_TYPE_NOT_FOUND", "This event type no longer exists."],
+  EVENT_TYPE_INACTIVE: ["EVENT_TYPE_INACTIVE", "This event type is no longer available for booking."],
+  RESOURCE_NOT_FOUND: ["RESOURCE_NOT_FOUND", "This resource no longer exists."],
+  RESOURCE_INACTIVE: ["RESOURCE_INACTIVE", "This resource is no longer available."],
+  RESOURCE_NOT_STANDALONE: ["RESOURCE_NOT_STANDALONE", "This resource can only be booked as an add-on."],
+  RESOURCE_NOT_LINKED: ["NOT_LINKED", "This resource is not available for this event type."],
+  BOOKING_NOT_FOUND: ["NOT_FOUND", "Booking not found."],
+  INVALID_TOKEN: ["INVALID_TOKEN", "Invalid booking link."],
+  INVALID_STATE: ["INVALID_STATE", "This booking can no longer be changed."],
+  INVALID_RANGE: ["INVALID_RANGE", "End time must be after start time."],
+  INVALID_INPUT: ["INVALID_INPUT", "Please check your details and try again."],
+};
+
+/**
+ * Rethrow a component failure as this gateway's ConvexError, chosen by the
+ * component's error code (`isBookingError`). Every try block around it wraps
+ * a component call only, so each ConvexError caught there is the
+ * component's. Unknown codes, plain Errors and anything else → BOOKING_FAILED.
  */
 function translateComponentError(error: unknown): never {
-  if (error instanceof ConvexError) throw error;
-  const message = error instanceof Error ? error.message : String(error);
-
-  const stateMatch = message.match(
-    /Cannot (reschedule|cancel) booking with status: (\w+)/
-  );
-  if (stateMatch) {
-    invalid(
-      "INVALID_STATE",
-      `This booking can no longer be changed (status: ${stateMatch[2]}).`
-    );
-  }
-  for (const [needle, code, text] of COMPONENT_ERRORS) {
-    if (message.includes(needle)) invalid(code, text);
+  if (isBookingError(error)) {
+    const mapped = COMPONENT_ERRORS[error.data.code];
+    if (mapped) invalid(mapped[0], mapped[1]);
   }
   invalid("BOOKING_FAILED", "Booking failed — please try again.");
 }
@@ -292,13 +298,9 @@ async function resolveAvailabilityContext(
 
   let eventType: EventTypeDoc | null = opts.eventType ?? null;
   if (!eventType && opts.eventTypeId) {
-    try {
-      eventType = await ctx.runQuery(components.booking.public.getEventType, {
-        eventTypeId: opts.eventTypeId,
-      });
-    } catch {
-      eventType = null;
-    }
+    eventType = await ctx.runQuery(components.booking.public.getEventType, {
+      eventTypeId: opts.eventTypeId,
+    });
     if (eventType && eventType.isActive === false) return null;
   }
 
@@ -425,24 +427,15 @@ function assertBookableRange(start: number, end: number): void {
 }
 
 /**
- * Conservative address syntax: exactly one "@", a non-empty local part, a
- * dotted domain without empty labels, no whitespace or control characters, at
- * most 254 characters. Plus-addresses, subdomains and IDN domains pass. Keep
- * in sync with the booking component's send-time recipient check, and import
- * that instead once a published @mrfinch/booking release exports it.
+ * The booker's details, trimmed and bounded. The email must pass
+ * `isSendableAddress` from @mrfinch/booking/emails, the screen the component's
+ * createBooking applies since 0.5.0 (INVALID_INPUT otherwise), so a bad
+ * address gets INVALID_EMAIL here instead.
  *
  * Syntax is not ownership: this does not stop a visitor from entering someone
  * else's address. That is why the sandbox sends no email (see the recipient
  * policy in app/docs/integrations/email).
  */
-function isSendableAddress(email: string): boolean {
-  if (email.length > 254 || /[\s\p{Cc}]/u.test(email)) return false;
-  const parts = email.split("@");
-  if (parts.length !== 2) return false;
-  const [local, domain] = parts;
-  return local.length > 0 && /^[^.]+(\.[^.]+)+$/.test(domain);
-}
-
 function sanitizeBooker(input: BookerInput): BookerInput {
   const name = input.name.trim();
   if (!name) invalid("NAME_REQUIRED", "Please enter your name.");
@@ -759,22 +752,13 @@ export const hasResourceEventTypeLink = publicQuery({
 });
 
 /**
- * Get a single event type by ID, or null if it does not exist.
- *
- * The component throws for an unknown ID, and a throwing query crashes the
- * Booker during render; null lets it show its "event deleted" dialog instead.
- * Other errors propagate unchanged.
+ * Get a single event type by ID, or null if it does not exist. The Booker
+ * shows null as a deleted event type; a throw would reach the error boundary.
  */
 export const getEventType = publicQuery({
   args: { eventTypeId: v.string() },
   handler: async (ctx, args) => {
-    try {
-      return await ctx.runQuery(components.booking.public.getEventType, args);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("Event type not found")) return null;
-      throw error;
-    }
+    return await ctx.runQuery(components.booking.public.getEventType, args);
   },
 });
 
