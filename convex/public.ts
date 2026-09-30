@@ -23,6 +23,11 @@
  *   Reschedule runs the full createBooking guard (including both limits) on
  *   the new time, since it writes a fresh booking row.
  *
+ * - The token-less booking reads (getBooking, getBookingByUid) return a
+ *   redacted view: no management token, no booker contact data. The uid is
+ *   shown to the booker as "Booking ID", so it is not a secret. Token holders
+ *   read the full booking through getBookingByToken.
+ *
  * Nothing here can wipe or reset the sandbox — that is internal.seed.* (cron).
  */
 import { v, ConvexError } from "convex/values";
@@ -43,6 +48,12 @@ const SLOT_MS = 15 * 60 * 1000;
 const PAST_GRACE_MS = 5 * 60 * 1000;
 /** Largest month-view window a client may request. */
 const MAX_MONTH_RANGE_MS = 62 * 24 * 60 * 60 * 1000;
+/**
+ * Largest range the raw getAvailability check accepts. The component reads
+ * one availability row per day of the range, so an unbounded anonymous range
+ * is unbounded work; the same 62 days as the month view.
+ */
+const MAX_AVAILABILITY_RANGE_MS = MAX_MONTH_RANGE_MS;
 /** Horizon when an event type sets no maxFutureMinutes (60 days). */
 const DEFAULT_MAX_FUTURE_MINUTES = 60 * 24 * 60;
 /** Anonymous createBooking: 5 bookings per email per 10 minutes. */
@@ -62,7 +73,7 @@ const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const SANDBOX_BOOKINGS_PER_HOUR = 500;
 const SANDBOX_WINDOW_MS = 60 * 60 * 1000;
 const SANDBOX_COUNTER_KEY = "sandbox:bookings";
-/** Presence: max slots a single heartbeat may hold. */
+/** Presence: max slots a single heartbeat may hold (or leave may release). */
 const MAX_PRESENCE_SLOTS = 32;
 /** The component's own reschedule-artifact cancellation reason. */
 const RESCHEDULE_SENTINEL = "Rescheduled to new time";
@@ -103,11 +114,15 @@ function invalid(code: string, message: string): never {
   throw new ConvexError({ code, message });
 }
 
-const isIsoDate = (s: string): boolean =>
-  ISO_DATE_RE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00.000Z`));
-
 const toIsoDateUtc = (ms: number): string =>
   new Date(ms).toISOString().slice(0, 10);
+
+/** A real calendar date — round-trips, so "2027-02-30" (→ 2 March) is rejected. */
+const isIsoDate = (s: string): boolean => {
+  if (!ISO_DATE_RE.test(s)) return false;
+  const ms = Date.parse(`${s}T00:00:00.000Z`);
+  return !Number.isNaN(ms) && toIsoDateUtc(ms) === s;
+};
 
 /** "YYYY-MM-DD" of a timestamp in an IANA zone. */
 const dateKeyInTz = (ms: number, tz: string): string =>
@@ -397,6 +412,25 @@ function assertBookableRange(start: number, end: number): void {
   }
 }
 
+/**
+ * Conservative address syntax: exactly one "@", a non-empty local part, a
+ * dotted domain without empty labels, no whitespace or control characters, at
+ * most 254 characters. Plus-addresses, subdomains and IDN domains pass. Keep
+ * in sync with the booking component's send-time recipient check, and import
+ * that instead once a published @mrfinch/booking release exports it.
+ *
+ * Syntax is not ownership: this does not stop a visitor from entering someone
+ * else's address. That is why the sandbox sends no email (see the recipient
+ * policy in app/docs/integrations/email).
+ */
+function isSendableAddress(email: string): boolean {
+  if (email.length > 254 || /[\s\p{Cc}]/u.test(email)) return false;
+  const parts = email.split("@");
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  return local.length > 0 && /^[^.]+(\.[^.]+)+$/.test(domain);
+}
+
 function sanitizeBooker(input: BookerInput): BookerInput {
   const name = input.name.trim();
   if (!name) invalid("NAME_REQUIRED", "Please enter your name.");
@@ -404,7 +438,7 @@ function sanitizeBooker(input: BookerInput): BookerInput {
     invalid("NAME_TOO_LONG", "Name is too long (max 120 characters).");
   }
   const email = input.email.trim();
-  if (!email || email.length > 254 || !email.includes("@")) {
+  if (!isSendableAddress(email)) {
     invalid("INVALID_EMAIL", "Please enter a valid email address.");
   }
   const phone = input.phone?.trim() || undefined;
@@ -896,6 +930,7 @@ export const getDaySlots = publicQuery({
 /**
  * Raw slot-collision check for a time range (ignores opening hours).
  * Kept for the docs demo; do not use it for UI availability.
+ * The range is capped at MAX_AVAILABILITY_RANGE_MS (RANGE_TOO_LARGE).
  */
 export const getAvailability = publicQuery({
   args: {
@@ -904,7 +939,23 @@ export const getAvailability = publicQuery({
     end: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getAvailability, args);
+    if (!Number.isFinite(args.start) || !Number.isFinite(args.end)) {
+      invalid("INVALID_TIME", "Invalid time value.");
+    }
+    if (args.end <= args.start) {
+      invalid("INVALID_RANGE", "End time must be after start time.");
+    }
+    if (args.end - args.start > MAX_AVAILABILITY_RANGE_MS) {
+      invalid(
+        "RANGE_TOO_LARGE",
+        `Availability can be checked for at most ${formatMinutes(MAX_AVAILABILITY_RANGE_MS / 60_000)} at a time.`
+      );
+    }
+    try {
+      return await ctx.runQuery(components.booking.public.getAvailability, args);
+    } catch (error) {
+      translateComponentError(error);
+    }
   },
 });
 
@@ -973,6 +1024,9 @@ export const leave = publicMutation({
     user: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.slots.length > MAX_PRESENCE_SLOTS) {
+      invalid("TOO_MANY_SLOTS", "Too many slots in one hold.");
+    }
     return await ctx.runMutation(components.booking.presence.leave, args);
   },
 });
@@ -1057,25 +1111,59 @@ export const createBooking = publicMutation({
 });
 
 /**
- * Get booking by ID
- * Public access (booking ID is effectively a secret)
+ * What a caller without the management token may see of a booking: an
+ * allowlist, so fields the component adds later stay private by default.
+ * Left out: managementToken (the bearer credential for cancel/reschedule),
+ * the booker's name, email, phone and notes, actorId (the booker's email) and
+ * the free-text cancellation reason.
+ */
+function toPublicBookingView(booking: BookingDoc) {
+  return {
+    _id: booking._id,
+    _creationTime: booking._creationTime,
+    uid: booking.uid,
+    status: booking.status,
+    eventTypeId: booking.eventTypeId,
+    eventTitle: booking.eventTitle,
+    eventDescription: booking.eventDescription,
+    resourceId: booking.resourceId,
+    organizationId: booking.organizationId,
+    start: booking.start,
+    end: booking.end,
+    timezone: booking.timezone,
+    location: booking.location,
+    rescheduleUid: booking.rescheduleUid,
+    createdAt: booking.createdAt,
+    updatedAt: booking.updatedAt,
+    cancelledAt: booking.cancelledAt,
+  };
+}
+
+/**
+ * Get booking by ID — redacted (see toPublicBookingView); anyone may call it.
  */
 export const getBooking = publicQuery({
   args: { bookingId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getBooking, {
+    const booking = await ctx.runQuery(components.booking.public.getBooking, {
       bookingId: args.bookingId,
     });
+    return booking && toPublicBookingView(booking);
   },
 });
 
 /**
- * Get booking by UID (confirmation code)
+ * Get booking by UID (confirmation code) — redacted (see toPublicBookingView).
+ * The uid is displayed as "Booking ID", so it must not unlock the token.
  */
 export const getBookingByUid = publicQuery({
   args: { uid: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getBookingByUid, args);
+    const booking = await ctx.runQuery(
+      components.booking.public.getBookingByUid,
+      args
+    );
+    return booking && toPublicBookingView(booking);
   },
 });
 

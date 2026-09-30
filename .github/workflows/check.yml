@@ -37,8 +37,8 @@ jobs:
       - name: Compile documentation examples
         run: npm run docs:check
 
-      # There are currently no standalone website tests. This still runs any
-      # tests added later; package regressions run in booking-component's CI.
+      # Website tests (tests/) cover the demo's Convex gateway; package
+      # regressions run in booking-component's CI.
       - name: Run website tests
         run: npm run test:run -- --passWithNoTests
 

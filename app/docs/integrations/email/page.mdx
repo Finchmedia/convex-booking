@@ -1,5 +1,6 @@
 <DocPage toc={[
   { title: "Enable Email", url: "#enable-email", depth: 2 },
+  { title: "Recipient Policy", url: "#recipient-policy", depth: 2 },
   { title: "Pass Configuration from the Host", url: "#pass-configuration-from-the-host", depth: 2 },
   { title: "Management Links", url: "#management-links", depth: 2 },
   { title: "Use Your Own Email Design", url: "#use-your-own-email-design", depth: 2 },
@@ -31,6 +32,21 @@ server.
 
 Resend is already nested inside the booking component. You do not need to mount
 another Resend component for these notifications.
+
+## Recipient Policy
+
+Notifications go to the address the guest typed into the booking form. Neither the
+component nor an address-syntax check verifies that the guest owns that address.
+On an anonymous booking page, anyone could otherwise make your sender mail a third
+party, with your domain's reputation at stake.
+
+Before enabling email for anonymous bookings, add a recipient policy in your host:
+for example, verify the address first (sign-in or a confirmation link), or combine
+a CAPTCHA with per-address and global rate limits. Also reject malformed addresses
+when the booking is created. The
+[reference gateway's](https://github.com/Finchmedia/convex-booking/blob/main/convex/public.ts)
+`sanitizeBooker` shows a conservative syntax check. The hosted demo has no such
+policy, so it sends no email.
 
 ## Pass Configuration from the Host
 
