@@ -111,8 +111,9 @@ between bookings, enforce them in your host's availability and write paths.
 Use `components.booking.multi_resource.createMultiResourceBooking` to reserve a
 bundle in one transaction: for example, one room plus two cameras.
 
-In 0.4.x the component checks that the event type exists and that every resource
-has capacity. It does not check the bookable setup: whether the event type is active,
+In 0.4.x the component checks that the event type exists, that every resource
+has capacity and that at least one resource is standalone (`isStandalone` is not
+`false`). It does not check the bookable setup: whether the event type is active,
 or whether each resource exists, is active and is linked to the event type. Your
 host function owns these [checks](#host-policies) and must run them for every
 requested resource, not only the first.

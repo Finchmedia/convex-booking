@@ -165,7 +165,8 @@ const booking = await ctx.runMutation(
 Pass the event type's `organizationId`: unlike `createBooking`, bundle creation
 does not derive it, and a bundle without it is missing from organization booking
 lists and never reaches organization-scoped hooks. Bundle creation checks inventory
-but not the [bookable setup](/docs/guides#multi-resource-booking): first check that
+and that at least one resource is standalone (`isStandalone` is not `false`), but
+not the [bookable setup](/docs/guides#multi-resource-booking): first check that
 every requested resource exists, is active and is linked to an active event type.
 
 `resources` must contain unique IDs and positive safe-integer quantities.
