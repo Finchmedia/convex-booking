@@ -95,12 +95,18 @@ pool, use `multi_resource.checkMultiResourceAvailability` instead.
 | --- | --- |
 | `public.createBooking` | Book one exclusive resource |
 | `public.createProvisionalBooking` | Hold an exclusive resource until your host confirms or expires it |
-| `public.getBooking` / `getBookingByUid` | Read a booking from authorized host code |
+| `public.getBooking` / `getBookingByUid` | Read the full booking from authorized host code |
 | `public.getBookingByToken` | Read a booking using its UID and management token |
 | `public.cancelBookingByToken` | Cancel using UID and token |
 | `public.rescheduleBooking` | Move a booking using its component document ID |
 | `public.rescheduleBookingByToken` | Move using UID and token |
 | `hooks.transitionBookingState` | Administer lifecycle transitions |
+
+`getBooking` and `getBookingByUid` return the whole record, including the
+management token and the guest's contact details, without checking any token. A
+UID alone is not a secret, so return their result only to a caller who has proven
+access. For anyone else, return a redacted view without those fields, as the
+reference gateway does; see [booking management links](/docs/authentication#booking-management-links).
 
 Creation takes epoch milliseconds for `start` and `end`, a timezone, event type,
 resource, booker details and location. It returns the booking document.
@@ -129,7 +135,9 @@ Both reschedule entry points move all booking items atomically: a conflict leave
 the original booking untouched. A successful move returns a new booking with a
 new UID, retaining its management token and resource quantities. Use the returned
 UID for subsequent management requests. Host wrappers must validate the new time
-against schedules, duration choices and notice periods too.
+against schedules, duration choices and notice periods too. Moves do not re-check
+the bookable setup; if your host does, check every item of a bundle, not only its
+primary `resourceId`.
 
 ## Multiple resources
 
@@ -141,6 +149,7 @@ const booking = await ctx.runMutation(
   components.booking.multi_resource.createMultiResourceBooking,
   {
     eventTypeId: "studio-session",
+    organizationId: "my-org", // not taken from the event type
     resources: [
       { resourceId: "studio-a", quantity: 1 },
       { resourceId: "camera-pool", quantity: 2 },
@@ -152,6 +161,12 @@ const booking = await ctx.runMutation(
   }
 );
 ```
+
+Pass the event type's `organizationId`: unlike `createBooking`, bundle creation
+does not derive it, and a bundle without it is missing from organization booking
+lists and never reaches organization-scoped hooks. Bundle creation checks inventory
+but not the [bookable setup](/docs/guides#multi-resource-booking): first check that
+every requested resource exists, is active and is linked to an active event type.
 
 `resources` must contain unique IDs and positive safe-integer quantities.
 Exclusive resources accept quantity 1. Pools use `isFungible: true` and a positive

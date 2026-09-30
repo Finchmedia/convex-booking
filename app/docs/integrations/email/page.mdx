@@ -43,7 +43,8 @@ party, with your domain's reputation at stake.
 Before enabling email for anonymous bookings, add a recipient policy in your host:
 for example, verify the address first (sign-in or a confirmation link), or combine
 a CAPTCHA with per-address and global rate limits. Also reject malformed addresses
-when the booking is created. The
+when the booking is created: notifications are sent in batches, and one invalid
+recipient can fail a whole batch, including other guests' messages. The
 [reference gateway's](https://github.com/Finchmedia/convex-booking/blob/main/convex/public.ts)
 `sanitizeBooker` shows a conservative syntax check. The hosted demo has no such
 policy, so it sends no email.
@@ -69,6 +70,14 @@ export function bookingEmailOptions() {
 Pass `resendOptions: bookingEmailOptions()` when calling booking creation,
 cancellation, rescheduling or state-transition mutations that accept it. Do not
 accept the API key or sender configuration from browser arguments.
+
+Use one Resend account (API key) per booking component instance. All notifications
+share the component's Resend queue, and waiting messages are sent together with
+the most recently passed key. Different keys, such as one per organization, can
+therefore send one organization's mail through another's account, or fail both
+when that account rejects a sender. Rotating the key is safe. If organizations need
+their own accounts, deliver their mail from a [hook](#notifications-and-hooks)
+instead of passing `resendOptions`.
 
 Without `resendOptions.apiKey`, the built-in email handler skips delivery.
 An email send failure does not undo the booking; inspect delivery separately.

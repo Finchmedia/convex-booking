@@ -98,8 +98,10 @@ keep the `bookingRateLimits` schema table if you use that gateway.
 
 For a private or multi-organization app, also scope every read and write to the
 resources the caller may access. The reference gateway is for a public catalog;
-it does not determine organization membership for you. Apply the same schedule
-and access checks to every resource when adding bundle booking.
+it does not determine organization membership for you. When you add bundle
+booking, run the bookable-setup, schedule and access checks for every resource in
+the bundle: the component does not run them for bundles (see
+[Multi-Resource Booking](#multi-resource-booking)).
 
 `bufferBefore` and `bufferAfter` are stored configuration only. If you need gaps
 between bookings, enforce them in your host's availability and write paths.
@@ -107,8 +109,18 @@ between bookings, enforce them in your host's availability and write paths.
 ## Multi-Resource Booking
 
 Use `components.booking.multi_resource.createMultiResourceBooking` to reserve a
-bundle in one transaction: for example, one room plus two cameras. Every requested
-resource must be linked to the event type.
+bundle in one transaction: for example, one room plus two cameras.
+
+In 0.4.x the component checks that the event type exists and that every resource
+has capacity. It does not check the bookable setup: whether the event type is active,
+or whether each resource exists, is active and is linked to the event type. Your
+host function owns these [checks](#host-policies) and must run them for every
+requested resource, not only the first.
+
+Pass the event type's `organizationId` too. Unlike `createBooking`, bundle creation
+does not take it from the event type. A bundle without it is missing from the
+organization's booking lists, and organization-scoped hooks do not receive its
+events.
 
 For a camera pool, create a resource with `isFungible: true` and `quantity: 4`.
 A request for two cameras then consumes two of its four units. Exclusive resources
@@ -154,6 +166,7 @@ export const bookRoomWithCameras = internalMutation({
     {
       ...args,
       eventTypeId: "quick-meeting",
+      organizationId: "my-org",
       timezone: "America/New_York",
       resources: [
         { resourceId: "meeting-room", quantity: 1 },
@@ -168,6 +181,9 @@ Check bundle inventory with `checkMultiResourceAvailability`. Use
 `getBookingWithItems` to read its resource quantities from an authorized host
 function. Cancellation releases every item; rescheduling moves every item
 atomically, and a conflicting destination leaves the original booking intact.
+The component does not re-check the bookable setup when moving either. When your
+host re-checks before moving a bundle, check every item from `getBookingWithItems`:
+the booking's `resourceId` is only its first (primary) resource.
 
 The bundled Booker is a single-resource flow. Build your own resource and quantity
 selection for bundles or pools. Ordinary and provisional single-resource creation
