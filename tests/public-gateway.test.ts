@@ -19,7 +19,7 @@ const booking = {
   start: Date.UTC(2030, 0, 7, 10),
   end: Date.UTC(2030, 0, 7, 11),
   timezone: "Europe/Berlin",
-  location: { type: "address", value: "Studio A" },
+  location: { type: "address", value: "Flat 3, Hauptstrasse 5" },
   bookerName: "Grace Guest",
   bookerEmail: "grace.guest@example.com",
   bookerPhone: "+49 30 5550123",
@@ -38,6 +38,7 @@ const PRIVATE_VALUES = [
   booking.bookerPhone,
   booking.bookerNotes,
   booking.cancellationReason,
+  booking.location.value,
 ];
 
 /** Component stubs that behave like the real token check. */
@@ -80,8 +81,9 @@ describe("token-less booking reads (H-01)", () => {
         eventTitle: "Studio session",
         eventTypeId: "studio-session",
         resourceId: "studio-a",
-        location: { type: "address", value: "Studio A" },
+        location: { type: "address" },
       });
+      expect(view).not.toHaveProperty("location.value");
     });
   }
 

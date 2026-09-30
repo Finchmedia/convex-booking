@@ -1136,8 +1136,9 @@ export const createBooking = publicMutation({
  * What a caller without the management token may see of a booking: an
  * allowlist, so fields the component adds later stay private by default.
  * Left out: managementToken (the bearer credential for cancel/reschedule),
- * the booker's name, email, phone and notes, actorId (the booker's email) and
- * the free-text cancellation reason.
+ * the booker's name, email, phone and notes, actorId (the booker's email), the
+ * free-text cancellation reason and the location value (it comes from the
+ * booking request and can hold an address or phone number); only its type stays.
  */
 function toPublicBookingView(booking: BookingDoc) {
   return {
@@ -1153,7 +1154,7 @@ function toPublicBookingView(booking: BookingDoc) {
     start: booking.start,
     end: booking.end,
     timezone: booking.timezone,
-    location: booking.location,
+    location: { type: booking.location.type },
     rescheduleUid: booking.rescheduleUid,
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
