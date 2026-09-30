@@ -97,7 +97,7 @@ Each row is one entry of the CHANGELOG's 0.5.0 _Upgrading_ section.
 
 | Change | What to do |
 | --- | --- |
-| One set of rules for bookings, bundles (every item), moves and confirmations: an existing, active event type and existing, active resources linked to it and in its organization when it has one, one of them standalone. Cancel, decline and expiry stay unchecked. The legacy `createReservation` checks none of these rules, and its bookings (event type ID `legacy`) keep that exemption when moved | Repair what `booking_eligibility` lists before the deploy; reactivate or relink before moving or confirming such a booking |
+| One set of rules for bookings, bundles (every item), moves and confirmations: an existing, active event type and existing, active resources linked to it and in its organization when it has one, one of them standalone. Cancel, decline and expiry stay unchecked. The legacy `createReservation` checks none of these rules, and its bookings (event type ID `legacy`) keep that exemption when moved, as long as no event type has the ID `legacy`; once one does, they follow these rules | Repair what `booking_eligibility` lists before the deploy; reactivate or relink before moving or confirming such a booking |
 | No bookings across organizations: links, bookings and moves reject another organization's resource (`ORGANIZATION_MISMATCH`) | Omit a bundle's `organizationId` or pass the event type's; unlink the pairs `link_integrity` lists as `crossOrganization` |
 | Booking statuses are a closed set of six (`BookingStatus`); `toStatus` and `status` filters reject other strings | Declare statuses with `bookingStatusValidator`; omit `status` instead of passing `""` |
 
@@ -213,9 +213,12 @@ Roll back your host code and the package together, to 0.4.3:
 
 1. Unregister every hook registered with `payloadVersion: 2`; `listHooks` shows
    it. Convex refuses the 0.4.x schema while a hook row has one.
-2. Let queued `triggerHooks` jobs finish; they run right after their booking
-   write. 0.5.0 queues them with an argument 0.4.x rejects, so a job still queued
-   when 0.4.x deploys fails, and the emails and hooks of its event are lost.
+2. Stop every write that notifies (booking pages, admin actions and any
+   scheduled jobs of yours that book, move or cancel) and keep it stopped until
+   0.4.x is deployed. Then let queued `triggerHooks` jobs finish; they run
+   right after their booking write. 0.5.0 queues them with an argument 0.4.x
+   rejects, so a job still queued when 0.4.x deploys fails, and the emails and
+   hooks of its event are lost.
 3. Do not go back further than 0.4.3. From 0.4.3 on, every moved booking carries
    `rescheduledToUid`, which the 0.4.2 schema does not know, so Convex refuses it
    once a booking has been moved. If you upgraded from 0.4.2, a plain revert of
