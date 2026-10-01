@@ -3,7 +3,9 @@ import { ConvexError } from "convex/values";
 /**
  * Fallback copy per error code thrown by convex/public.ts. The server already
  * sends a readable `data.message` with every code; this map only covers the
- * case where a code arrives without one.
+ * case where a code arrives without one. The admin wrappers in convex/admin.ts
+ * pass component errors on, and since 0.5.0 each carries the component's
+ * `data.message`, so the dashboard shows that text and needs no entry here.
  */
 const CODE_MESSAGES: Record<string, string> = {
   SLOT_NOT_AVAILABLE: "This time slot is no longer available — please pick another one.",
@@ -14,6 +16,7 @@ const CODE_MESSAGES: Record<string, string> = {
   ALREADY_STARTED: "This booking has already started and can no longer be changed.",
   INVALID_DURATION: "This duration is not offered for this event type.",
   INVALID_RANGE: "End time must be after start time.",
+  RANGE_TOO_LARGE: "That time range is too long — please check a shorter one.",
   INVALID_TIME: "Invalid time.",
   INVALID_TIMEZONE: "Invalid timezone.",
   INVALID_EMAIL: "Please enter a valid email address.",

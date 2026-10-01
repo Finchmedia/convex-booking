@@ -15,11 +15,12 @@
  * so the wipe must precede the reseed. Nothing here is publicly callable.
  *
  * The wipe is a single transaction (a component mutation called from a
- * mutation joins the caller's transaction) and @mrfinch/booking 0.3.0 offers
- * no bounded/resumable variant, so the INPUT is bounded instead: public.ts
- * caps booking writes per hour (SANDBOX_BUSY). Should the wipe still fail,
- * resetSandbox logs it distinctly and re-throws — the reseed is skipped on
- * purpose (it would throw on duplicate ids) and the cron run shows as failed.
+ * mutation joins the caller's transaction) and @mrfinch/booking (0.5.0
+ * included) offers no bounded/resumable variant, so the INPUT is bounded
+ * instead: public.ts caps booking writes per hour (SANDBOX_BUSY). Should the
+ * wipe still fail, resetSandbox logs it distinctly and re-throws — the reseed
+ * is skipped on purpose (it would throw on duplicate ids) and the cron run
+ * shows as failed.
  */
 import { v } from "convex/values";
 import {

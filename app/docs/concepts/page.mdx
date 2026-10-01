@@ -31,13 +31,17 @@ exclusive resource. Quantities and capacities are positive safe integers.
 ## Schedules
 
 A schedule describes weekly opening hours in an IANA timezone, such as weekdays
-09:00–17:00 in `America/New_York`. Date overrides close a particular day or replace
-its hours, for example for a holiday.
+09:00–17:00 in `America/New_York`. Date overrides close a particular day
+(`unavailable`) or replace its hours (`custom`, with at least one window), for
+example for a holiday.
 
-Attach a schedule to an event type using `scheduleId`. The reference host gateway
-combines the schedule with occupied inventory to produce bookable slots. Keep
-that same policy check on writes so a direct API call cannot book outside the
-hours shown in the calendar.
+Attach a schedule to an event type using `scheduleId`. The schedule must exist:
+event-type writes reject an unknown `scheduleId` with `SCHEDULE_NOT_FOUND`, and
+`deleteSchedule` refuses while an event type uses the schedule
+(`SCHEDULE_IN_USE`). The reference host gateway combines the schedule with
+occupied inventory to produce bookable slots. The component does not check
+opening hours when it books, so keep that same policy check on writes: a direct
+API call then cannot book outside the hours shown in the calendar.
 
 ## Event Types
 
@@ -46,7 +50,10 @@ and whether it needs approval. For example, a room might offer both a 30-minute
 meeting and a 90-minute workshop.
 
 Link each event type to the resources it can use. Creating both records is not
-enough; the link makes the combination bookable.
+enough; the link makes the combination bookable. An event type with an
+`organizationId` links only resources of that organization
+(`ORGANIZATION_MISMATCH`). Deleting a resource or event type deletes its links,
+so an ID created again starts unlinked.
 
 | Field | Meaning |
 | --- | --- |
@@ -56,6 +63,13 @@ enough; the link makes the combination bookable.
 | `requiresConfirmation` | Create a pending booking for approval |
 | `minNoticeMinutes`, `maxFutureMinutes` | Notice and horizon settings enforced by the host gateway |
 | `bufferBefore`, `bufferAfter` | Stored settings; your host must enforce any gap |
+
+Event-type writes check these values: lengths, length options and the slot
+interval are whole minutes above 0, buffers and notice 0 or more, the horizon
+above 0, and `lengthInMinutes` is one of `lengthInMinutesOptions` when there are
+any (`INVALID_INPUT`). `updateEventType` changes only the fields you pass; `null`
+removes `description`, `scheduleId`, the buffers, `minNoticeMinutes` or
+`maxFutureMinutes`.
 
 ## Inventory and Time
 
@@ -77,12 +91,23 @@ requested.
 A booking is `confirmed` immediately, or `pending` when its event type requires
 approval. Both occupy inventory. A `provisional` booking also occupies inventory
 while a host-controlled confirmation step is outstanding; arrange expiry in your
-host flow if it is not completed.
+host flow if it is not completed. Every booking has one of six statuses:
+`provisional`, `pending`, `confirmed`, `cancelled`, `declined` or `completed`.
+`@mrfinch/booking` exports them as the `BookingStatus` type and
+`bookingStatusValidator` for your host code.
+
+Confirming a booking, submitting a provisional hold as a request and moving a
+booking check the booking rules again: an active event type, and active resources
+that are linked to it and belong to its organization. Bookings from the legacy
+`createReservation` stay exempt when moved. Cancelling, declining and
+expiring are always allowed, and deactivating a resource or event type never ends
+an existing booking.
 
 Cancellation or decline releases the booking's inventory. Repeating a terminal
 operation cannot release inventory belonging to a later booking. Rescheduling
 creates a new booking, retains its status and resource quantities, and cancels
-the original in the same transaction.
+the original in the same transaction; the original names its successor in
+`rescheduledToUid`.
 
 A management token authorizes guest access to the booking's management actions.
 Treat it as a secret and share it only with the booker. See
@@ -99,9 +124,15 @@ a presence heartbeat does not guarantee a reservation.
 
 ## Your Host App
 
-The component owns inventory and booking records. Your app owns authentication,
-organization access, opening-hours policy and abuse limits. It calls the
-component through `components.booking.*` from host queries and mutations.
+The component owns inventory and booking records. It guarantees the booking rules
+and organization consistency on every path except the legacy `createReservation`
+([API reference](/docs/api#bookings)): no booking holds resources of two
+organizations, or of another organization than its event type's. Authorization
+stays with your app: it owns authentication, organization access, opening-hours
+policy and abuse limits. Your app calls the component through `components.booking.*`
+from host queries and mutations, and maps the component's
+[error codes](https://github.com/Finchmedia/booking-component/blob/main/docs/errors.md)
+to the messages its users see.
 
 Start with the [quickstart](/docs/getting-started), then review the
 [host policies](/docs/guides#host-policies) and [authorization guide](/docs/authentication)

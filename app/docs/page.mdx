@@ -18,8 +18,13 @@ Use the included React **Booker**, or build your own interface against its API.
 - A React calendar, duration picker, booking form and live presence indicators.
 - Optional email notifications through Resend.
 
-Your application decides who can book or administer each resource and which
-booking policies apply. The component checks and updates inventory atomically.
+The component enforces the booking rules whenever a booking is created, moved or
+confirmed, bundles included: an active event type, and active resources that are
+linked to it and belong to its organization. The one exception is the legacy
+`createReservation`, which checks none of these rules
+([API reference](/docs/api#bookings)). The component checks and updates inventory
+atomically. Your application decides who can book or administer each resource
+and sets booking policy (opening hours, notice) and abuse limits.
 
 ## Three concepts
 
@@ -29,19 +34,22 @@ booking policies apply. The component checks and updates inventory atomically.
 | **Schedule** — when it is available | Monday to Friday, 09:00–17:00 in Europe/Berlin |
 | **Event type** — how it can be booked | A 30-minute meeting linked to that room |
 
-A resource must be **linked to an event type** before it can be booked.
+A resource must be **linked to an event type** before it can be booked, and both
+must be active; only the legacy `createReservation` skips this.
 The [concepts guide](/docs/concepts) explains durations, quantities and timezones.
 
 ## Start here
 
 Follow the [Quick Start](/docs/getting-started) to install the component and render
-a working booking page. You need a Convex app, Convex 1.46 or newer, and React if
-you use the included UI.
+a working booking page. You need a Convex app with Convex 1.46 or newer and
+`convex-helpers`, plus React if you use the included UI.
 
 Prefer to explore first? [Try the demo](/book) or [run it locally](/docs/demo).
 The hosted demo is a shared sandbox that resets every hour.
 
 For custom integrations, see the [backend API](/docs/api),
 [React components](/docs/components) and [authorization guide](/docs/authentication).
+Coming from 0.4.x? Read [Upgrading to 0.5](/docs/upgrading) before you bump the
+package.
 
 </DocPage>

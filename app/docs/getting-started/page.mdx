@@ -16,13 +16,14 @@ For a complete app you can run immediately, use the [demo setup](/docs/demo).
 ## 1. Install
 
 ```bash
-npm install @mrfinch/booking convex@^1.46.0
+npm install @mrfinch/booking convex@^1.46.0 convex-helpers@^0.1.124
 ```
 
-For the React Booker, also install its UI dependencies:
+`convex-helpers` is required: the component's paged booking list uses its
+paginator. For the React Booker, also install its UI dependencies:
 
 ```bash
-npm install convex-helpers@^0.1.124 react-hook-form@^7.88.0 @hookform/resolvers@^5.9.1 lucide-react@^1.47.0
+npm install react-hook-form@^7.88.0 @hookform/resolvers@^5.9.1 lucide-react@^1.47.0
 ```
 
 React 18 and 19 are supported; keep React DOM on the same version as React.
@@ -72,7 +73,10 @@ export default defineSchema({
 
 The reference gateway includes the full API expected by the Booker: availability,
 setup lookups, booking creation, presence and token-protected management.
-It checks schedules, notice periods and booking horizons. Before using it for your
+It checks schedules, notice periods and booking horizons, maps the component's
+error codes to its own messages, and passes a booker's `rescheduleContext` on to
+the slot queries. The component itself enforces the booking rules, such as an
+active event type and a linked, active resource. Before using the gateway for your
 own service, adapt its rate limits and resource visibility to your product; see
 [host policies](/docs/guides#host-policies).
 
@@ -128,6 +132,12 @@ export default function BookingPage() {
 }
 ```
 
+`BookingProvider` checks `publicApi` at compile time: each function the Booker and
+Calendar call must accept the arguments they send and return the fields they read,
+so a gateway that does not fit is a type error naming the function. Admin operations
+come only from a separate `adminApi`, and `availabilityContext` is off by default;
+see [BookingProvider](/docs/components#bookingprovider).
+
 The UI uses Tailwind and your theme's color tokens. With Tailwind 4, include the
 package in `app/globals.css`:
 
@@ -141,8 +151,12 @@ for the required color tokens if your app does not already define them. Open
 `/book`, select a date and time, and submit a booking to see its confirmation.
 
 For cancellation and rescheduling screens, use the Booker
-`onBookingComplete(booking)` callback to access the returned `uid` and
-`managementToken`. Add token-based management routes using the
+`onBookingComplete(booking)` callback. It runs after a booking is created or moved
+and receives the result of your `createBooking` or `rescheduleBookingByToken` as a
+`BookingView`: `uid`, `status`, `start`, `end`, `timezone` and `bookerName` are
+always there, other fields only if your gateway returns them. The reference
+gateway returns the `managementToken`; check for it before building a link. Add
+token-based management routes using the
 [management-page examples](/docs/integrations/email#management-links), then link to
 them from your confirmation screen or emails.
 

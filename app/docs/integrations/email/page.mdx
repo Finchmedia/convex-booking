@@ -1,5 +1,6 @@
 <DocPage toc={[
   { title: "Enable Email", url: "#enable-email", depth: 2 },
+  { title: "Recipient Policy", url: "#recipient-policy", depth: 2 },
   { title: "Pass Configuration from the Host", url: "#pass-configuration-from-the-host", depth: 2 },
   { title: "Management Links", url: "#management-links", depth: 2 },
   { title: "Use Your Own Email Design", url: "#use-your-own-email-design", depth: 2 },
@@ -32,6 +33,26 @@ server.
 Resend is already nested inside the booking component. You do not need to mount
 another Resend component for these notifications.
 
+## Recipient Policy
+
+Notifications go to the address the guest typed into the booking form. Neither the
+component nor an address-syntax check verifies that the guest owns that address.
+On an anonymous booking page, anyone could otherwise make your sender mail a third
+party, with your domain's reputation at stake.
+
+Before enabling email for anonymous bookings, add a recipient policy in your host:
+for example, verify the address first (sign-in or a confirmation link), or combine
+a CAPTCHA with per-address and global rate limits. The hosted demo has no such
+policy, so it sends no email.
+
+The component checks only the syntax. Since 0.5.0, new bookings reject a booker
+email that fails the built-in mail's screen (one `@`, a domain of 1–63-character
+labels, no spaces) with `INVALID_INPUT`, and built-in mail skips such an address,
+so it cannot fail a batch that holds other guests' messages. The screen is exported
+as `isSendableAddress` from `@mrfinch/booking/emails`. The
+[reference gateway's](https://github.com/Finchmedia/convex-booking/blob/main/convex/public.ts)
+`sanitizeBooker` applies it before calling the component, to return its own error.
+
 ## Pass Configuration from the Host
 
 The [reference gateway](https://github.com/Finchmedia/convex-booking/blob/main/convex/public.ts)
@@ -54,12 +75,23 @@ Pass `resendOptions: bookingEmailOptions()` when calling booking creation,
 cancellation, rescheduling or state-transition mutations that accept it. Do not
 accept the API key or sender configuration from browser arguments.
 
+Use one Resend account (API key) per booking component instance. All notifications
+share the component's Resend queue, and waiting messages are sent together with
+the most recently passed key. Different keys, such as one per organization, can
+therefore send one organization's mail through another's account, or fail both
+when that account rejects a sender. Rotating the key is safe. If organizations need
+their own accounts, deliver their mail from a [hook](#notifications-and-hooks)
+instead of passing `resendOptions`.
+
 Without `resendOptions.apiKey`, the built-in email handler skips delivery.
 An email send failure does not undo the booking; inspect delivery separately.
 
 ## Management Links
 
-Set `baseUrl` to your app's public origin, without a trailing slash. Built-in
+Set `baseUrl` to your app's public origin, such as `https://yourdomain.com`; a
+trailing slash, query string or hash is dropped. A `baseUrl` that is not an absolute
+`http(s)` URL, or contains credentials, yields no links: built-in emails then have
+no buttons, a renderer gets no `email.links`, and a warning is logged. Built-in
 templates use these routes, with the booking's secret token in the query string:
 
 ```text
@@ -151,6 +183,7 @@ The built-in notification follows the booking lifecycle:
 | --- | --- |
 | Create a confirmed booking | Confirmation |
 | Create a pending booking | Awaiting approval |
+| Submit a provisional booking for approval (to `pending`) | Awaiting approval |
 | Confirm a pending booking | Approval |
 | Confirm a provisional booking | Confirmation |
 | Decline, cancel or reschedule | Matching update |
@@ -161,13 +194,26 @@ means the booking exists; it is not confirmation that the email reached an inbox
 For additional side effects, such as an organizer notification, register a host **mutation function handle** with
 `components.booking.hooks.registerHook`. Hooks receive lifecycle payloads such as
 `booking.created`, `booking.confirmed` or `booking.cancelled`; these are Convex
-functions, not HTTP webhook URLs. Keep registration internal or administrator-only.
-An organization-scoped hook receives only that organization's events; a hook
-without `organizationId` is global.
+functions, not HTTP webhook URLs. Keep registration internal or administrator-only:
+every payload includes the guest's contact details, and the default version 1
+payloads also carry the booking's management token for most events, so whoever can
+register a hook can read and manage every matching booking. The demo therefore
+offers hook registration only as internal functions, not to guest administrators.
+Register with `payloadVersion: 2` for one payload shape per event, without the
+token; a handler can then declare `args: bookingHookEventV2` from `@mrfinch/booking`.
 
-The [hook implementation](https://github.com/Finchmedia/booking-component/blob/main/src/component/hooks.ts)
-and [email templates](https://github.com/Finchmedia/booking-component/tree/main/src/component/emails/templates)
-are the source for payloads and template behavior. If your hook takes over guest
+An organization-scoped hook receives only that organization's events; a hook
+without `organizationId` is global. A booking belongs to its event type's
+organization. Since 0.5.0, a booking stored with another organization or none is
+given its event type's organization before its next event when all its resources
+belong to it, and that organization's hooks receive the event. Otherwise it keeps
+the stored organization.
+
+The [version 1](https://github.com/Finchmedia/booking-component/blob/main/docs/hook-payloads-v1.md)
+and [version 2](https://github.com/Finchmedia/booking-component/blob/main/docs/hook-payloads-v2.md)
+payload references list every shape and emitter; the
+[email templates](https://github.com/Finchmedia/booking-component/tree/main/src/component/emails/templates)
+are the source for template behavior. If your hook takes over guest
 delivery entirely, omit built-in `resendOptions` to avoid sending twice. For a
 different guest email design alone, use the renderer above.
 

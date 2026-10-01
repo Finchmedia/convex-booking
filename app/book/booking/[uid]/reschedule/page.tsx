@@ -9,14 +9,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, AlertCircle, Calendar, Clock } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { BookingErrorToaster } from "@/components/booking-error-toaster";
 import { Booker, BookingProvider, type Booking } from "@mrfinch/booking/react";
 
 /**
- * Only pending/confirmed bookings can be rescheduled. The component reports
- * `status` as a plain `string`; this guard is the one runtime check the page
- * makes and also narrows the row to the literal union the React `Booking`
- * type (and therefore the Booker) expects.
+ * Only pending/confirmed bookings can be rescheduled. This guard is the one
+ * runtime check the page makes before it renders the Booker; the gateway's
+ * rescheduleBookingByToken enforces the same rule.
  */
 const RESCHEDULABLE_STATUSES = ["pending", "confirmed"] as const;
 type ReschedulableStatus = (typeof RESCHEDULABLE_STATUSES)[number];
@@ -32,7 +30,11 @@ export default function RescheduleBookingPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const uid = params.uid as string;
-  const token = searchParams.get('token') || "";
+  // Trimmed like the gateway's token check. The Booker sends this token as
+  // rescheduleContext, which the component compares exactly: with trailing
+  // whitespace (a %0A added by a mail client) the page would load, but the
+  // calendar would not free this booking's own slots.
+  const token = (searchParams.get('token') || "").trim();
 
   const booking = useQuery(
     api.public.getBookingByToken,
@@ -180,23 +182,28 @@ export default function RescheduleBookingPage() {
           </CardContent>
         </Card>
 
-        {/* Booker Component in Reschedule Mode (errors toasted by BookingErrorToaster) */}
-        <BookingErrorToaster>
-          <BookingProvider publicApi={api.public}>
-            <Booker
-              eventTypeId={booking.eventTypeId}
-              resourceId={booking.resourceId}
-              showHeader={false}
-              originalBooking={originalBooking}
-              reuseBookerInfo={false}
-              onBookingComplete={(newBooking) => {
-                // Redirect back to view page after reschedule
-                // Use the NEW booking's uid (reschedule creates a new booking)
-                router.push(`/book/booking/${newBooking.uid}?token=${encodeURIComponent(token)}`);
-              }}
-            />
-          </BookingProvider>
-        </BookingErrorToaster>
+        {/* Booker Component in Reschedule Mode. It shows a failed move itself.
+            availabilityContext makes the Calendar send eventTypeId and the
+            booker's rescheduleContext ({ uid, token }) to getMonthAvailability
+            and getDaySlots, so times that overlap this booking are offered.
+            Both gateway queries declare the two arguments. `convex deploy
+            --cmd` (vercel.json) builds first and pushes the functions after,
+            and Vercel serves the page only once that whole step succeeds, so
+            the validators are live before this page is. */}
+        <BookingProvider publicApi={api.public} availabilityContext>
+          <Booker
+            eventTypeId={booking.eventTypeId}
+            resourceId={booking.resourceId}
+            showHeader={false}
+            originalBooking={originalBooking}
+            reuseBookerInfo={false}
+            onBookingComplete={(newBooking) => {
+              // Redirect back to view page after reschedule
+              // Use the NEW booking's uid (reschedule creates a new booking)
+              router.push(`/book/booking/${newBooking.uid}?token=${encodeURIComponent(token)}`);
+            }}
+          />
+        </BookingProvider>
       </div>
     </div>
   );

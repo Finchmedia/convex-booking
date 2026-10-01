@@ -13,7 +13,7 @@ maintained in [Finchmedia/booking-component](https://github.com/Finchmedia/booki
 ## Add the component to your app
 
 ```bash
-npm install @mrfinch/booking convex@^1.46.0
+npm install @mrfinch/booking convex@^1.46.0 convex-helpers@^0.1.124
 ```
 
 Follow the [Quick Start](https://convexbooking.dev/docs/getting-started) for a

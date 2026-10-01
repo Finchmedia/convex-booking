@@ -105,11 +105,11 @@ export default function ViewBookingPage() {
   const { date, time } = formatDateTime(booking.start, booking.timezone);
   const isPast = booking.start <= now;
   const canModify = !["cancelled", "completed", "declined"].includes(booking.status) && !isPast;
-  // The gateway uses the component's default reschedule reason. rescheduleUid
-  // points BACK to the previous booking, so it is not proof of a later move.
+  // A move cancels the original and sets its rescheduledToUid to the new
+  // booking's uid. (rescheduleUid points BACK to the previous booking, so it is
+  // not proof of a later move.)
   const wasRescheduled =
-    booking.status === "cancelled" &&
-    booking.cancellationReason === "Rescheduled to new time";
+    booking.status === "cancelled" && booking.rescheduledToUid !== undefined;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-card to-background">
@@ -158,6 +158,8 @@ export default function ViewBookingPage() {
                     {booking.location.type === 'inPerson' && 'In-Person Meeting'}
                     {booking.location.type === 'phone' && 'Phone Call'}
                     {booking.location.type === 'link' && 'Video Call'}
+                    {/* The Booker books every location as type "address" */}
+                    {booking.location.type === 'address' && 'Location'}
                   </p>
                   {booking.location.value && (
                     <p className="text-sm text-muted-foreground">{booking.location.value}</p>

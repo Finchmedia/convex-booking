@@ -7,10 +7,12 @@
  * Pattern:
  * - adminQuery: Auth + role check for reads
  * - adminMutation: Auth + admin role for writes
+ * - internalMutation: hook management — not callable by (guest) admins
  */
 import { v } from "convex/values";
+import { bookingStatusValidator } from "@mrfinch/booking";
 import { components } from "./_generated/api";
-import { adminQuery, adminMutation } from "./functions";
+import { adminQuery, adminMutation, internalMutation } from "./functions";
 
 // ============================================
 // RESOURCES (Admin CRUD)
@@ -469,7 +471,7 @@ export const createDateOverride = adminMutation({
   args: {
     scheduleId: v.string(),
     date: v.string(),
-    type: v.string(),
+    type: v.union(v.literal("unavailable"), v.literal("custom")),
     customHours: v.optional(
       v.array(
         v.object({
@@ -518,7 +520,7 @@ export const listBookings = adminQuery({
   args: {
     organizationId: v.optional(v.string()),
     resourceId: v.optional(v.string()),
-    status: v.optional(v.string()),
+    status: v.optional(bookingStatusValidator),
     dateFrom: v.optional(v.number()),
     dateTo: v.optional(v.number()),
     eventTypeId: v.optional(v.string()),
@@ -547,7 +549,7 @@ export const getBooking = adminQuery({
 export const transitionBookingState = adminMutation({
   args: {
     bookingId: v.string(),
-    toStatus: v.string(),
+    toStatus: bookingStatusValidator,
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -635,8 +637,10 @@ export const declineBooking = adminMutation({
 export const cancelReservation = adminMutation({
   args: { reservationId: v.string() },
   handler: async (ctx, args) => {
+    const { user } = ctx;
     return await ctx.runMutation(components.booking.public.cancelReservation, {
       reservationId: args.reservationId,
+      cancelledBy: user.userId, // History actor (the component defaults to "unknown")
       resendOptions: process.env.RESEND_API_KEY
         ? {
             apiKey: process.env.RESEND_API_KEY,
@@ -659,6 +663,7 @@ export const rescheduleBooking = adminMutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const { user } = ctx;
     return await ctx.runMutation(
       components.booking.public.rescheduleBooking,
       {
@@ -666,6 +671,7 @@ export const rescheduleBooking = adminMutation({
         newStart: args.newStart,
         newEnd: args.newEnd,
         reason: args.reason,
+        changedBy: user.userId, // History actor (the component defaults to "system")
         resendOptions: process.env.RESEND_API_KEY
           ? {
               apiKey: process.env.RESEND_API_KEY,
@@ -712,13 +718,19 @@ export const getActivePresenceCount = adminQuery({
 });
 
 // ============================================
-// HOOKS (Admin)
+// HOOKS (internal only)
 // ============================================
+//
+// Not on the guest-admin surface: anyone can "Continue as guest admin", and a
+// registered hook receives every matching booking's payload — including the
+// management token and the booker's contact data. Operators manage hooks from
+// server code (with a handle from createFunctionHandle), the CLI or the
+// dashboard.
 
 /**
- * Register a webhook for booking events
+ * Register a hook (a mutation function handle) for booking events
  */
-export const registerHook = adminMutation({
+export const registerHook = internalMutation({
   args: {
     eventType: v.string(),
     functionHandle: v.string(),
@@ -730,9 +742,9 @@ export const registerHook = adminMutation({
 });
 
 /**
- * Unregister a webhook
+ * Unregister a hook
  */
-export const unregisterHook = adminMutation({
+export const unregisterHook = internalMutation({
   args: { hookId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.runMutation(components.booking.hooks.unregisterHook, {

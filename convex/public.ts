@@ -5,28 +5,41 @@
  *
  * - Reads (resources, event types, availability, presence) pass through to the
  *   @mrfinch/booking component. The availability wrappers are SCHEDULE-AWARE
- *   on the server: the React Booker only sends resourceId/date/eventLength/
- *   slotInterval, so this module resolves the resource → its organization's
- *   default schedule → `resourceTimezone` + `scheduleId` (month view) /
- *   `availableSlots` (day view). Without a schedule the component's legacy
- *   09:00–17:00 UTC path is used unchanged.
+ *   on the server: the React Booker sends resourceId/date/eventLength/
+ *   slotInterval (plus eventTypeId and, while rescheduling, the booker's
+ *   rescheduleContext where BookingProvider's availabilityContext is on), so
+ *   this module resolves the resource → the event type's or its
+ *   organization's default schedule → `resourceTimezone` + `scheduleId`
+ *   (month view) / `availableSlots` (day view). Without a schedule the
+ *   component's legacy 09:00–17:00 UTC path is used unchanged. A booking's
+ *   own slots count as free for a client only through rescheduleContext
+ *   ({ uid, token }, checked by the component); the uid-only
+ *   excludeBookingUid is passed solely after the reschedule's token check.
  *
  * - createBooking takes the booker inline (no identity involved) and enforces
  *   the host-side guard the component deliberately leaves to the caller:
  *   15-minute grid, past / min-notice / horizon windows, duration whitelist,
  *   "start is an offered slot" (the same list getDaySlots shows), plus a small
  *   per-email rate limit and a sandbox-wide hourly cap. Component errors are
- *   translated to `ConvexError({ code, message })` so clients get stable codes
- *   instead of Convex's redacted "Server Error".
+ *   mapped by their code to this gateway's `ConvexError({ code, message })`,
+ *   so clients get stable codes and host texts instead of the component's
+ *   texts or Convex's redacted "Server Error".
  *
  * - cancel / reschedule are authenticated by the booking's management token.
  *   Reschedule runs the full createBooking guard (including both limits) on
  *   the new time, since it writes a fresh booking row.
  *
+ * - The token-less booking reads (getBooking, getBookingByUid) return a
+ *   redacted view: no management token, no booker contact data. The uid is
+ *   shown to the booker as "Booking ID", so it is not a secret. Token holders
+ *   read the full booking through getBookingByToken.
+ *
  * Nothing here can wipe or reset the sandbox — that is internal.seed.* (cron).
  */
 import { v, ConvexError } from "convex/values";
 import type { FunctionReturnType } from "convex/server";
+import { isBookingError, type BookingErrorCode } from "@mrfinch/booking";
+import { isSendableAddress } from "@mrfinch/booking/emails";
 import { components } from "./_generated/api";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { publicQuery, publicMutation } from "./functions";
@@ -43,6 +56,14 @@ const SLOT_MS = 15 * 60 * 1000;
 const PAST_GRACE_MS = 5 * 60 * 1000;
 /** Largest month-view window a client may request. */
 const MAX_MONTH_RANGE_MS = 62 * 24 * 60 * 60 * 1000;
+/**
+ * Largest range the raw getAvailability check accepts. The component reads
+ * one availability row per day of the range, so an unbounded anonymous range
+ * is unbounded work; the same 62 days as the month view.
+ */
+const MAX_AVAILABILITY_RANGE_MS = MAX_MONTH_RANGE_MS;
+/** Largest |timestamp| a JavaScript Date can represent (±100,000,000 days). */
+const MAX_DATE_MS = 8.64e15;
 /** Horizon when an event type sets no maxFutureMinutes (60 days). */
 const DEFAULT_MAX_FUTURE_MINUTES = 60 * 24 * 60;
 /** Anonymous createBooking: 5 bookings per email per 10 minutes. */
@@ -62,7 +83,7 @@ const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const SANDBOX_BOOKINGS_PER_HOUR = 500;
 const SANDBOX_WINDOW_MS = 60 * 60 * 1000;
 const SANDBOX_COUNTER_KEY = "sandbox:bookings";
-/** Presence: max slots a single heartbeat may hold. */
+/** Presence: max slots a single heartbeat may hold (or leave may release). */
 const MAX_PRESENCE_SLOTS = 32;
 /** The component's own reschedule-artifact cancellation reason. */
 const RESCHEDULE_SENTINEL = "Rescheduled to new time";
@@ -72,8 +93,8 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // TYPES — component documents come from the generated ComponentApi
 // ============================================
 
-type EventTypeDoc = FunctionReturnType<
-  typeof components.booking.public.getEventType
+type EventTypeDoc = NonNullable<
+  FunctionReturnType<typeof components.booking.public.getEventType>
 >;
 type ResourceDoc = NonNullable<
   FunctionReturnType<typeof components.booking.resources.getResource>
@@ -95,6 +116,18 @@ type BookerInput = {
   notes?: string;
 };
 
+/**
+ * The booker's credential for the slot queries while moving a booking: its
+ * uid and management token. Forwarded unchanged; the component frees that
+ * booking's own slots only when the token matches a pending or confirmed
+ * booking on the queried resource, and ignores it otherwise.
+ */
+type RescheduleContext = { uid: string; token: string };
+const rescheduleContextValidator = v.object({
+  uid: v.string(),
+  token: v.string(),
+});
+
 // ============================================
 // SMALL HELPERS
 // ============================================
@@ -103,11 +136,15 @@ function invalid(code: string, message: string): never {
   throw new ConvexError({ code, message });
 }
 
-const isIsoDate = (s: string): boolean =>
-  ISO_DATE_RE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00.000Z`));
-
 const toIsoDateUtc = (ms: number): string =>
   new Date(ms).toISOString().slice(0, 10);
+
+/** A real calendar date — round-trips, so "2027-02-30" (→ 2 March) is rejected. */
+const isIsoDate = (s: string): boolean => {
+  if (!ISO_DATE_RE.test(s)) return false;
+  const ms = Date.parse(`${s}T00:00:00.000Z`);
+  return !Number.isNaN(ms) && toIsoDateUtc(ms) === s;
+};
 
 /** "YYYY-MM-DD" of a timestamp in an IANA zone. */
 const dateKeyInTz = (ms: number, tz: string): string =>
@@ -121,6 +158,10 @@ const dateKeyInTz = (ms: number, tz: string): string =>
 /** Day key in the resource/schedule zone, or the UTC day on the legacy path. */
 const dayKeyFor = (ms: number, tz: string | undefined): string =>
   tz ? dateKeyInTz(ms, tz) : toIsoDateUtc(ms);
+
+/** Finite and inside the Date range, so the component can turn it into a day. */
+const isDateMs = (ms: number): boolean =>
+  Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
 
 const isValidTimezone = (tz: string): boolean => {
   try {
@@ -137,11 +178,6 @@ const isSaneEventLength = (n: number): boolean =>
 const isSaneSlotInterval = (n: number | undefined): boolean =>
   n === undefined || (Number.isInteger(n) && n >= 15 && n <= 240);
 
-const sanitizeUid = (uid: string | undefined): string | undefined => {
-  const t = uid?.trim();
-  return t && t.length <= 100 ? t : undefined;
-};
-
 const slotTimeMs = (t: string | number): number =>
   typeof t === "number" ? t : Date.parse(t);
 
@@ -152,8 +188,14 @@ const allowedDurations = (et: EventTypeDoc): number[] =>
     : [et.lengthInMinutes];
 
 /**
- * MUST match the Booker's derivation (react/hooks/use-convex-slots.ts):
- * `slotInterval ?? min(allDurationOptions) ?? eventLength`.
+ * Start spacing the booking guard accepts:
+ * `slotInterval ?? min(lengthInMinutesOptions) ?? lengthInMinutes`.
+ *
+ * The Booker (Calendar → useConvexSlots) derives its grid differently:
+ * `slotInterval ?? min(lengthInMinutes, ...lengthInMinutesOptions)`. The two
+ * agree when `slotInterval` is set (this app's admin form always sends it) or
+ * `lengthInMinutes` is not below every option; otherwise the Booker offers
+ * starts on a finer grid than this guard accepts.
  */
 const effectiveSlotInterval = (et: EventTypeDoc): number =>
   et.slotInterval ??
@@ -187,41 +229,44 @@ function resendOptions() {
 // COMPONENT ERROR TRANSLATION
 // ============================================
 
-/** Substring → ConvexError code. Order matters for overlapping prefixes. */
-const COMPONENT_ERRORS: Array<[needle: string, code: string, message: string]> = [
-  ["Time slot no longer available", "SLOT_NOT_AVAILABLE", "This time slot is no longer available — please pick another one."],
-  ["Resource is not available for the requested time range", "SLOT_NOT_AVAILABLE", "This time slot is no longer available — please pick another one."],
-  ["Conflict detected on", "SLOT_NOT_AVAILABLE", "This time slot is no longer available — please pick another one."],
-  ["Invalid time range", "INVALID_RANGE", "End time must be after start time."],
-  ["Event type not found", "EVENT_TYPE_NOT_FOUND", "This event type no longer exists."],
-  ["Event type is no longer active", "EVENT_TYPE_INACTIVE", "This event type is no longer available for booking."],
-  ["Resource not found", "RESOURCE_NOT_FOUND", "This resource no longer exists."],
-  ["Resource is no longer active", "RESOURCE_INACTIVE", "This resource is no longer available."],
-  ["cannot be booked alone", "RESOURCE_NOT_STANDALONE", "This resource can only be booked as an add-on."],
-  ["Resource is not available for this event type", "NOT_LINKED", "This resource is not available for this event type."],
-  ["Booking not found", "NOT_FOUND", "Booking not found."],
-  ["Invalid token", "INVALID_TOKEN", "Invalid booking link."],
-];
+const SLOT_TAKEN = "This time slot is no longer available — please pick another one.";
 
 /**
- * Rethrow a component failure as a ConvexError. ConvexErrors pass through
- * untouched; plain Errors are mapped by message; anything else → BOOKING_FAILED.
+ * Component error code → the code and text this gateway's clients see. The
+ * component's `data.message` is English for logs and can hold IDs, so clients
+ * never receive it. Codes missing here become BOOKING_FAILED: the admin-only
+ * *_IN_USE / *_ALREADY_EXISTS (the wrapped calls never throw them), and
+ * POOL_REQUIRES_BUNDLE / ORGANIZATION_MISMATCH, setup faults a visitor
+ * cannot fix.
+ */
+const COMPONENT_ERRORS: Partial<
+  Record<BookingErrorCode, [code: string, message: string]>
+> = {
+  SLOT_UNAVAILABLE: ["SLOT_NOT_AVAILABLE", SLOT_TAKEN],
+  QUANTITY_UNAVAILABLE: ["SLOT_NOT_AVAILABLE", SLOT_TAKEN],
+  EVENT_TYPE_NOT_FOUND: ["EVENT_TYPE_NOT_FOUND", "This event type no longer exists."],
+  EVENT_TYPE_INACTIVE: ["EVENT_TYPE_INACTIVE", "This event type is no longer available for booking."],
+  RESOURCE_NOT_FOUND: ["RESOURCE_NOT_FOUND", "This resource no longer exists."],
+  RESOURCE_INACTIVE: ["RESOURCE_INACTIVE", "This resource is no longer available."],
+  RESOURCE_NOT_STANDALONE: ["RESOURCE_NOT_STANDALONE", "This resource can only be booked as an add-on."],
+  RESOURCE_NOT_LINKED: ["NOT_LINKED", "This resource is not available for this event type."],
+  BOOKING_NOT_FOUND: ["NOT_FOUND", "Booking not found."],
+  INVALID_TOKEN: ["INVALID_TOKEN", "Invalid booking link."],
+  INVALID_STATE: ["INVALID_STATE", "This booking can no longer be changed."],
+  INVALID_RANGE: ["INVALID_RANGE", "End time must be after start time."],
+  INVALID_INPUT: ["INVALID_INPUT", "Please check your details and try again."],
+};
+
+/**
+ * Rethrow a component failure as this gateway's ConvexError, chosen by the
+ * component's error code (`isBookingError`). Every try block around it wraps
+ * a component call only, so each ConvexError caught there is the
+ * component's. Unknown codes, plain Errors and anything else → BOOKING_FAILED.
  */
 function translateComponentError(error: unknown): never {
-  if (error instanceof ConvexError) throw error;
-  const message = error instanceof Error ? error.message : String(error);
-
-  const stateMatch = message.match(
-    /Cannot (reschedule|cancel) booking with status: (\w+)/
-  );
-  if (stateMatch) {
-    invalid(
-      "INVALID_STATE",
-      `This booking can no longer be changed (status: ${stateMatch[2]}).`
-    );
-  }
-  for (const [needle, code, text] of COMPONENT_ERRORS) {
-    if (message.includes(needle)) invalid(code, text);
+  if (isBookingError(error)) {
+    const mapped = COMPONENT_ERRORS[error.data.code];
+    if (mapped) invalid(mapped[0], mapped[1]);
   }
   invalid("BOOKING_FAILED", "Booking failed — please try again.");
 }
@@ -248,10 +293,11 @@ type AvailabilityContext = {
  * known and it points at an existing schedule) → the organization's default
  * schedule (`getDefaultSchedule`: isDefault, else the first one) → none.
  *
- * The React Booker never sends an eventTypeId to the availability queries, so
- * the notice/horizon windows fall back to the active event types linked to the
- * resource (min notice, max horizon — never hides a slot that createBooking
- * would accept for some event type).
+ * The React Booker sends an eventTypeId to the availability queries only where
+ * BookingProvider's availabilityContext is on. Without one the notice/horizon
+ * windows fall back to the active event types linked to the resource (min
+ * notice, max horizon — never hides a slot that createBooking would accept
+ * for some event type).
  */
 async function resolveAvailabilityContext(
   ctx: Ctx,
@@ -265,13 +311,9 @@ async function resolveAvailabilityContext(
 
   let eventType: EventTypeDoc | null = opts.eventType ?? null;
   if (!eventType && opts.eventTypeId) {
-    try {
-      eventType = await ctx.runQuery(components.booking.public.getEventType, {
-        eventTypeId: opts.eventTypeId,
-      });
-    } catch {
-      eventType = null;
-    }
+    eventType = await ctx.runQuery(components.booking.public.getEventType, {
+      eventTypeId: opts.eventTypeId,
+    });
     if (eventType && eventType.isActive === false) return null;
   }
 
@@ -321,7 +363,14 @@ async function resolveAvailabilityContext(
 /**
  * The slots the component offers for one resource-local day — schedule-aware
  * when a schedule exists (resourceTimezone + availableSlots are always passed
- * together; the component silently falls back to 09–17 UTC otherwise).
+ * together; the component rejects one without the other).
+ *
+ * The booking being moved counts as free through ONE of:
+ * - `rescheduleContext`: the booker's { uid, token } from the client; the
+ *   component checks the token.
+ * - `excludeBookingUid`: frees a booking by uid alone, so only
+ *   assertStartIsOfferedSlot passes it, for rescheduleBookingByToken after
+ *   that mutation's own token check. Never fill it from client arguments.
  */
 async function offeredDaySlots(
   ctx: Ctx,
@@ -330,6 +379,7 @@ async function offeredDaySlots(
     date: string;
     eventLength: number;
     slotInterval: number | undefined;
+    rescheduleContext?: RescheduleContext;
     excludeBookingUid?: string;
   }
 ): Promise<DaySlot[]> {
@@ -351,6 +401,7 @@ async function offeredDaySlots(
     slotInterval: opts.slotInterval,
     resourceTimezone: availableSlots ? avail.timezone : undefined,
     availableSlots,
+    rescheduleContext: opts.rescheduleContext,
     excludeBookingUid: opts.excludeBookingUid,
   });
 }
@@ -360,6 +411,8 @@ async function offeredDaySlots(
  * right now: nothing inside the minimum notice, nothing past the horizon.
  * Filtered PER SLOT, not per day — `now + maxFutureMinutes` lands at the
  * current wall-clock time of its day, so that day is only partly bookable.
+ * Serves the client-facing queries, so it takes the client's
+ * rescheduleContext and never an excludeBookingUid.
  */
 async function windowedDaySlots(
   ctx: Ctx,
@@ -368,13 +421,18 @@ async function windowedDaySlots(
     date: string;
     eventLength: number;
     slotInterval: number | undefined;
-    excludeBookingUid?: string;
+    rescheduleContext: RescheduleContext | undefined;
     now: number;
   }
 ): Promise<DaySlot[]> {
   const notBefore = opts.now + avail.minNoticeMinutes * 60_000;
   const notAfter = opts.now + avail.maxFutureMinutes * 60_000;
-  const slots = await offeredDaySlots(ctx, avail, opts);
+  const slots = await offeredDaySlots(ctx, avail, {
+    date: opts.date,
+    eventLength: opts.eventLength,
+    slotInterval: opts.slotInterval,
+    rescheduleContext: opts.rescheduleContext,
+  });
   return slots.filter((s) => {
     const t = slotTimeMs(s.time);
     return t >= notBefore && t <= notAfter;
@@ -397,6 +455,16 @@ function assertBookableRange(start: number, end: number): void {
   }
 }
 
+/**
+ * The booker's details, trimmed and bounded. The email must pass
+ * `isSendableAddress` from @mrfinch/booking/emails, the screen the component's
+ * createBooking applies since 0.5.0 (INVALID_INPUT otherwise), so a bad
+ * address gets INVALID_EMAIL here instead.
+ *
+ * Syntax is not ownership: this does not stop a visitor from entering someone
+ * else's address. That is why the sandbox sends no email (see the recipient
+ * policy in app/docs/integrations/email).
+ */
 function sanitizeBooker(input: BookerInput): BookerInput {
   const name = input.name.trim();
   if (!name) invalid("NAME_REQUIRED", "Please enter your name.");
@@ -404,7 +472,7 @@ function sanitizeBooker(input: BookerInput): BookerInput {
     invalid("NAME_TOO_LONG", "Name is too long (max 120 characters).");
   }
   const email = input.email.trim();
-  if (!email || email.length > 254 || !email.includes("@")) {
+  if (!isSendableAddress(email)) {
     invalid("INVALID_EMAIL", "Please enter a valid email address.");
   }
   const phone = input.phone?.trim() || undefined;
@@ -521,6 +589,10 @@ function assertBookingWindow(
  * subsumes schedule windows, date overrides, grid alignment for the duration,
  * "runs past closing" and busy collisions — validated against the OFFERED list
  * rather than re-deriving the rules.
+ *
+ * `excludeBookingUid` treats that booking's own slots as free. Trusted server
+ * input only: rescheduleBookingByToken passes the uid of the booking it has
+ * just loaded by uid AND token.
  */
 async function assertStartIsOfferedSlot(
   ctx: Ctx,
@@ -713,7 +785,8 @@ export const hasResourceEventTypeLink = publicQuery({
 });
 
 /**
- * Get a single event type by ID
+ * Get a single event type by ID, or null if it does not exist. The Booker
+ * shows null as a deleted event type; a throw would reach the error boundary.
  */
 export const getEventType = publicQuery({
   args: { eventTypeId: v.string() },
@@ -758,8 +831,14 @@ export const listEventTypes = publicQuery({
  * resourceTimezone + scheduleId to the component. Past days are forced to
  * false; days beyond the booking horizon are false; today and the horizon day
  * are checked against the windowed slot list (they are only partly bookable);
- * malformed input yields {}. `eventTypeId` / `excludeBookingUid` are optional
- * so a future Booker can send them (the current one does not).
+ * malformed input yields {}.
+ *
+ * `eventTypeId` and `rescheduleContext` are optional; the Booker sends them
+ * where BookingProvider's availabilityContext is on. rescheduleContext goes to
+ * the component unchanged, which frees the moved booking's own slots only
+ * when its token matches. There is deliberately no `excludeBookingUid`
+ * argument: it would free any booking whose uid (the visible "Booking ID")
+ * a client knows.
  */
 export const getMonthAvailability = publicQuery({
   args: {
@@ -769,7 +848,7 @@ export const getMonthAvailability = publicQuery({
     eventLength: v.number(),
     slotInterval: v.optional(v.number()),
     eventTypeId: v.optional(v.string()),
-    excludeBookingUid: v.optional(v.string()),
+    rescheduleContext: v.optional(rescheduleContextValidator),
   },
   handler: async (ctx, args): Promise<Record<string, boolean>> => {
     if (!isIsoDate(args.dateFrom) || !isIsoDate(args.dateTo)) return {};
@@ -787,7 +866,6 @@ export const getMonthAvailability = publicQuery({
     const slotInterval =
       args.slotInterval ??
       (avail.eventType ? effectiveSlotInterval(avail.eventType) : undefined);
-    const excludeBookingUid = sanitizeUid(args.excludeBookingUid);
 
     // Day keys in the schedule's zone (UTC on the legacy path) — the same
     // calendar the component's month view is computed in.
@@ -809,10 +887,10 @@ export const getMonthAvailability = publicQuery({
           dateTo: effectiveTo,
           eventLength: args.eventLength,
           slotInterval,
-          // Both or neither — otherwise the component silently takes the legacy path.
+          // resourceTimezone only with scheduleId: the component rejects it alone.
           resourceTimezone: avail.scheduleId ? avail.timezone : undefined,
           scheduleId: avail.scheduleId,
-          excludeBookingUid,
+          rescheduleContext: args.rescheduleContext,
         }
       );
       Object.assign(result, fromComponent);
@@ -836,7 +914,7 @@ export const getMonthAvailability = publicQuery({
           date: edge,
           eventLength: args.eventLength,
           slotInterval,
-          excludeBookingUid,
+          rescheduleContext: args.rescheduleContext,
           now,
         });
         result[edge] = slots.length > 0;
@@ -853,6 +931,7 @@ export const getMonthAvailability = publicQuery({
  * schedule) to the component. Past days and days beyond the horizon return [];
  * within a day every slot inside the minimum-notice window or past the horizon
  * is dropped — so the list matches what createBooking accepts, slot by slot.
+ * `eventTypeId` and `rescheduleContext` as in getMonthAvailability.
  */
 export const getDaySlots = publicQuery({
   args: {
@@ -861,7 +940,7 @@ export const getDaySlots = publicQuery({
     eventLength: v.number(),
     slotInterval: v.optional(v.number()),
     eventTypeId: v.optional(v.string()),
-    excludeBookingUid: v.optional(v.string()),
+    rescheduleContext: v.optional(rescheduleContextValidator),
   },
   handler: async (ctx, args): Promise<DaySlot[]> => {
     if (!isIsoDate(args.date)) return [];
@@ -887,7 +966,7 @@ export const getDaySlots = publicQuery({
       slotInterval:
         args.slotInterval ??
         (avail.eventType ? effectiveSlotInterval(avail.eventType) : undefined),
-      excludeBookingUid: sanitizeUid(args.excludeBookingUid),
+      rescheduleContext: args.rescheduleContext,
       now,
     });
   },
@@ -896,6 +975,7 @@ export const getDaySlots = publicQuery({
 /**
  * Raw slot-collision check for a time range (ignores opening hours).
  * Kept for the docs demo; do not use it for UI availability.
+ * The range is capped at MAX_AVAILABILITY_RANGE_MS (RANGE_TOO_LARGE).
  */
 export const getAvailability = publicQuery({
   args: {
@@ -904,7 +984,23 @@ export const getAvailability = publicQuery({
     end: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getAvailability, args);
+    if (!isDateMs(args.start) || !isDateMs(args.end)) {
+      invalid("INVALID_TIME", "Invalid time value.");
+    }
+    if (args.end <= args.start) {
+      invalid("INVALID_RANGE", "End time must be after start time.");
+    }
+    if (args.end - args.start > MAX_AVAILABILITY_RANGE_MS) {
+      invalid(
+        "RANGE_TOO_LARGE",
+        `Availability can be checked for at most ${formatMinutes(MAX_AVAILABILITY_RANGE_MS / 60_000)} at a time.`
+      );
+    }
+    try {
+      return await ctx.runQuery(components.booking.public.getAvailability, args);
+    } catch (error) {
+      translateComponentError(error);
+    }
   },
 });
 
@@ -973,6 +1069,9 @@ export const leave = publicMutation({
     user: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.slots.length > MAX_PRESENCE_SLOTS) {
+      invalid("TOO_MANY_SLOTS", "Too many slots in one hold.");
+    }
     return await ctx.runMutation(components.booking.presence.leave, args);
   },
 });
@@ -1057,25 +1156,60 @@ export const createBooking = publicMutation({
 });
 
 /**
- * Get booking by ID
- * Public access (booking ID is effectively a secret)
+ * What a caller without the management token may see of a booking: an
+ * allowlist, so fields the component adds later stay private by default.
+ * Left out: managementToken (the bearer credential for cancel/reschedule),
+ * the booker's name, email, phone and notes, actorId (the booker's email), the
+ * free-text cancellation reason and the location value (it comes from the
+ * booking request and can hold an address or phone number); only its type stays.
+ */
+function toPublicBookingView(booking: BookingDoc) {
+  return {
+    _id: booking._id,
+    _creationTime: booking._creationTime,
+    uid: booking.uid,
+    status: booking.status,
+    eventTypeId: booking.eventTypeId,
+    eventTitle: booking.eventTitle,
+    eventDescription: booking.eventDescription,
+    resourceId: booking.resourceId,
+    organizationId: booking.organizationId,
+    start: booking.start,
+    end: booking.end,
+    timezone: booking.timezone,
+    location: { type: booking.location.type },
+    rescheduleUid: booking.rescheduleUid,
+    createdAt: booking.createdAt,
+    updatedAt: booking.updatedAt,
+    cancelledAt: booking.cancelledAt,
+  };
+}
+
+/**
+ * Get booking by ID — redacted (see toPublicBookingView); anyone may call it.
  */
 export const getBooking = publicQuery({
   args: { bookingId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getBooking, {
+    const booking = await ctx.runQuery(components.booking.public.getBooking, {
       bookingId: args.bookingId,
     });
+    return booking && toPublicBookingView(booking);
   },
 });
 
 /**
- * Get booking by UID (confirmation code)
+ * Get booking by UID (confirmation code) — redacted (see toPublicBookingView).
+ * The uid is displayed as "Booking ID", so it must not unlock the token.
  */
 export const getBookingByUid = publicQuery({
   args: { uid: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.runQuery(components.booking.public.getBookingByUid, args);
+    const booking = await ctx.runQuery(
+      components.booking.public.getBookingByUid,
+      args
+    );
+    return booking && toPublicBookingView(booking);
   },
 });
 
@@ -1202,8 +1336,8 @@ export const rescheduleBookingByToken = publicMutation({
       excludeBookingUid: booking.uid,
     });
 
-    // A reschedule writes a new booking row (the old one is kept, marked
-    // rescheduled), so it counts like a create.
+    // A reschedule writes a new booking row (the old one stays, cancelled,
+    // with rescheduledToUid naming the new one), so it counts like a create.
     await enforceBookingRateLimit(ctx, booking.bookerEmail);
 
     try {

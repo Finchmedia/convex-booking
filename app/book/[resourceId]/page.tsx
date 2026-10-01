@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Calendar, Clock, MapPin, ChevronRight, ExternalLink } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { BookingErrorToaster } from "@/components/booking-error-toaster";
 
 export default function ResourceBookingPage() {
   const params = useParams();
@@ -116,29 +115,26 @@ export default function ResourceBookingPage() {
             Back to Event Types
           </button>
 
-          {/* Booker Component. BookingErrorToaster surfaces rejected bookings
-              (slot taken, rate limit, …) as toasts — the 0.3.0 Booker itself
-              never renders them. */}
+          {/* Booker Component. It shows rejected bookings (slot taken, rate
+              limit, …) itself, with the gateway's data.message. */}
           <div className="container max-w-5xl mx-auto">
-            <BookingErrorToaster>
-              <BookingProvider publicApi={api.public}>
-                <Booker
-                  eventTypeId={selectedEventType.id}
-                  resourceId={resourceId}
-                  title={resource.name}
-                  description={selectedEventType.description || resource.description}
-                  organizerName="Studio Team"
-                  onBookingComplete={(booking) => {
-                    if (booking.managementToken) {
-                      router.push(
-                        `/book/booking/${encodeURIComponent(booking.uid)}?token=${encodeURIComponent(booking.managementToken)}`
-                      );
-                    }
-                  }}
-                  onEventTypeReset={() => setSelectedEventType(null)}
-                />
-              </BookingProvider>
-            </BookingErrorToaster>
+            <BookingProvider publicApi={api.public}>
+              <Booker
+                eventTypeId={selectedEventType.id}
+                resourceId={resourceId}
+                title={resource.name}
+                description={selectedEventType.description || resource.description}
+                organizerName="Studio Team"
+                onBookingComplete={(booking) => {
+                  if (booking.managementToken) {
+                    router.push(
+                      `/book/booking/${encodeURIComponent(booking.uid)}?token=${encodeURIComponent(booking.managementToken)}`
+                    );
+                  }
+                }}
+                onEventTypeReset={() => setSelectedEventType(null)}
+              />
+            </BookingProvider>
           </div>
 
           {/* Timezone + booking-window hint (the Booker shows browser-local times) */}
